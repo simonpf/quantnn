@@ -17,7 +17,7 @@ setuptools.setup(
         "License :: GNU Affero",
         "Operating System :: OS Independent",
     ],
-    install_requires=["numpy"],
+    install_requires=["numpy", "scipy"],
     tests_require=["sphinx_rtd_theme", "pytest"],
     python_requires=">=3.6",
 )
