@@ -1,18 +1,18 @@
 """
-qrnn.qrnn
-==========================
+quantnn.qrnn
+============
 
 This module provides the QRNN class, which implements the high-level
 functionality of quantile regression neural networks, while the neural
 network implementation is left to the model backends implemented in the
-``qrnn.models`` submodule.
+``quantnn.models`` submodule.
 """
 import copy
 import logging
 import os
 import pickle
 import importlib
-import qrnn.functional as qf
+import quantnn.functional as qf
 
 import numpy as np
 
@@ -21,11 +21,11 @@ import numpy as np
 ################################################################################
 
 try:
-    import qrnn.models.keras as keras
+    import quantnn.models.keras as keras
     backend = keras
 except Exception as e:
     try:
-        import qrnn.models.pytorch as pytorch
+        import quantnn.models.pytorch as pytorch
         backend = pytorch
     except:
         raise Exception("Couldn't import neither Keras nor Pytorch "
@@ -44,14 +44,14 @@ def set_backend(name):
     global backend
     if name == "keras":
         try:
-            import qrnn.models.keras as keras
+            import quantnn.models.keras as keras
             backend = keras
         except Exception as e:
             raise Exception("The following error occurred while trying "
                             " to import keras: ", e)
     elif name == "pytorch":
         try:
-            import qrnn.models.pytorch as pytorch
+            import quantnn.models.pytorch as pytorch
             backend = pytorch
         except Exception as e:
             raise Exception("The following error occurred while trying "
@@ -70,14 +70,14 @@ def get_backend(name):
     """
     if name == "keras":
         try:
-            import qrnn.models.keras as keras
+            import quantnn.models.keras as keras
             backend = keras
         except Exception as e:
             raise Exception("The following error occurred while trying "
                             " to import keras: ", e)
     elif name == "pytorch":
         try:
-            import qrnn.models.pytorch as pytorch
+            import quantnn.models.pytorch as pytorch
             backend = pytorch
         except Exception as e:
             raise Exception("The following error occurred while trying "
@@ -137,7 +137,7 @@ class QRNN:
     Instead, this functionality is off-loaded to a model object, which can be
     an arbitrary regression network such as a fully-connected or a
     convolutional network. A range of different models are provided in the
-    qrnn.models module. The :class:`QRNN`` class just
+    quantnn.models module. The :class:`QRNN`` class just
     implements high-level operation on the QRNN output while training and
     prediction are delegated to the model object. For details on the respective
     implementation refer to the documentation of the corresponding model class.
@@ -342,7 +342,7 @@ class QRNN:
 
         The PDF is approximated by computing the derivative of the piece-wise
         linear approximation of the CDF as computed by the
-        :py:meth:`qrnn.QRNN.cdf` function.
+        :py:meth:`quantnn.QRNN.cdf` function.
 
         Arguments:
 
@@ -499,7 +499,7 @@ class QRNN:
         Load a model from a file.
 
         This loads a model that has been stored using the
-        :py:meth:`qrnn.QRNN.save`  method.
+        :py:meth:`quantnn.QRNN.save`  method.
 
         Arguments:
 

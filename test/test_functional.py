@@ -1,9 +1,10 @@
 import numpy as np
-from qrnn.functional import (cdf, pdf, posterior_mean, crps,
-                             probability_less_than,
-                             probability_larger_than,
-                             sample_posterior,
-                             sample_posterior_gaussian)
+from quantnn.functional import (cdf, pdf, posterior_mean, crps,
+                                probability_less_than,
+                                probability_larger_than,
+                                sample_posterior,
+                                sample_posterior_gaussian,
+                                quantile_loss)
 
 def test_cdf():
     """
@@ -196,54 +197,8 @@ def test_crps():
 
 def test_probability_less_than():
     """
-    Tests the calculation of the CRPS for different shapes of input
-    arrays.
-    """
-
-    #
-    # 1D predictions
-    #
-
-    quantiles = np.arange(0.1, 0.91, 0.1)
-    y_pred = np.arange(1.0, 9.1, 1.0)
-    t = np.random.rand() * 10.0
-    probability = probability_less_than(y_pred, quantiles, t)
-    assert np.all(np.isclose(probability, 0.1 * t))
-
-    #
-    # 2D predictions
-    #
-
-    quantiles = np.arange(0.1, 0.91, 0.1)
-    y_pred = np.tile(np.arange(1.0, 9.1, 1.0), (10, 1))
-    t = np.random.rand() * 10.0
-    probability = probability_less_than(y_pred, quantiles, t)
-    assert np.all(np.isclose(probability, 0.1 * t))
-
-    #
-    # 3D predictions, quantiles along last axis
-    #
-
-    quantiles = np.arange(0.1, 0.91, 0.1)
-    y_pred = np.tile(np.arange(1.0, 9.1, 1.0), (10, 10, 1))
-    t = np.random.rand() * 10.0
-    probability = probability_less_than(y_pred, quantiles, t, quantile_axis=2)
-    assert np.all(np.isclose(probability, 0.1 * t))
-
-    #
-    # 3D predictions, quantiles along first axis
-    #
-
-    quantiles = np.arange(0.1, 0.91, 0.1)
-    y_pred = np.tile(np.arange(1.0, 9.1, 1.0).reshape(-1, 1), (10, 1, 10))
-    t = np.random.rand() * 10.0
-    probability = probability_less_than(y_pred, quantiles, t, quantile_axis=1)
-    assert np.all(np.isclose(probability, 0.1 * t))
-
-def test_probability_less_than():
-    """
-    Tests the calculation of the CRPS for different shapes of input
-    arrays.
+    Tests predicting the probability that the true value is lower
+    than a given threshold.
     """
 
     #
@@ -288,8 +243,8 @@ def test_probability_less_than():
 
 def test_probability_larger_than():
     """
-    Tests the calculation of the CRPS for different shapes of input
-    arrays.
+    Tests predicting the probability that the true value is larger
+    than a given threshold.
     """
 
     #
@@ -334,8 +289,7 @@ def test_probability_larger_than():
 
 def test_sample_posterior():
     """
-    Tests the calculation of the CRPS for different shapes of input
-    arrays.
+    Tests sampling from the posterior by interpolation of inverse CDF.
     """
 
     #
@@ -378,8 +332,7 @@ def test_sample_posterior():
 
 def test_sample_posterior_gaussian_fit():
     """
-    Tests the calculation of the CRPS for different shapes of input
-    arrays.
+    Tests sampling from the posterior by fitting a Gaussian.
     """
 
     #
@@ -419,3 +372,48 @@ def test_sample_posterior_gaussian_fit():
     samples = sample_posterior_gaussian(y_pred, quantiles, n_samples=1000,
                                quantile_axis=1)
     assert np.all(np.isclose(samples.mean(), 5.0, 1e-1))
+
+def test_quantile_loss():
+    """
+    Tests calculation of the quantile loss function.
+    """
+
+    #
+    # 1D predictions
+    #
+
+    quantiles = np.arange(0.1, 0.91, 0.1)
+    y_pred = np.arange(1.0, 9.1, 1.0)
+    y_true = np.array([5.0])
+    loss = quantile_loss(y_pred, quantiles, y_true)
+    assert np.isclose(loss.mean(), 0.444444)
+
+    #
+    # 2D predictions
+    #
+
+    quantiles = np.arange(0.1, 0.91, 0.1)
+    y_pred = np.tile(np.arange(1.0, 9.1, 1.0), (10, 1))
+    y_true = np.tile(np.array([5.0]), (10, 1))
+    loss = quantile_loss(y_pred, quantiles, y_true)
+    assert np.isclose(loss.mean(), 0.444444)
+
+    #
+    # 3D predictions, quantiles along last axis
+    #
+
+    quantiles = np.arange(0.1, 0.91, 0.1)
+    y_pred = np.tile(np.arange(1.0, 9.1, 1.0), (10, 10, 1))
+    y_true = np.tile(np.array([5.0]), (10, 10, 1))
+    loss = quantile_loss(y_pred, quantiles,  y_true, quantile_axis=-1)
+    assert np.isclose(loss.mean(), 0.444444)
+
+    #
+    # 3D predictions, quantiles along first axis
+    #
+
+    quantiles = np.arange(0.1, 0.91, 0.1)
+    y_pred = np.tile(np.arange(1.0, 9.1, 1.0).reshape(-1, 1), (10, 1, 10))
+    y_true = np.tile(np.array([5.0]), (10, 1, 10))
+    loss = quantile_loss(y_pred, quantiles, y_true, quantile_axis=1)
+    assert np.isclose(loss.mean(), 0.444444)

@@ -1,9 +1,9 @@
 """
-qrnn.models.keras
-=================
+quantnn.models.keras
+====================
 
 This module provides Keras neural network models that can be used as backend
-models with the :py:class:`qrnn.QRNN` class.
+models with the :py:class:`quantnn.QRNN` class.
 """
 import logging
 import numpy as np

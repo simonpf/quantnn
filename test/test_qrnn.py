@@ -1,7 +1,7 @@
 """
 Tests the QRNN implementation for all available backends.
 """
-from qrnn import QRNN, set_backend, get_backend
+from quantnn import QRNN, set_backend, get_backend
 import numpy as np
 import os
 import importlib
@@ -14,14 +14,14 @@ import tempfile
 
 backends = []
 try:
-    import qrnn.models.keras
+    import quantnn.models.keras
 
     backends += ["keras"]
 except:
     pass
 
 try:
-    import qrnn.models.pytorch
+    import quantnn.models.pytorch
 
     backends += ["pytorch"]
 except:

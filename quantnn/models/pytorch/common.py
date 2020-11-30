@@ -1,6 +1,6 @@
 """
-qrnn.models.pytorch.common
-==========================
+quantnn.models.pytorch.common
+=============================
 
 This module provides common functionality required to realize QRNNs in pytorch.
 """
@@ -203,7 +203,7 @@ class PytorchModel:
         self.criterion = QuantileLoss(self.quantiles)
         self.training_errors = []
         self.validation_errors = []
-        self.backend = "typhon.retrieval.qrnn.models.pytorch"
+        self.backend = "quantnn.models.pytorch"
 
     def _make_adversarial_samples(self, x, y, eps):
         self.zero_grad()

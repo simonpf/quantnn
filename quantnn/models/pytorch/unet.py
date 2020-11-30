@@ -1,6 +1,6 @@
 """
-qrnn.models.pytorch.unet
-========================
+quantnn.models.pytorch.unet
+===========================
 
 This module provides an implementation of the UNet [unet]_
 architecture.
@@ -12,7 +12,7 @@ Comput.-Assist. Intervent. (MICCAI), pp. 234-241, 2015.
 import torch
 from torch import nn
 
-from qrnn.models.pytorch.common import PytorchModel
+from quantnn.models.pytorch.common import PytorchModel
 
 
 class Layer(nn.Sequential):

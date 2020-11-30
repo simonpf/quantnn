@@ -1,8 +1,8 @@
 """
-qrnn.common
-===========
+quantnn.common
+==============
 
-Implements common features used by the other submodules of the ``qrnn``
+Implements common features used by the other submodules of the ``quantnn``
 package.
 """
 import numpy as np

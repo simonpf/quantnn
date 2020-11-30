@@ -1,8 +1,8 @@
 """
-qrnn.functional
-===============
+quantnn.functional
+==================
 
-The ``qrnn.functional`` module provides functions to calculate relevant
+The ``quantnn.functional`` module provides functions to calculate relevant
  statistics from QRNN output.
 """
 from copy import copy
@@ -10,11 +10,11 @@ from copy import copy
 import numpy as np
 from scipy.stats import norm
 
-from qrnn.common import (InvalidDimensionException,
-                         get_array_module,
-                         to_array,
-                         sample_uniform,
-                         sample_gaussian)
+from quantnn.common import (InvalidDimensionException,
+                            get_array_module,
+                            to_array,
+                            sample_uniform,
+                            sample_gaussian)
 
 
 def cdf(y_pred,
@@ -308,6 +308,8 @@ def probability_less_than(y_pred, quantiles, y, quantile_axis=1):
         y_l = y_r
         x_l = x_r
 
+    inds = y > x_r
+    probabilities[inds] = 1.0
     return probabilities
 
 def probability_larger_than(y_pred,
@@ -484,3 +486,46 @@ def sample_posterior_gaussian(y_pred,
     output_shape[quantile_axis] = n_samples
     samples = sample_gaussian(xp, tuple(output_shape))
     return mu + sigma * samples
+
+def quantile_loss(y_pred,
+                  quantiles,
+                  y_true,
+                  quantile_axis=1):
+    """
+    Calculate the quantile loss for all predicted quantiles.
+
+    Args:
+        y_pred: A k-tensor containing the predicted quantiles along the
+             axis specified by ``quantile_axis``.
+        y_true: A tensor of rank k-1 containing the corresponding true
+             values.
+        quantiles: A vector or list containing the quantile fractions
+             corresponding to the predicted quantiles.
+        quantile_axis: The axis along which ``y_pred`` contains the
+             the predicted quantiles.
+    """
+    if len(y_pred.shape) == 1:
+        quantile_axis = 0
+    xp = get_array_module(y_pred)
+    n_dims = len(y_pred.shape)
+
+    y_true_shape = list(y_pred.shape)
+    y_true_shape[quantile_axis] = 1
+    try:
+        y_true = y_true.reshape(y_true_shape)
+    except Exception:
+        raise InvalidDimensionException(
+            "Could not reshape 'y_true' argument into expected shape "
+            f"{y_true_shape}."
+        )
+
+    quantiles = to_array(xp, quantiles)
+    quantiles_shape = [1] * n_dims
+    quantiles_shape[quantile_axis] = len(quantiles)
+    quantiles = quantiles.reshape(quantiles_shape)
+
+    dy = y_pred - y_true
+    loss = xp.zeros(dy.shape)
+    loss[dy > 0.0] = ((1.0 - quantiles) * dy)[dy > 0.0]
+    loss[dy <= 0.0] = - (quantiles * dy)[dy <= 0.0]
+    return loss

@@ -1,12 +1,12 @@
 """
-qrnn.models.pytorch.fully_connected
-===================================
+quantnn.models.pytorch.fully_connected
+======================================
 
 This module provides an implementation of a fully-connected feed forward
 neural networks in pytorch.
 """
 from torch import nn
-from qrnn.models.pytorch.common import PytorchModel, activations
+from quantnn.models.pytorch.common import PytorchModel, activations
 
 ################################################################################
 # Fully-connected network
