@@ -23,7 +23,7 @@ distribution :math:`p(y | \mathbf{x})`.
    :maxdepth: 2
    :caption: Contents:
 
-   getting_started
+   user_guide
    examples
 
 

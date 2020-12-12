@@ -49,10 +49,10 @@ exclude_patterns = []
 html_theme = 'smpl'
 html_theme_options = {
     "navigation_bar_minimum_height": "15vh",
-    "navigation_bar_targets": ["/index.html",
-                               "/getting_started.html",
-                               "/examples.html"],
-    "navigation_bar_names": ["Home", "Getting started", "Examples"],
+    "navigation_bar_targets": ["index.html",
+                               "user_guide.html",
+                               "examples.html"],
+    "navigation_bar_names": ["Home", "User guide", "Examples"],
     "navigation_bar_element_padding": "40px",
     "navigation_bar_background_color": "#333333",
     "sidebars_right": [],
