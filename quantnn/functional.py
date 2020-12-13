@@ -10,11 +10,12 @@ from copy import copy
 import numpy as np
 from scipy.stats import norm
 
-from quantnn.common import (InvalidDimensionException,
-                            get_array_module,
-                            to_array,
-                            sample_uniform,
-                            sample_gaussian)
+from quantnn.common import InvalidDimensionException
+from quantnn.generic import (get_array_module,
+                             to_array,
+                             sample_uniform,
+                             sample_gaussian,
+                             numel)
 
 
 def cdf(y_pred,
@@ -133,10 +134,10 @@ def pdf(y_pred,
 
     x_pdf = xp.zeros(output_shape)
     selection_l = [slice(0, None)] * n_dims
-    selection_l[quantile_axis] = slice(1, None)
+    selection_l[quantile_axis] = slice(0, -1)
     selection_l = tuple(selection_l)
     selection_r = [slice(0, None)] * n_dims
-    selection_r[quantile_axis] = slice(0, -1)
+    selection_r[quantile_axis] = slice(1, None)
     selection_r = tuple(selection_r)
     selection_c = [slice(0, None)] * n_dims
     selection_c[quantile_axis] = slice(1, -1)
@@ -153,8 +154,8 @@ def pdf(y_pred,
     x_pdf[selection] = x_cdf[selection]
 
     y_pdf = xp.zeros(output_shape)
-    y_pdf[selection_c] = np.diff(y_cdf)
-    y_pdf[selection_c] /= np.diff(x_cdf, axis=quantile_axis)
+    y_pdf[selection_c] = y_cdf[1:] - y_cdf[:-1]
+    y_pdf[selection_c] /= x_cdf[selection_r] - x_cdf[selection_l]
 
     return x_pdf, y_pdf
 
@@ -220,7 +221,7 @@ def crps(y_pred, quantiles, y_true, quantile_axis=1):
 
     y_true_shape = list(x_cdf.shape)
     y_true_shape[quantile_axis] = 1
-    y_true = np.asarray(y_true)
+    y_true = to_array(xp, y_true)
     y_true = y_true.reshape(y_true_shape)
 
     ind = xp.zeros(x_cdf.shape)
@@ -431,10 +432,10 @@ def fit_gaussian_to_quantiles(y_pred, quantiles, quantile_axis=1):
     output_shape[quantile_axis] = 1
     output_shape = tuple(output_shape)
 
-    d2e_00 = x.size
+    d2e_00 = numel(x)
     d2e_01 = x.sum()
     d2e_10 = x.sum()
-    d2e_11 = np.sum(x ** 2)
+    d2e_11 = (x ** 2).sum()
 
     d2e_det_inv = 1.0 / (d2e_00 * d2e_11 - d2e_01 * d2e_11)
     d2e_inv_00 = d2e_det_inv * d2e_11
@@ -443,8 +444,8 @@ def fit_gaussian_to_quantiles(y_pred, quantiles, quantile_axis=1):
     d2e_inv_11 = d2e_det_inv * d2e_00
 
     x = x.reshape(x_shape)
-    de_0 = -np.sum(y_pred - x, axis=quantile_axis).reshape(output_shape)
-    de_1 = -np.sum(x * (y_pred - x), axis=quantile_axis).reshape(output_shape)
+    de_0 = -(y_pred - x).sum(axis=quantile_axis).reshape(output_shape)
+    de_1 = -(x * (y_pred - x)).sum(axis=quantile_axis).reshape(output_shape)
 
     mu = -(d2e_inv_00 * de_0 + d2e_inv_01 * de_1)
     sigma = 1.0 - (d2e_inv_10 * de_0 + d2e_inv_11 * de_1)
@@ -480,7 +481,6 @@ def sample_posterior_gaussian(y_pred,
     mu, sigma = fit_gaussian_to_quantiles(y_pred,
                                           quantiles,
                                           quantile_axis=quantile_axis)
-    print(mu.shape)
 
     output_shape = list(y_pred.shape)
     output_shape[quantile_axis] = n_samples
