@@ -8,29 +8,33 @@ network implementation is left to the model backends implemented in the
 ``quantnn.models`` submodule.
 """
 import copy
-import logging
-import os
 import pickle
 import importlib
-import quantnn.functional as qf
 
 import numpy as np
+import quantnn.functional as qf
+from quantnn.common import QuantnnException, UnsupportedBackendException
 
 ################################################################################
 # Set the backend
 ################################################################################
 
+#
+# Try and load a supported backend.
+#
+
 try:
     import quantnn.models.keras as keras
     backend = keras
-except Exception as e:
-    try:
-        import quantnn.models.pytorch as pytorch
-        backend = pytorch
-    except:
-        raise Exception("Couldn't import neither Keras nor Pytorch "
-                        "one of them must be available to use the QRNN"
-                        " module.")
+except Exception:
+    pass
+
+try:
+    import quantnn.retrieval.qrnn.models.pytorch as pytorch
+    backend = pytorch
+except Exception:
+    pass
+
 
 def set_backend(name):
     """
@@ -59,6 +63,7 @@ def set_backend(name):
     else:
         raise Exception("\"{}\" is not a supported backend.".format(name))
 
+
 def get_backend(name):
     """
     Get module object corresponding to the short backend name.
@@ -86,6 +91,7 @@ def get_backend(name):
         raise Exception("\"{}\" is not a supported backend.".format(name))
     return backend
 
+
 def create_model(input_dim,
                  output_dim,
                  arch):
@@ -108,10 +114,9 @@ def create_model(input_dim,
     return backend.FullyConnected(input_dim, output_dim, arch)
 
 
-################################################################################
+###############################################################################
 # QRNN class
-################################################################################
-
+###############################################################################
 class QRNN:
     r"""
     Quantile Regression Neural Network (QRNN)
@@ -178,30 +183,53 @@ class QRNN:
                 [0, 1].
             model:
                 A (possibly trained) model instance or a tuple
-                ``(d, w, act)`` describing the architecture of a fully-connected
-                neural network with :code:`d` hidden layers with :code:`w` neurons
-                and :code:`act` activation functions.
+                ``(d, w, act)`` describing the architecture of a
+                fully-connected neural network with :code:`d` hidden layers with
+                :code:`w` neurons and :code:`act` activation functions.
         """
         self.input_dimensions = input_dimensions
         self.quantiles = np.array(quantiles)
-        self.backend = backend.__name__
 
+        # Provided model is just an architecture tuple
         if type(model) == tuple:
-            self.model = backend.FullyConnected(self.input_dimensions,
-                                                self.quantiles,
-                                                model)
+            model = backend.FullyConnected(self.input_dimensions,
+                                           self.quantiles,
+                                           model)
             if quantiles is None:
-                raise ValueError("If model is given as architecture tuple, the"
-                                  " 'quantiles' kwarg must be provided.")
+                raise QuantnnException("If model is given as architecture tuple"
+                                       ", the 'quantiles' kwarg must be "
+                                       "provided.")
+        # Provided model is predefined model.
         else:
-            if not quantiles is None:
-                if not quantiles == model.quantiles:
-                    raise ValueError("Provided quantiles do not match those of "
-                                     "the provided model.")
+            # Determine module and check if supported.
+            module = model.__module__.split(".")[0]
+            if module not in ["keras", "torch"]:
+                raise UnsupportedBackendException(
+                    "The provided model comes from a unsupported "
+                    "backend module. ")
+            set_backend(model.__module__.split(".")[0])
 
-            self.model = model
-            self.quantiles = model.quantiles
-            self.backend = model.backend
+            # Quantiles kwarg is provided.
+            if quantiles:
+                if hasattr(model, "quantiles"):
+                    if not all(quantiles == model.quantiles):
+                        raise QuantnnException(
+                            "Provided quantiles do not match those of "
+                            "the provided model."
+                        )
+                model.quantiles = quantiles
+            # Quantiles kwarg is not provided.
+            else:
+                if not hasattr(model, "quantiles"):
+                    raise QuantnnException(
+                        "If 'quantiles' kwarg is not provided, the provided"
+                        "neural network model must have a 'quantiles'"
+                        " attribute."
+                    )
+                self.quantiles = model.quantiles
+
+        self.model = model
+        self.backend = backend.__name__
 
     def train(self,
               training_data,

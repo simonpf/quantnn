@@ -442,7 +442,7 @@ class KerasModel:
             )
         else:
             lr_callback = learning_rate_scheduler
-        self.fit_generator(
+        self.fit(
             training_generator,
             steps_per_epoch=len(training_generator),
             epochs=maximum_epochs,

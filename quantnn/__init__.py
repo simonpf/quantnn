@@ -12,4 +12,5 @@ from quantnn.functional import (cdf,
                                 probability_less_than,
                                 probability_larger_than,
                                 sample_posterior,
-                                sample_posterior_gaussian)
+                                sample_posterior_gaussian,
+                                quantile_loss)
