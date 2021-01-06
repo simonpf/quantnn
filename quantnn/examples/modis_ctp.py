@@ -12,7 +12,24 @@ from pansat.products.reanalysis.era5 import ERA5Product
 data_path = "/home/simon/src/pansat/notebooks/products/"
 modis_files = [data_path + "MODIS/MYD021KM.A2016286.1750.061.2018062214718.hdf",
                data_path + "MODIS/MYD03.A2016286.1750.061.2018062032022.hdf"]
+ 
 
+def geopotential_to_height(z):
+    """
+    This function converts geopotential heights to geometric heights. This
+    approximation takes into account the varying gravitational force with heights,
+    but neglects latitudinal vairations.
+
+    Parameters:
+        z(float) : (1D or multi-dimenstional) array with geopotential heights
+
+    Returns:
+        geometric_heights : array of same shape containing altitudes in metres
+    """
+    g = 9.80665 # standard gravity 
+    Re = 6.371 * 10**6  # earth radius
+    geometric_heights   = (z*Re) / (g * Re - z)
+    return geometric_heights 
 
 def prepare_input_data(modis_files,
                        pad_along_orbit=300,
@@ -93,7 +110,7 @@ def prepare_input_data(modis_files,
                                 domain)
     era_surface_files = surface_product.download(t_0, t_1)
 
-    pressure_variables = ["temperature"]
+    pressure_variables = ["temperature", "z"]
     pressure_product = ERA5Product('monthly',
                                 'pressure',
                                 pressure_variables,
@@ -120,6 +137,8 @@ def prepare_input_data(modis_files,
     t_surf = t_interp((lats_r, lons_r))
     p_interp = RegularGridInterpolator([lats_era, lons_era], era5_data["sp"].data[0, ::-1, :])
     p_surf = p_interp((lats_r, lons_r))
+    ciw_interp = RegularGridInterpolator([lats_era, lons_era], era5_data["tcwv"].data[0, ::-1, :])
+    ciw_surf = ciw_interp((lats_r, lons_r))
 
     lats = lats_r[1:-1, 1:-1]
     lons = lons_r[1:-1, 1:-1]
@@ -129,6 +148,7 @@ def prepare_input_data(modis_files,
     x[:, :, 1] = t_surf[1:-1, 1:-1]
     for i, p in enumerate(pressures):
         x[:, :, 2 + i] = p[1:-1, 1:-1]
+    x[:, :, 7] = ciw_surf[1:-1, 1:-1]
 
     x[:, :, 8] = bt_12[1:-1, 1:-1]
     x[:, :, 9] = bt_11[1:-1, 1:-1] - bt_12[1:-1, 1:-1]

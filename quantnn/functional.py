@@ -15,7 +15,10 @@ from quantnn.generic import (get_array_module,
                              to_array,
                              sample_uniform,
                              sample_gaussian,
-                             numel)
+                             numel,
+                             expand_dims,
+                             concatenate,
+                             pad_zeros)
 
 
 def cdf(y_pred,
@@ -55,7 +58,6 @@ def cdf(y_pred,
         )
 
     output_shape = list(y_pred.shape)
-    output_shape[quantile_axis] += 2
     xp = get_array_module(y_pred)
 
     y_cdf = xp.zeros(len(quantiles) + 2)
@@ -66,12 +68,8 @@ def cdf(y_pred,
     x_cdf = xp.zeros(output_shape)
 
     selection = [slice(0, None)] * len(output_shape)
-    selection[quantile_axis] = slice(1, -1)
     x_cdf[tuple(selection)] = y_pred
 
-    selection_l = copy(selection)
-    selection_l[quantile_axis] = 0
-    selection_l = tuple(selection_l)
     selection_c = copy(selection)
     selection_c[quantile_axis] = 1
     selection_c = tuple(selection_c)
@@ -80,7 +78,8 @@ def cdf(y_pred,
     selection_r = tuple(selection_r)
     dy = (x_cdf[selection_r] - x_cdf[selection_c])
     dy /= (quantiles[1] - quantiles[0])
-    x_cdf[selection_l] = x_cdf[selection_c] - quantiles[0] * dy
+    x_cdf_l = x_cdf[selection_c] - 2.0 * quantiles[0] * dy
+    x_cdf_l = expand_dims(xp, x_cdf_l, quantile_axis)
 
     selection_l = copy(selection)
     selection_l[quantile_axis] = -3
@@ -88,12 +87,12 @@ def cdf(y_pred,
     selection_c = copy(selection)
     selection_c[quantile_axis] = -2
     selection_c = tuple(selection_c)
-    selection_r = copy(selection)
-    selection_r[quantile_axis] = -1
-    selection_r = tuple(selection_r)
     dy = (x_cdf[selection_c] - x_cdf[selection_l])
     dy /= (quantiles[-1] - quantiles[-2])
-    x_cdf[selection_r] = x_cdf[selection_c] + (1.0 - quantiles[-1]) * dy
+    x_cdf_r = x_cdf[selection_c] + 2.0 * (1.0 - quantiles[-1]) * dy
+    x_cdf_r = expand_dims(xp, x_cdf_r, quantile_axis)
+
+    x_cdf = concatenate(xp, [x_cdf_l, y_pred, x_cdf_r], quantile_axis)
 
     return x_cdf, y_cdf
 
@@ -132,30 +131,36 @@ def pdf(y_pred,
     output_shape[quantile_axis] += 1
     n_dims = len(output_shape)
 
-    x_pdf = xp.zeros(output_shape)
+    #
+    # Assemble x-tensor
+    #
+
     selection_l = [slice(0, None)] * n_dims
     selection_l[quantile_axis] = slice(0, -1)
     selection_l = tuple(selection_l)
     selection_r = [slice(0, None)] * n_dims
     selection_r[quantile_axis] = slice(1, None)
     selection_r = tuple(selection_r)
-    selection_c = [slice(0, None)] * n_dims
-    selection_c[quantile_axis] = slice(1, -1)
-    selection_c = tuple(selection_c)
-    x_pdf[selection_c] = 0.5 * (x_cdf[selection_l] + x_cdf[selection_r])
+    x_pdf = 0.5 * (x_cdf[selection_l] + x_cdf[selection_r])
 
     selection = [slice(0, None)] * n_dims
     selection[quantile_axis] = 0
-    selection = tuple(selection)
-    x_pdf[selection] = x_cdf[selection]
-    selection = [slice(0, None)] * n_dims
-    selection[quantile_axis] = -1
-    selection = tuple(selection)
-    x_pdf[selection] = x_cdf[selection]
+    x_pdf_l = x_cdf[tuple(selection)]
+    x_pdf_l = expand_dims(xp, x_pdf_l, quantile_axis)
 
-    y_pdf = xp.zeros(output_shape)
-    y_pdf[selection_c] = y_cdf[1:] - y_cdf[:-1]
-    y_pdf[selection_c] /= x_cdf[selection_r] - x_cdf[selection_l]
+    selection[quantile_axis] = -1
+    x_pdf_r = x_cdf[tuple(selection)]
+    x_pdf_r = expand_dims(xp, x_pdf_r, quantile_axis)
+
+    x_pdf = concatenate(xp, [x_pdf_l, x_pdf, x_pdf_r], quantile_axis)
+
+    #
+    # Assemble y-tensor
+    #
+
+    y_pdf = 1.0 / (x_cdf[selection_r] - x_cdf[selection_l])
+    y_pdf = y_pdf * (y_cdf[1:] - y_cdf[:-1])
+    y_pdf = pad_zeros(xp, y_pdf, 1, quantile_axis)
 
     return x_pdf, y_pdf
 

@@ -6,6 +6,7 @@ This module provides backend-agnostic array operations.
 """
 import numpy as np
 import numpy.ma as ma
+import itertools
 
 from quantnn.common import (UnknownArrayTypeException,
                             UnknownModuleException)
@@ -17,12 +18,13 @@ try:
     import torch
     BACKENDS["torch"] = torch
 except ModuleNotFoundError:
+    torch = None
     pass
 try:
     import jax.numpy as jnp
     BACKENDS["jax"] = jnp
 except ModuleNotFoundError:
-    pass
+    jnp = None
 
 
 def get_array_module(x):
@@ -106,6 +108,7 @@ def sample_gaussian(module, shape):
         return module.random.randn(*shape)
     return UnknownModuleException(f"Module {module.__name__} not supported.")
 
+
 def numel(array):
     """
     Returns the number of elements in an array.
@@ -129,3 +132,73 @@ def numel(array):
     raise UnknownArrayTypeException(f"The provided input of type {type(x)} is"
                                     "not a supported array type.")
 
+
+def concatenate(module, arrays, dimension):
+    """
+    Concatenate array along given dimension.
+
+    Args:
+        module: Module object corresponding to the arrays.
+        arrays: List of arrays to concatenate.
+        dimension: Index of the dimensions along which to concatenate.
+
+    Return:
+        The array resulting from concatenating the given arrays along
+        the given dimension.
+    """
+    if module in [np, ma, jnp]:
+        return module.concatenate(arrays, dimension)
+    elif module == torch:
+        return module.cat(arrays, dimension)
+    return UnknownModuleException(f"Module {module.__name__} not supported.")
+
+
+def expand_dims(module, array, dimension):
+    """
+    Expand tensor dimension along given axis.
+
+    Inserts a dimension of length one at a given index of the
+    dimension array.
+
+    Args:
+        module: Module object corresponding to the arrays.
+        array: The array whose dimension to expand.
+        dimension: The index at which to insert the new
+            dimension.
+
+    Returns:
+        The reshaped array with a dimension added at the given index.
+    """
+    if module in [np, ma, jnp]:
+        return module.expand_dims(arrays, dimension)
+    elif module == torch:
+        return module.unsqueeze(arrays, dimension)
+    return UnknownModuleException(f"Module {module.__name__} not supported.")
+
+def pad_zeros(module, array, n, dimension):
+    """
+    Pads array with 0s along given dimension.
+
+    Args:
+        module: Module object corresponding to the arrays.
+        array: The array to pad.
+        n: The number of zeros to add to each edge.
+        dimension: Along which dimension to add zeros.
+
+    Returns:
+        A new array with the given number of 0s added to
+        each edge along the given dimension.
+    """
+    if module in [np, ma, jnp]:
+        n_dims = len(array.shape)
+        pad = [(0, 0)] * n_dims
+        pad[dimension] = (n, n)
+        return module.pad(array, pad, mode="constant", constant_values=0.0)
+    elif module == torch:
+        n_dims = len(array.shape)
+        dimension = dimension % n_dims
+        pad = [0] * 2 * n_dims
+        pad[2 * n_dims - 2 - 2 * dimension] = n
+        pad[2 * n_dims - 1 - 2 * dimension] = n
+        return module.nn.functional.pad(array, pad, "constant", 0.0)
+    return UnknownModuleException(f"Module {module.__name__} not supported.")
