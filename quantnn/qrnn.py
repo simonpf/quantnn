@@ -46,14 +46,14 @@ def set_backend(name):
         name(str): The name of the backend.
     """
     global backend
-    if name == "keras":
+    if name.lower() == "keras":
         try:
             import quantnn.models.keras as keras
             backend = keras
         except Exception as e:
             raise Exception("The following error occurred while trying "
                             " to import keras: ", e)
-    elif name == "pytorch":
+    elif name.lower() in ["pytorch", "torch"]:
         try:
             import quantnn.models.pytorch as pytorch
             backend = pytorch
@@ -73,14 +73,14 @@ def get_backend(name):
     Args:
         name(str): The name of the backend.
     """
-    if name == "keras":
+    if name.lower() == "keras":
         try:
             import quantnn.models.keras as keras
             backend = keras
         except Exception as e:
             raise Exception("The following error occurred while trying "
                             " to import keras: ", e)
-    elif name == "pytorch":
+    elif name.lower() in ["pytorch", "torch"]:
         try:
             import quantnn.models.pytorch as pytorch
             backend = pytorch
@@ -227,6 +227,9 @@ class QRNN:
                         " attribute."
                     )
                 self.quantiles = model.quantiles
+            model = backend.Model.create(input_dimensions,
+                                         self.quantiles,
+                                         model)
 
         self.model = model
         self.backend = backend.__name__

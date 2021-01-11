@@ -183,6 +183,21 @@ class QuantileLoss:
 # QRNN
 ################################################################################
 
+def _make_mixin_class(model):
+    """
+    Create mixin class which inherits from model's class.
+
+    Args:
+        model: A pytorch model object.
+
+    Return:
+        A class object which is child class of the class of the given
+        model object.
+    """
+    class Mixin(PytorchModel, type(model)):
+        def __init__(self, input_dimension, quantiles):
+            PytorchModel.__init__(self, input_dimension, quantiles)
+    return Mixin
 
 class PytorchModel:
     """
@@ -191,6 +206,13 @@ class PytorchModel:
     This class implements QRNNs as a fully-connected network with
     a given number of layers.
     """
+    @staticmethod
+    def create(input_dimension, quantiles, model):
+        if isinstance(model, PytorchModel):
+            return model
+        new_model = _make_mixin_class(model)(input_dimension, quantiles)
+        new_model.__dict__.update(model.__dict__)
+        return new_model
 
     def __init__(self, input_dimension, quantiles):
         """
@@ -416,11 +438,12 @@ class PytorchModel:
                             scheduler.step(validation_errors[-1])
 
             else:
-                if len(scheduler_sig.parameters) == 1:
-                    scheduler.step()
-                else:
-                    if validation_data:
-                        scheduler.step(validation_errors[-1])
+                if scheduler:
+                    if len(scheduler_sig.parameters) == 1:
+                        scheduler.step()
+                    else:
+                        if validation_data:
+                            scheduler.step(validation_errors[-1])
                 print(
                     "Epoch {} / {}: Training error: {:.3f}, Learning rate: {:.5f}".format(
                         i, maximum_epochs, training_errors[-1], lr

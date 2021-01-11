@@ -358,6 +358,13 @@ class KerasModel:
             The ensemble of Keras neural networks used for the quantile regression
             neural network.
     """
+    @staticmethod
+    def create(input_dimension, quantiles, model):
+        if isinstance(model, KerasModel):
+            return model
+        new_model = KerasModel(input_dimension, quantiles)
+        new_model.__bases__ = (model,)
+        return new_model
 
     def __init__(self, input_dimension, quantiles):
         """
@@ -450,6 +457,8 @@ class KerasModel:
             validation_steps=1,
             callbacks=[lr_callback])
 
+
+Model = KerasModel
 
 ################################################################################
 # Fully-connected network
