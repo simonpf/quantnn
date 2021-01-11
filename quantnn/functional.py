@@ -60,36 +60,30 @@ def cdf(y_pred,
     output_shape = list(y_pred.shape)
     xp = get_array_module(y_pred)
 
-    y_cdf = xp.zeros(len(quantiles) + 2)
-    y_cdf[1:-1] = quantiles
-    y_cdf[0] = 0.0
-    y_cdf[-1] = 1.0
+    y_cdf = quantiles
+    y_cdf = concatenate(xp, [xp.zeros(1), y_cdf, xp.ones(1)], 0)
 
-    x_cdf = xp.zeros(output_shape)
-
-    selection = [slice(0, None)] * len(output_shape)
-    x_cdf[tuple(selection)] = y_pred
-
+    selection = [slice(0, None)] * len(y_pred.shape)
     selection_c = copy(selection)
-    selection_c[quantile_axis] = 1
+    selection_c[quantile_axis] = 0
     selection_c = tuple(selection_c)
     selection_r = copy(selection)
-    selection_r[quantile_axis] = 2
+    selection_r[quantile_axis] = 1
     selection_r = tuple(selection_r)
-    dy = (x_cdf[selection_r] - x_cdf[selection_c])
+    dy = (y_pred[selection_r] - y_pred[selection_c])
     dy /= (quantiles[1] - quantiles[0])
-    x_cdf_l = x_cdf[selection_c] - 2.0 * quantiles[0] * dy
+    x_cdf_l = y_pred[selection_c] - 2.0 * quantiles[0] * dy
     x_cdf_l = expand_dims(xp, x_cdf_l, quantile_axis)
 
     selection_l = copy(selection)
-    selection_l[quantile_axis] = -3
+    selection_l[quantile_axis] = -2
     selection_l = tuple(selection_l)
     selection_c = copy(selection)
-    selection_c[quantile_axis] = -2
+    selection_c[quantile_axis] = -1
     selection_c = tuple(selection_c)
-    dy = (x_cdf[selection_c] - x_cdf[selection_l])
+    dy = (y_pred[selection_c] - y_pred[selection_l])
     dy /= (quantiles[-1] - quantiles[-2])
-    x_cdf_r = x_cdf[selection_c] + 2.0 * (1.0 - quantiles[-1]) * dy
+    x_cdf_r = y_pred[selection_c] + 2.0 * (1.0 - quantiles[-1]) * dy
     x_cdf_r = expand_dims(xp, x_cdf_r, quantile_axis)
 
     x_cdf = concatenate(xp, [x_cdf_l, y_pred, x_cdf_r], quantile_axis)
@@ -229,8 +223,7 @@ def crps(y_pred, quantiles, y_true, quantile_axis=1):
     y_true = to_array(xp, y_true)
     y_true = y_true.reshape(y_true_shape)
 
-    ind = xp.zeros(x_cdf.shape)
-    ind[x_cdf > y_true] = 1.0
+    ind = xp.ones(x_cdf.shape) * (x_cdf > y_true)
 
     output_shape = list(x_cdf.shape)
     del output_shape[quantile_axis]
@@ -306,16 +299,16 @@ def probability_less_than(y_pred, quantiles, y, quantile_axis=1):
         x_index[quantile_axis] = i
         x_r = x_cdf[tuple(x_index)]
 
-        inds = np.logical_and(x_l < y, x_r >= y)
-        probabilities[inds] = y_l * (x_r[inds] - y)
-        probabilities[inds] += y_r * (y - x_l[inds])
-        probabilities[inds] /= (x_r[inds] - x_l[inds])
+        mask = (x_l < y) * (x_r >= y)
+        probabilities += y_l * (x_r - y) * mask
+        probabilities += y_r * (y - x_l) * mask
+        probabilities /= (mask * (x_r - x_l) + (1.0 - mask))
 
         y_l = y_r
         x_l = x_r
 
-    inds = y > x_r
-    probabilities[inds] = 1.0
+    mask = x_r < y
+    probabilities += mask
     return probabilities
 
 def probability_larger_than(y_pred,
@@ -394,10 +387,10 @@ def sample_posterior(y_pred,
         x_index[quantile_axis] = slice(i, i + 1)
         x_r = x_cdf[tuple(x_index)]
 
-        inds = np.logical_and(samples > y_l, samples <= y_r)
-        results[inds] = (x_l * (y_r - samples))[inds]
-        results[inds] += (x_r * (samples - y_l))[inds]
-        results[inds] /= (y_r - y_l)
+        mask = (samples > y_l) * (samples <= y_r)
+        results += (x_l * (y_r - samples)) * mask
+        results += (x_r * (samples - y_l)) * mask
+        results /= (mask * (y_r - y_l) + (1.0 - mask))
 
         y_l = y_r
         x_l = x_r
@@ -531,6 +524,7 @@ def quantile_loss(y_pred,
 
     dy = y_pred - y_true
     loss = xp.zeros(dy.shape)
-    loss[dy > 0.0] = ((1.0 - quantiles) * dy)[dy > 0.0]
-    loss[dy <= 0.0] = - (quantiles * dy)[dy <= 0.0]
+    mask = dy > 0.0
+    loss += mask * ((1.0 - quantiles) * dy)
+    loss += -(1.0 - mask) * (quantiles * dy)
     return loss

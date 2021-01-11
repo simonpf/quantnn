@@ -21,7 +21,9 @@ except ModuleNotFoundError:
     torch = None
     pass
 try:
+    import jax
     import jax.numpy as jnp
+    _JAX_KEY = jax.random.PRNGKey(0)
     BACKENDS["jax"] = jnp
 except ModuleNotFoundError:
     jnp = None
@@ -83,7 +85,7 @@ def sample_uniform(module, shape):
     elif module.__name__ == "torch":
         return module.rand(shape)
     elif module.__name__.split(".")[0] == "jax":
-        return module.random.rand(*shape)
+        return jax.random.uniform(_JAX_KEY, shape)
     return UnknownModuleException(f"Module {module.__name__} not supported.")
 
 
@@ -105,7 +107,7 @@ def sample_gaussian(module, shape):
     elif module.__name__ == "torch":
         return module.randn(*shape)
     elif module.__name__.split(".")[0] == "jax":
-        return module.random.randn(*shape)
+        return jax.random.normal(_JAX_KEY, shape)
     return UnknownModuleException(f"Module {module.__name__} not supported.")
 
 
@@ -127,7 +129,7 @@ def numel(array):
         return array.size
     elif module_name == "torch":
         return array.numel()
-    elif module.__name__.split(".")[0] == "jax":
+    elif module_name.split(".")[0] == "jax":
         return array.size
     raise UnknownArrayTypeException(f"The provided input of type {type(x)} is"
                                     "not a supported array type.")
@@ -170,9 +172,9 @@ def expand_dims(module, array, dimension):
         The reshaped array with a dimension added at the given index.
     """
     if module in [np, ma, jnp]:
-        return module.expand_dims(arrays, dimension)
+        return module.expand_dims(array, dimension)
     elif module == torch:
-        return module.unsqueeze(arrays, dimension)
+        return module.unsqueeze(array, dimension)
     return UnknownModuleException(f"Module {module.__name__} not supported.")
 
 def pad_zeros(module, array, n, dimension):

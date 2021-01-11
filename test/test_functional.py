@@ -16,6 +16,12 @@ try:
 except Exception:
     pass
 
+try:
+    import jax.numpy as jnp
+    backends.append(jnp)
+except Exception:
+    pass
+
 @pytest.mark.parametrize("xp", backends)
 def test_cdf(xp):
     """
@@ -30,8 +36,8 @@ def test_cdf(xp):
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = xp.arange(1.0, 9.1, 1.0)
     x_cdf, y_cdf = cdf(y_pred, quantiles)
-    assert xp.all(xp.isclose(x_cdf[0], xp.zeros_like(x_cdf[0])))
-    assert xp.all(xp.isclose(x_cdf[-1], 10.0 * xp.ones_like(x_cdf[-1])))
+    assert xp.all(xp.isclose(x_cdf[0], -xp.ones_like(x_cdf[0])))
+    assert xp.all(xp.isclose(x_cdf[-1], 11.0 * xp.ones_like(x_cdf[-1])))
 
     #
     # 2D predictions
@@ -40,8 +46,8 @@ def test_cdf(xp):
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> w q', w=10)
     x_cdf, y_cdf = cdf(y_pred, quantiles)
-    assert xp.all(xp.isclose(x_cdf[:, 0], xp.zeros_like(x_cdf[:, 0])))
-    assert xp.all(xp.isclose(x_cdf[:, -1], 10.0 * xp.ones_like(x_cdf[:, -1])))
+    assert xp.all(xp.isclose(x_cdf[:, 0], -xp.ones_like(x_cdf[:, 0])))
+    assert xp.all(xp.isclose(x_cdf[:, -1], 11.0 * xp.ones_like(x_cdf[:, -1])))
 
     #
     # 3D predictions, quantiles along last axis
@@ -50,8 +56,8 @@ def test_cdf(xp):
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> h w q', h=10, w=10)
     x_cdf, y_cdf = cdf(y_pred, quantiles, quantile_axis=-1)
-    assert xp.all(xp.isclose(x_cdf[:, :, 0], xp.zeros_like(x_cdf[:, :, 0])))
-    assert xp.all(xp.isclose(x_cdf[:, :, -1], 10.0 * xp.ones_like(x_cdf[:, :, -1])))
+    assert xp.all(xp.isclose(x_cdf[:, :, 0], -xp.ones_like(x_cdf[:, :, 0])))
+    assert xp.all(xp.isclose(x_cdf[:, :, -1], 11.0 * xp.ones_like(x_cdf[:, :, -1])))
 
     #
     # 3D predictions, quantiles along first axis
@@ -60,8 +66,8 @@ def test_cdf(xp):
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> h q w', h=10, w=10)
     x_cdf, y_cdf = cdf(y_pred, quantiles, quantile_axis=1)
-    assert xp.all(xp.isclose(x_cdf[:, 0, :], xp.zeros_like(x_cdf[:, 0, :])))
-    assert xp.all(xp.isclose(x_cdf[:, -1, :], 10.0 * xp.ones_like(x_cdf[:, -1, :])))
+    assert xp.all(xp.isclose(x_cdf[:, 0, :], -xp.ones_like(x_cdf[:, 0, :])))
+    assert xp.all(xp.isclose(x_cdf[:, -1, :], 11.0 * xp.ones_like(x_cdf[:, -1, :])))
 
 @pytest.mark.parametrize("xp", backends)
 def test_pdf(xp):
@@ -77,9 +83,10 @@ def test_pdf(xp):
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = xp.arange(1.0, 9.1, 1.0)
     x_pdf, y_pdf = pdf(y_pred, quantiles)
-    assert xp.all(xp.isclose(x_pdf[1:-1], xp.arange(0.5, 9.6, 1.0)))
-    assert xp.all(xp.isclose(y_pdf[[0, -1]], xp.zeros_like(y_pdf[[0, -1]])))
-    assert xp.all(xp.isclose(y_pdf[1:-1], 0.1 * xp.ones_like(y_pdf[1:-1])))
+    assert xp.all(xp.isclose(x_pdf[2:-2], xp.arange(1.5, 8.6, 1.0)))
+    assert xp.all(xp.isclose(y_pdf[0], xp.zeros_like(y_pdf[0])))
+    assert xp.all(xp.isclose(y_pdf[-1], xp.zeros_like(y_pdf[-1])))
+    assert xp.all(xp.isclose(y_pdf[2:-2], 0.1 * xp.ones_like(y_pdf[2:-2])))
 
     #
     # 2D predictions
@@ -88,10 +95,11 @@ def test_pdf(xp):
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> w q', w=10)
     x_pdf, y_pdf = pdf(y_pred, quantiles)
-    assert xp.all(xp.isclose(x_pdf[:, 1:-1],
-                             xp.arange(0.5, 9.6, 1.0).reshape(1, -1)))
-    assert xp.all(xp.isclose(y_pdf[:, [0, -1]], xp.zeros_like(y_pdf[:, [0, -1]])))
-    assert xp.all(xp.isclose(y_pdf[:, 1:-1], 0.1 * xp.ones_like(y_pdf[:, 1:-1])))
+    assert xp.all(xp.isclose(x_pdf[:, 2:-2],
+                             xp.arange(1.5, 8.6, 1.0).reshape(1, -1)))
+    assert xp.all(xp.isclose(y_pdf[:, 0], xp.zeros_like(y_pdf[:, 0])))
+    assert xp.all(xp.isclose(y_pdf[:, -1], xp.zeros_like(y_pdf[:, -1])))
+    assert xp.all(xp.isclose(y_pdf[:, 2:-2], 0.1 * xp.ones_like(y_pdf[:, 2:-2])))
 
     #
     # 3D predictions, quantiles along last axis
@@ -100,10 +108,11 @@ def test_pdf(xp):
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> h w q', h=10, w=10)
     x_pdf, y_pdf = pdf(y_pred, quantiles, quantile_axis=-1)
-    assert xp.all(xp.isclose(x_pdf[:, :, 1:-1],
-                             xp.arange(0.5, 9.6, 1.0).reshape(1, 1, -1)))
-    assert xp.all(xp.isclose(y_pdf[:, :, [0, -1]], xp.zeros_like(y_pdf[:, :, [0, -1]])))
-    assert xp.all(xp.isclose(y_pdf[:, :, 1:-1], 0.1 * xp.ones_like(y_pdf[:, :, 1:-1])))
+    assert xp.all(xp.isclose(x_pdf[:, :, 2:-2],
+                             xp.arange(1.5, 8.6, 1.0).reshape(1, 1, -1)))
+    assert xp.all(xp.isclose(y_pdf[:, :, 0], xp.zeros_like(y_pdf[:, :, 0])))
+    assert xp.all(xp.isclose(y_pdf[:, :, -1], xp.zeros_like(y_pdf[:, :, -1])))
+    assert xp.all(xp.isclose(y_pdf[:, :, 2:-2], 0.1 * xp.ones_like(y_pdf[:, :, 2:-2])))
 
     #
     # 3D predictions, quantiles along first axis
@@ -112,10 +121,11 @@ def test_pdf(xp):
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> h q w', h=10, w=10)
     x_pdf, y_pdf = pdf(y_pred, quantiles, quantile_axis=1)
-    assert xp.all(xp.isclose(x_pdf[:, 1:-1, :],
-                             xp.arange(0.5, 9.6, 1.0).reshape(1, -1, 1)))
-    assert xp.all(xp.isclose(y_pdf[:, [0, -1], :], xp.zeros_like(y_pdf[:, [0, -1], :])))
-    assert xp.all(xp.isclose(y_pdf[:, 1:-1, :], 0.1 * xp.ones_like(y_pdf[:, 1:-1, :])))
+    assert xp.all(xp.isclose(x_pdf[:, 2:-2, :],
+                             xp.arange(1.5, 8.6, 1.0).reshape(1, -1, 1)))
+    assert xp.all(xp.isclose(y_pdf[:, 0, :], xp.zeros_like(y_pdf[:, 0, :])))
+    assert xp.all(xp.isclose(y_pdf[:, -1, :], xp.zeros_like(y_pdf[:, -1, :])))
+    assert xp.all(xp.isclose(y_pdf[:, 2:-2, :], 0.1 * xp.ones_like(y_pdf[:, 2:-2, :])))
 
 @pytest.mark.parametrize("xp", backends)
 def test_posterior_mean(xp):
@@ -174,7 +184,7 @@ def test_crps(xp):
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = xp.arange(1.0, 9.1, 1.0)
     scores = crps(y_pred, quantiles, 4.9)
-    assert xp.all(xp.isclose(scores, 0.85 * xp.ones_like(scores)))
+    assert xp.all(xp.isclose(scores, 0.86 * xp.ones_like(scores)))
 
     #
     # 2D predictions
@@ -184,7 +194,7 @@ def test_crps(xp):
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> w q', w=10)
     y_true = 4.9 * xp.ones(10)
     scores = crps(y_pred, quantiles, y_true)
-    assert xp.all(xp.isclose(scores, 0.85 * xp.ones_like(scores)))
+    assert xp.all(xp.isclose(scores, 0.86 * xp.ones_like(scores)))
 
     ##
     ## 3D predictions, quantiles along last axis
@@ -194,7 +204,7 @@ def test_crps(xp):
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> h w q', w=10, h=10)
     y_true = 4.9 * xp.ones((10, 10))
     scores = crps(y_pred, quantiles, y_true, quantile_axis=2)
-    assert xp.all(xp.isclose(scores, 0.85 * xp.ones_like(scores)))
+    assert xp.all(xp.isclose(scores, 0.86 * xp.ones_like(scores)))
 
     ##
     ## 3D predictions, quantiles along first axis
@@ -204,7 +214,7 @@ def test_crps(xp):
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> h q w', w=10, h=10)
     y_true = 4.9 * xp.ones((10, 10))
     scores = crps(y_pred, quantiles, y_true, quantile_axis=1)
-    assert xp.all(xp.isclose(scores, 0.85 * xp.ones_like(scores)))
+    assert xp.all(xp.isclose(scores, 0.86 * xp.ones_like(scores)))
 
 @pytest.mark.parametrize("xp", backends)
 def test_probability_less_than(xp):
@@ -219,7 +229,7 @@ def test_probability_less_than(xp):
 
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = xp.arange(1.0, 9.1, 1.0)
-    t = 10.0 * np.random.rand()
+    t = 1.0 + 8.0 * np.random.rand()
     probability = probability_less_than(y_pred, quantiles, t)
     assert xp.all(xp.isclose(probability, 0.1 * t * xp.ones_like(probability)))
 
@@ -229,7 +239,7 @@ def test_probability_less_than(xp):
 
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> w q', w=10)
-    t = 10.0 * np.random.rand()
+    t = 1.0 + 8.0 * np.random.rand()
     probability = probability_less_than(y_pred, quantiles, t)
     assert xp.all(xp.isclose(probability, 0.1 * t * xp.ones_like(probability)))
 
@@ -239,7 +249,7 @@ def test_probability_less_than(xp):
 
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> h w q', h=10, w=10)
-    t = 10.0 * np.random.rand()
+    t = 1.0 + 8.0 * np.random.rand()
     probability = probability_less_than(y_pred, quantiles, t, quantile_axis=2)
     assert xp.all(xp.isclose(probability, 0.1 * t * xp.ones_like(probability)))
 
@@ -249,7 +259,7 @@ def test_probability_less_than(xp):
 
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> h q w', h=10, w=10)
-    t = 10.0 * np.random.rand()
+    t = 1.0 + 8.0 * np.random.rand()
     probability = probability_less_than(y_pred, quantiles, t, quantile_axis=1)
     assert xp.all(xp.isclose(probability, 0.1 * t * xp.ones_like(probability)))
 
@@ -266,7 +276,7 @@ def test_probability_larger_than(xp):
 
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = xp.arange(1.0, 9.1, 1.0)
-    t = 10.0 * np.random.rand()
+    t = 1.0 + 8.0 * np.random.rand()
     probability = probability_larger_than(y_pred, quantiles, t)
     assert xp.all(xp.isclose(probability, 1.0 - 0.1 * t * xp.ones_like(probability)))
 
@@ -276,7 +286,7 @@ def test_probability_larger_than(xp):
 
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> w q', w=10)
-    t = 10.0 * np.random.rand()
+    t = 1.0 + 8.0 * np.random.rand()
     probability = probability_larger_than(y_pred, quantiles, t)
     assert xp.all(xp.isclose(probability, 1.0 - 0.1 * t * xp.ones_like(probability)))
 
@@ -286,7 +296,7 @@ def test_probability_larger_than(xp):
 
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> h w q', h=10, w=10)
-    t = 10.0 * np.random.rand()
+    t = 1.0 + 8.0 * np.random.rand()
     probability = probability_larger_than(y_pred, quantiles, t, quantile_axis=2)
     assert xp.all(xp.isclose(probability, 1.0 - 0.1 * t * xp.ones_like(probability)))
 
@@ -296,7 +306,7 @@ def test_probability_larger_than(xp):
 
     quantiles = xp.arange(0.1, 0.91, 0.1)
     y_pred = eo.repeat(xp.arange(1.0, 9.1, 1.0), 'q -> h q w', h=10, w=10)
-    t = 10.0 * np.random.rand()
+    t = 1.0 + 8.0 * np.random.rand()
     probability = probability_larger_than(y_pred, quantiles, t, quantile_axis=1)
     assert xp.all(xp.isclose(probability, 1.0 - 0.1 * t * xp.ones_like(probability)))
 
