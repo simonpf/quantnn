@@ -242,8 +242,7 @@ def download_data(destination="data"):
     """
     datasets = [
         "ctp_training_data.npz",
-        "ctp_input_hurricane_nicole.npz",
-        "ctp_era5_altitude.npz"
+        "ctp_validation_data.npz"
     ]
 
     Path(destination).mkdir(exist_ok=True)
