@@ -16,7 +16,6 @@ modis_files = _MODIS_FILES
 pad_along_orbit = 200
 pad_across_orbit = 300
 
-
 def prepare_input_data(modis_files):
     """
     Prepares validation data for the MODIS CTP retrieval.
@@ -145,11 +144,19 @@ def prepare_input_data(modis_files):
                                     domain)
     era_surface_files = surface_product.download(t_0, t_1)
 
+<<<<<<< HEAD
     pressure_variables = ["temperature"]
     pressure_product = ERA5Product('hourly',
                                     'pressure',
                                     pressure_variables,
                                     domain)
+=======
+    pressure_variables = ["temperature", "z"]
+    pressure_product = ERA5Product('monthly',
+                                'pressure',
+                                pressure_variables,
+                                domain)
+>>>>>>> 743436ef0b419498a2499b2641c4b6e0e51cfe5f
     era_pressure_files = pressure_product.download(t_0, t_1)
 
     # interpolate pressure data.
@@ -171,8 +178,13 @@ def prepare_input_data(modis_files):
     t_surf = t_interp((lats_r, lons_r))
     p_interp = RegularGridInterpolator([lats_era, lons_era], era5_data["sp"].data[0, ::-1, :])
     p_surf = p_interp((lats_r, lons_r))
+<<<<<<< HEAD
     tcwv_interp = RegularGridInterpolator([lats_era, lons_era], era5_data["tcwv"].data[0, ::-1, :])
     tcwv = tcwv_interp((lats_r, lons_r))
+=======
+    ciw_interp = RegularGridInterpolator([lats_era, lons_era], era5_data["tcwv"].data[0, ::-1, :])
+    ciw_surf = ciw_interp((lats_r, lons_r))
+>>>>>>> 743436ef0b419498a2499b2641c4b6e0e51cfe5f
 
     #
     # Assemble input data
@@ -182,6 +194,7 @@ def prepare_input_data(modis_files):
     x[:, 0] = p_surf
     x[:, 1] = t_surf
     for i, p in enumerate(pressures):
+<<<<<<< HEAD
         x[:, 2 + i] = p
     x[:, 7] = tcwv
 
@@ -209,6 +222,20 @@ def prepare_input_data(modis_files):
 def download_data(destination="data"):
     """
     Downloads training and evaluation data for the CTP retrieval.
+=======
+        x[:, :, 2 + i] = p[1:-1, 1:-1]
+    x[:, :, 7] = ciw_surf[1:-1, 1:-1]
+
+    x[:, :, 8] = bt_12[1:-1, 1:-1]
+    x[:, :, 9] = bt_11[1:-1, 1:-1] - bt_12[1:-1, 1:-1]
+    x[:, :, 10] = bt_11_w - bt_12_w
+    x[:, :, 11] = bt_11_c - bt_12_c
+    x[:, :, 12] = bt_12_w - bt_12[1:-1, 1:-1]
+    x[:, :, 13] = bt_12_c - bt_12[1:-1, 1:-1]
+
+    x[:, :, 14] = bt_11_s
+    x[:, :, 15] = bt_1112_s
+>>>>>>> 743436ef0b419498a2499b2641c4b6e0e51cfe5f
 
     Args:
         destination: Where to store the downloaded data.

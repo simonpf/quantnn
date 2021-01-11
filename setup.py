@@ -17,6 +17,6 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     install_requires=["numpy", "scipy"],
-    tests_require=["sphinx_rtd_theme", "pytest"],
+    tests_require=["sphinx_rtd_theme", "pytest", "einops"],
     python_requires=">=3.6",
 )
