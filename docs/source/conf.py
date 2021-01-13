@@ -55,7 +55,14 @@ html_theme_options = {
     "navigation_bar_names": ["Home", "User guide", "Examples"],
     "navigation_bar_element_padding": "40px",
     "navigation_bar_background_color": "#333333",
+    "navigation_bar_element_hover_color": "#ff5050",
+    "link_color":  "#ff5050",
+    "link_visited_color":  "#ff5050",
+    "link_hover_color":  "#990000",
+
     "sidebars_right": [],
+    "sidebars_left":["localtoc.html", "globaltoc.html"],
+    "globaltoc_maxdepth": 1
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,

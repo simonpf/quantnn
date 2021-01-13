@@ -1,9 +1,8 @@
 import numpy as np
 import pytest
-from quantnn.common import (get_array_module,
-                            to_array,
-                            sample_uniform)
-
+from quantnn.generic import (get_array_module,
+                             to_array,
+                             sample_uniform)
 
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_get_array_module(backend):

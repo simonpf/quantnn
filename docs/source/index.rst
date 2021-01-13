@@ -19,9 +19,30 @@ distribution :math:`p(y | \mathbf{x})`.
    noise.
 
 
+
+Features
+--------
+
+- A flexible, high-level implementation of QRNNs currently supporting PyTorch and Keras (Tensorflow)
+  as backends.
+- Generic functions to manipulate and process quantile predictions such as computing the posterior mean
+  or classifying inputs.
+
+Installation
+------------
+
+The currently recommended way of installing the **quantnn** package is to checkout the source from
+`GitHub <http://github.com/simonpf/quantnn>`_ and install in editable mode using ``pip``:
+
+.. code-block:: bash
+
+   pip install -e .
+
+Content
+-------
+
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
 
    user_guide
    examples
