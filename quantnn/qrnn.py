@@ -13,111 +13,18 @@ import importlib
 
 import numpy as np
 import quantnn.functional as qf
+from quantnn.neural_network_model import NeuralNetworkModel
 from quantnn.common import QuantnnException, UnsupportedBackendException
 
 ################################################################################
 # Set the backend
 ################################################################################
 
-#
-# Try and load a supported backend.
-#
-
-try:
-    import quantnn.models.keras as keras
-    backend = keras
-except ModuleNotFoundError:
-    pass
-
-try:
-    import quantnn.retrieval.qrnn.models.pytorch as pytorch
-    backend = pytorch
-except ModuleNotFoundError:
-    pass
-
-
-def set_backend(name):
-    """
-    Set the neural network package to use as backend.
-
-    The currently available backend are "keras" and "pytorch".
-
-    Args:
-        name(str): The name of the backend.
-    """
-    global backend
-    if name.lower() == "keras":
-        try:
-            import quantnn.models.keras as keras
-            backend = keras
-        except Exception as e:
-            raise Exception("The following error occurred while trying "
-                            " to import keras: ", e)
-    elif name.lower() in ["pytorch", "torch"]:
-        try:
-            import quantnn.models.pytorch as pytorch
-            backend = pytorch
-        except Exception as e:
-            raise Exception("The following error occurred while trying "
-                            " to import pytorch: ", e)
-    else:
-        raise Exception("\"{}\" is not a supported backend.".format(name))
-
-
-def get_backend(name):
-    """
-    Get module object corresponding to the short backend name.
-
-    The currently available backend are "keras" and "pytorch".
-
-    Args:
-        name(str): The name of the backend.
-    """
-    if name.lower() == "keras":
-        try:
-            import quantnn.models.keras as keras
-            backend = keras
-        except Exception as e:
-            raise Exception("The following error occurred while trying "
-                            " to import keras: ", e)
-    elif name.lower() in ["pytorch", "torch"]:
-        try:
-            import quantnn.models.pytorch as pytorch
-            backend = pytorch
-        except Exception as e:
-            raise Exception("The following error occurred while trying "
-                            " to import pytorch: ", e)
-    else:
-        raise Exception("\"{}\" is not a supported backend.".format(name))
-    return backend
-
-
-def create_model(input_dim,
-                 output_dim,
-                 arch):
-    """
-    Creates a fully-connected neural network from a tuple
-    describing its architecture.
-
-    Args:
-        input_dim(int): Number of input features.
-        output_dim(int): Number of output features.
-        arch: Tuple (d, w, a) containing the depth, i.e. number of
-            hidden layers width of the hidden layers, i. e.
-            the number of neurons in them, and the name of the
-            activation function as string.
-    Return:
-        Depending on the available backends, a fully-connected
-        keras or pytorch model, with the requested number of hidden
-        layers and neurons in them.
-    """
-    return backend.FullyConnected(input_dim, output_dim, arch)
-
 
 ###############################################################################
 # QRNN class
 ###############################################################################
-class QRNN:
+class QRNN(NeuralNetworkModel):
     r"""
     Quantile Regression Neural Network (QRNN)
 
@@ -188,40 +95,18 @@ class QRNN:
         self.input_dimensions = input_dimensions
         self.output_dimensions = len(quantiles)
         self.quantiles = np.array(quantiles)
-
-        # Provided model is just an architecture tuple
-        if type(model) == tuple:
-            model = backend.FullyConnected(self.input_dimensions,
-                                           self.output_dimensions,
-                                           model)
-            if quantiles is None:
-                raise QuantnnException("If model is given as architecture tuple"
-                                       ", the 'quantiles' kwarg must be "
-                                       "provided.")
-        # Provided model is predefined model.
-        else:
-            # Determine module and check if supported.
-            module = model.__module__.split(".")[0]
-            if module not in ["keras", "torch"]:
-                raise UnsupportedBackendException(
-                    "The provided model comes from a unsupported "
-                    "backend module. ")
-            set_backend(model.__module__.split(".")[0])
-            model = backend.Model.create(self.input_dimensions,
-                                         self.output_dimensions,
-                                         model)
-
-        self.model = model
-        self.backend = backend.__name__
+        super().__init__(self.input_dimensions,
+                         self.output_dimensions,
+                         model)
 
     def train(self,
               training_data,
               validation_data=None,
+              batch_size=None,
               optimizer=None,
               scheduler=None,
               n_epochs=None,
               adversarial_training=None,
-              batch_size=None,
               device='cpu'):
         """
         Train model on given training data.
@@ -262,7 +147,7 @@ class QRNN:
                  is the fraction of training data that is used for validation.
             gpu(``bool``): Whether or not to try to run the training on the GPU.
         """
-        loss = backend.QuantileLoss(self.quantiles)
+        loss = self.backend.QuantileLoss(self.quantiles)
         print(loss)
         return self.model.train(training_data,
                                 validation_data=validation_data,
@@ -491,54 +376,3 @@ class QRNN:
                                         self.quantiles,
                                         y,
                                         quantile_axis=1)
-    @staticmethod
-    def load(path):
-        r"""
-        Load a model from a file.
-
-        This loads a model that has been stored using the
-        :py:meth:`quantnn.QRNN.save`  method.
-
-        Arguments:
-
-            path(str): The path from which to read the model.
-
-        Return:
-
-            The loaded QRNN object.
-        """
-        with open(path, 'rb') as file:
-            qrnn = pickle.load(file)
-            backend = importlib.import_module(qrnn.backend)
-            model = backend.load_model(file)
-            qrnn.model = model
-        return qrnn
-
-    def save(self, path):
-        r"""
-        Store the QRNN model in a file.
-
-        This stores the model to a file using pickle for all attributes that
-        support pickling. The Keras model is handled separately, since it can
-        not be pickled.
-
-        Arguments:
-
-            path(str): The path including filename indicating where to
-                       store the model.
-
-        """
-        with open(path, "wb") as file:
-            pickle.dump(self, file)
-            backend = importlib.import_module(self.backend)
-            backend.save_model(file, self.model)
-
-
-    def __getstate__(self):
-        dct = copy.copy(self.__dict__)
-        dct.pop("model")
-        return dct
-
-    def __setstate__(self, state):
-        self.__dict__ = state
-        self.models = None

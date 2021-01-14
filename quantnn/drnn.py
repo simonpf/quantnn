@@ -13,18 +13,6 @@ from scipy.special import softmax
 from quantnn.common import QuantnnException
 from quantnn.neural_network_model import NeuralNetworkModel
 
-try:
-    import quantnn.models.keras as keras
-    default_backend = keras
-except ModuleNotFoundError:
-    pass
-
-try:
-    import quantnn.retrieval.qrnn.models.pytorch as pytorch
-    default_backend = pytorch
-except ModuleNotFoundError:
-    pass
-
 def _to_categorical(y, bins):
     """
     Converts scalar values to discrete, categorical representation where each
@@ -110,8 +98,6 @@ class DRNN(NeuralNetworkModel):
                 x_val, y_val = validation_data
                 y_val = _to_categorical(y_val, self.bins[:-1])
                 validation_data = x_val, y_val
-
-        print(training_data[1].shape)
 
         loss = self.backend.CrossEntropyLoss()
         return self.model.train(training_data,

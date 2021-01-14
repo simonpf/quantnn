@@ -1,7 +1,9 @@
 """
 Tests the QRNN implementation for all available backends.
 """
-from quantnn import QRNN, set_backend, get_backend
+from quantnn import (QRNN,
+                     set_default_backend,
+                     get_default_backend)
 import numpy as np
 import os
 import importlib
@@ -43,7 +45,7 @@ class TestQrnn:
         """
         Test training of QRNNs using numpy arrays as input.
         """
-        set_backend(backend)
+        set_default_backend(backend)
         qrnn = QRNN(np.linspace(0.05, 0.95, 10),
                     input_dimensions=self.x_train.shape[1])
         qrnn.train((self.x_train, self.y_train), n_epochs=1)
@@ -71,8 +73,8 @@ class TestQrnn:
         """
         Provide data as dataset object instead of numpy arrays.
         """
-        set_backend(backend)
-        backend = get_backend(backend)
+        set_default_backend(backend)
+        backend = get_default_backend()
         data = backend.BatchedDataset((self.x_train, self.y_train), 256)
         qrnn = QRNN(np.linspace(0.05, 0.95, 10),
                     input_dimensions=self.x_train.shape[1])
@@ -83,7 +85,7 @@ class TestQrnn:
         """
         Test saving and loading of QRNNs.
         """
-        set_backend(backend)
+        set_default_backend(backend)
         qrnn = QRNN(np.linspace(0.05, 0.95, 10),
                     input_dimensions=self.x_train.shape[1])
         f = tempfile.NamedTemporaryFile()

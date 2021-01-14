@@ -19,7 +19,7 @@ from keras.optimizers import SGD
 from keras.losses import CategoricalCrossentropy as CrossEntropyLoss
 import keras.backend as K
 
-from quantnn.common import QuantnnException
+from quantnn.common import QuantnnException, ModelNotSupported
 
 def save_model(f, model):
     """
@@ -394,7 +394,12 @@ class KerasModel:
         super().__init__(args, kwargs)
 
     @staticmethod
-    def create(input_dimension, quantiles, model):
+    def create(model):
+        if not isinstance(model, keras.Model):
+            raise ModelNotSupported(
+                f"The provided model ({model}) is not supported by the Keras"
+                "backend")
+
         if isinstance(model, KerasModel):
             return model
         new_model = KerasModel(input_dimension, quantiles)

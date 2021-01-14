@@ -14,6 +14,8 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
+from quantnn.common import ModelNotSupported
+
 activations = {
     "elu": nn.ELU,
     "hardshrink": nn.Hardshrink,
@@ -247,6 +249,10 @@ class PytorchModel:
     """
     @staticmethod
     def create(model):
+        if not isinstance(model, torch.nn.Module):
+            raise ModelNotSupported(
+                f"The provided model ({model}) is not supported by the PyTorch"
+                "backend")
         if isinstance(model, PytorchModel):
             return model
         new_model = _make_mixin_class(model)()

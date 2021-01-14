@@ -27,3 +27,7 @@ class UnsupportedBackendException(QuantnnException):
 
 class InvalidDimensionException(QuantnnException):
     """Thrown when an input array doesn't match expected shape."""
+
+class ModelNotSupported(QuantnnException):
+    """Thrown when a provided model isn't supported by the chosen backend."""
+

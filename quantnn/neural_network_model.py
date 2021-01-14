@@ -15,19 +15,25 @@ and load neural network models.
 #
 # Try and load a supported backend.
 #
-from quantnn.common import QuantnnException, UnsupportedBackendException
+import copy
+import pickle
+import importlib
+
+from quantnn.common import (QuantnnException,
+                            UnsupportedBackendException,
+                            ModelNotSupported)
 
 _DEFAULT_BACKEND = None
 try:
     import quantnn.models.keras as keras
     _DEFAULT_BACKEND = keras
 except ModuleNotFoundError:
-    pass
+    keras = None
 try:
     import quantnn.models.pytorch as pytorch
     _DEFAULT_BACKEND = pytorch
 except ModuleNotFoundError:
-    pass
+    pytorch = None
 
 if _DEFAULT_BACKEND == None:
     print(_DEFAULT_BACKEND)
@@ -45,23 +51,26 @@ def set_default_backend(name):
     Args:
         name(str): The name of the backend.
     """
-    global backend
+    global _DEFAULT_BACKEND
     if name.lower() == "keras":
         try:
             import quantnn.models.keras as keras
-            backend = keras
+            _DEFAULT_BACKEND = keras
         except Exception as e:
             raise Exception("The following error occurred while trying "
                             " to import keras: ", e)
     elif name.lower() in ["pytorch", "torch"]:
         try:
             import quantnn.models.pytorch as pytorch
-            backend = pytorch
+            _DEFAULT_BACKEND = pytorch
         except Exception as e:
             raise Exception("The following error occurred while trying "
                             " to import pytorch: ", e)
     else:
         raise Exception("\"{}\" is not a supported backend.".format(name))
+
+def get_default_backend():
+    return _DEFAULT_BACKEND
 
 class NeuralNetworkModel:
     def __init__(self,
@@ -72,23 +81,31 @@ class NeuralNetworkModel:
         # Provided model is just an architecture tuple
         if type(model) == tuple:
             self.backend = _DEFAULT_BACKEND
-            model = self.backend.FullyConnected(input_dimensions,
-                                                output_dimensions,
-                                                model)
+            self.model = self.backend.FullyConnected(input_dimensions,
+                                                     output_dimensions,
+                                                     model)
         # Provided model is predefined model.
         else:
             # Determine module and check if supported.
-            module = model.__module__.split(".")[0]
-            if module not in ["keras", "torch"]:
-                raise UnsupportedBackendException(
-                    "The provided model comes from a unsupported "
-                    "backend module. ")
-            self.backend = globals()[module]
+            self.model = None
+            if keras:
+                try:
+                    self.model = keras.Model.create(model)
+                    self.backend = keras
+                except ModelNotSupported:
+                    pass
 
-            model = self.backend.Model.create(input_dimensions,
-                                              output_dimensions,
-                                              model)
-        self.model = model
+            if pytorch:
+                try:
+                    self.model = pytorch.Model.create(model)
+                    self.backend = pytorch
+                except ModelNotSupported:
+                    pass
+
+            if not self.model:
+                raise UnsupportedBackendException(
+                    "The provided model is not supported by any "
+                    "of the backend modules.")
 
     def train(self,
               training_data,
@@ -144,3 +161,55 @@ class NeuralNetworkModel:
                                 adversarial_training=adversarial_training,
                                 batch_size=batch_size,
                                 device=device)
+
+    @staticmethod
+    def load(path):
+        r"""
+        Load a model from a file.
+
+        This loads a model that has been stored using the
+        :py:meth:`quantnn.QRNN.save`  method.
+
+        Arguments:
+
+            path(str): The path from which to read the model.
+
+        Return:
+
+            The loaded QRNN object.
+        """
+        with open(path, 'rb') as file:
+            qrnn = pickle.load(file)
+            backend = importlib.import_module(qrnn.backend)
+            qrnn.backend = backend
+            model = backend.load_model(file)
+            qrnn.model = model
+        return qrnn
+
+    def save(self, path):
+        r"""
+        Store the QRNN model in a file.
+
+        This stores the model to a file using pickle for all attributes that
+        support pickling. The Keras model is handled separately, since it can
+        not be pickled.
+
+        Arguments:
+
+            path(str): The path including filename indicating where to
+                    store the model.
+
+        """
+        with open(path, "wb") as file:
+            pickle.dump(self, file)
+            self.backend.save_model(file, self.model)
+
+    def __getstate__(self):
+        dct = copy.copy(self.__dict__)
+        dct.pop("model")
+        dct["backend"] = self.backend.__name__
+        return dct
+
+    def __setstate__(self, state):
+        self.__dict__ = state
+        self.model = None
