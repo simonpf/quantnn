@@ -345,6 +345,7 @@ class PytorchModel:
             scheduler = _get_default_scheduler(optimizer)
 
         loss.to(device)
+        self.to(device)
         scheduler_sig = signature(scheduler.step)
         training_errors = []
         validation_errors = []
