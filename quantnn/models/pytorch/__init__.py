@@ -6,6 +6,7 @@ This model provides Pytorch neural network models that can be used a backend
 models for the :py:class:`quantnn.QRNN` class.
 """
 from quantnn.models.pytorch.common import (
+    CrossEntropyLoss,
     QuantileLoss,
     BatchedDataset,
     save_model,

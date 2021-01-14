@@ -1,11 +1,24 @@
 """
+================
 quantnn.plotting
 ================
 
 The plotting module provides some utility function for plotting QRNN results.
 """
-
+import matplotlib.pyplot as plt
 from matplotlib.colors import to_rgba
+import pathlib
+
+_STYLE_FILE = pathlib.Path(__file__).parent / "data" / "matplotlib_style.rc"
+
+
+def set_style():
+    """
+    Sets matplotlib style to a style file that I find visually more pleasing
+    then the default settings.
+    """
+    plt.style.use(str(_STYLE_FILE))
+
 
 def plot_confidence_intervals(ax, x, y_pred, quantiles, color="C0"):
     """

@@ -25,6 +25,5 @@ class UnsupportedBackendException(QuantnnException):
 
     """
 
-
 class InvalidDimensionException(QuantnnException):
     """Thrown when an input array doesn't match expected shape."""

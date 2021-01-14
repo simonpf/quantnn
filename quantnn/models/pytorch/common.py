@@ -72,8 +72,13 @@ def handle_input(data, device=None):
     """
     if type(data) == tuple:
         x, y = data
+
+        dtype_y = torch.float
+        if "int" in str(y.dtype):
+            dtype_y = torch.long
+
         x = torch.tensor(x, dtype=torch.float)
-        y = torch.tensor(y, dtype=torch.float)
+        y = torch.tensor(y, dtype=dtype_y)
         if not device is None:
             x = x.to(device)
             y = y.to(device)
@@ -91,12 +96,19 @@ class BatchedDataset(Dataset):
     """
     Batches an un-batched dataset.
     """
-
-    def __init__(self, training_data, batch_size):
+    def __init__(self, training_data, batch_size=None):
         x, y = training_data
+
         self.x = torch.tensor(x, dtype=torch.float)
-        self.y = torch.tensor(y, dtype=torch.float)
-        self.batch_size = batch_size
+        dtype_y = torch.float
+        if "int" in str(y.dtype):
+            dtype_y = torch.long
+
+        self.y = torch.tensor(y, dtype=dtype_y)
+        if batch_size:
+            self.batch_size = batch_size
+        else:
+            self.batch_size = 256
 
     def __len__(self):
         # This is required because x and y are tensors and don't throw these
@@ -117,6 +129,17 @@ class BatchedDataset(Dataset):
 # Quantile loss
 ################################################################################
 
+class CrossEntropyLoss(nn.CrossEntropyLoss):
+
+    def __init__(self):
+        super().__init__()
+
+    def __call__(self, y_pred, y):
+        return nn.CrossEntropyLoss.__call__(
+            self,
+            y_pred,
+            y.flatten()
+        )
 
 class QuantileLoss:
     r"""
@@ -178,6 +201,22 @@ class QuantileLoss:
             l = torch.where(y_true == self.mask, torch.zeros_like(l), l)
         return l.mean()
 
+################################################################################
+# Default scheduler and optimizer
+################################################################################
+
+def _get_default_optimizer(model):
+    """
+    The default optimizer. Currently set to Adam optimizer.
+    """
+    optimizer = optim.Adam(model.parameters())
+    return optimizer
+
+def _get_default_scheduler(optimizer):
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
+                                                     factor=0.1,
+                                                     patience=5)
+    return scheduler
 
 ################################################################################
 # QRNN
@@ -244,7 +283,16 @@ class PytorchModel:
 
         self.apply(reset_function)
 
-    def train(self, *args, loss=None, **kwargs):
+    def train(self,
+              training_data,
+              validation_data=None,
+              loss=None,
+              optimizer=None,
+              scheduler=None,
+              n_epochs=None,
+              adversarial_training=None,
+              batch_size=None,
+              device='cpu'):
         """
         Train the network.
 
@@ -262,104 +310,42 @@ class PytorchModel:
             adversarial_training: whether or not to use adversarial training
             eps_adv: The scaling factor to use for adversarial training.
         """
-        # Handle overload of train() method
-        if len(args) < 1 or (len(args) == 1 and type(args[0]) == bool):
-            return nn.Sequential.train(self, *args, **kwargs)
+        # Avoid nameclash with Pytorch train method.
+        if type(training_data) == bool:
+            return nn.Module.train(self, training_data)
 
-        #
-        # Parse training arguments
-        #
-
-        training_data = args[0]
-        arguments = {
-            "validation_data": None,
-            "batch_size": 256,
-            "sigma_noise": None,
-            "adversarial_training": False,
-            "delta_at": 0.01,
-            "initial_learning_rate": 1e-2,
-            "momentum": 0.0,
-            "convergence_epochs": 5,
-            "learning_rate_decay": 2.0,
-            "learning_rate_minimum": 1e-6,
-            "maximum_epochs": 1,
-            "training_split": 0.9,
-            "gpu": False,
-            "optimizer": None,
-            "learning_rate_scheduler": None
-        }
-        argument_names = arguments.keys()
-        for a, n in zip(args[1:], argument_names):
-            arguments[n] = a
-        for k in kwargs:
-            if k in arguments:
-                arguments[k] = kwargs[k]
-            else:
-                raise ValueError(f"Unknown argument to {k}.")
-
-        validation_data = arguments["validation_data"]
-        batch_size = arguments["batch_size"]
-        sigma_noise = arguments["sigma_noise"]
-        adversarial_training = arguments["adversarial_training"]
-        delta_at = arguments["delta_at"]
-        initial_learning_rate = arguments["initial_learning_rate"]
-        convergence_epochs = arguments["convergence_epochs"]
-        learning_rate_decay = arguments["learning_rate_decay"]
-        learning_rate_minimum = arguments["learning_rate_minimum"]
-        maximum_epochs = arguments["maximum_epochs"]
-        training_split = arguments["training_split"]
-        gpu = arguments["gpu"]
-        momentum = arguments["momentum"]
-        optimizer = arguments["optimizer"]
-        learning_rate_scheduler = arguments["learning_rate_scheduler"]
-
-        #
         # Determine device to use
-        #
-        if torch.cuda.is_available() and gpu:
+        if torch.cuda.is_available() and device in ["gpu", "cuda"]:
             device = torch.device("cuda")
-        else:
+        elif device == "cpu":
             device = torch.device("cpu")
-        self.to(device)
+        else:
+            device = torch.device(device)
 
-        #
         # Handle input data
-        #
         try:
             x, y = handle_input(training_data, device)
-            training_data = BatchedDataset((x, y), batch_size)
+            training_data = BatchedDataset((x, y), batch_size=batch_size)
         except:
             pass
 
-        self.train()
+        # Optimizer
         if not optimizer:
-            self.optimizer = optim.SGD(
-                self.parameters(), lr=initial_learning_rate, momentum=momentum
-            )
-        else:
-            self.optimizer = optimizer
+            optimizer = _get_default_optimizer(self)
+        self.optimizer = optimizer
+
+        # Training scheduler
+        if not scheduler:
+            scheduler = _get_default_scheduler(optimizer)
+
         loss.to(device)
-
-        if not optimizer and not learning_rate_scheduler:
-            scheduler = ReduceLROnPlateau(
-                self.optimizer,
-                factor=1.0 / learning_rate_decay,
-                patience=convergence_epochs,
-                min_lr=learning_rate_minimum,
-            )
-        else:
-            scheduler = learning_rate_scheduler
         scheduler_sig = signature(scheduler.step)
-
         training_errors = []
         validation_errors = []
 
-        #
         # Training loop
-        #
-
-        for i in range(maximum_epochs):
-            err = 0.0
+        for i in range(n_epochs):
+            error = 0.0
             n = 0
             for j, (x, y) in enumerate(training_data):
 
@@ -376,13 +362,13 @@ class PytorchModel:
                 c.backward()
                 self.optimizer.step()
 
-                err += c.item() * x.size()[0]
+                error += c.item() * x.size()[0]
                 n += x.size()[0]
 
                 if adversarial_training:
                     self.optimizer.zero_grad()
-                    x_adv = self._make_adversarial_samples(x, y, delta_at)
-                    y_pred = self(x)
+                    x_adv = self._make_adversarial_samples(x, y, adversarial_training)
+                    y_pred = self(x_adv)
                     c = loss(y_pred, y)
                     c.backward()
                     self.optimizer.step()
@@ -390,17 +376,17 @@ class PytorchModel:
                 if j % 100:
                     print(
                         "Epoch {} / {}: Batch {} / {}, Training error: {:.3f}".format(
-                            i, maximum_epochs, j, len(training_data), err / n
+                            i, n_epochs, j, len(training_data), error / n
                         ),
                         end="\r",
                     )
 
             # Save training error
-            training_errors.append(err / n)
+            training_errors.append(error / n)
 
             lr = [group["lr"] for group in self.optimizer.param_groups][0]
 
-            val_err = 0.0
+            validation_error = 0.0
             if not validation_data is None:
                 n = 0
                 for x, y in validation_data:
@@ -414,19 +400,17 @@ class PytorchModel:
                     y_pred = self(x)
                     c = loss(y_pred, y)
 
-                    val_err += c.item() * x.size()[0]
+                    validation_error += c.item() * x.size()[0]
                     n += x.size()[0]
-                validation_errors.append(val_err / n)
+                validation_errors.append(validation_error / n)
 
                 print(
-                    "Epoch {} / {}: Training error: {:.3f}, Validation error: {:.3f}, Learning rate: {:.5f}".format(
-                        i,
-                        maximum_epochs,
-                        training_errors[-1],
-                        validation_errors[-1],
-                        lr,
-                    )
+                    f"Epoch {i} / {n_epochs}: "
+                    f"Training error: {training_errors[-1]:.4f}, "
+                    f"Validation error: {validation_errors[-1]:.4f}, "
+                    f"Learning rate: {lr:.5f}"
                 )
+
                 if scheduler:
                     if len(scheduler_sig.parameters) == 1:
                         scheduler.step()
@@ -441,10 +425,11 @@ class PytorchModel:
                     else:
                         if validation_data:
                             scheduler.step(validation_errors[-1])
+
                 print(
-                    "Epoch {} / {}: Training error: {:.3f}, Learning rate: {:.5f}".format(
-                        i, maximum_epochs, training_errors[-1], lr
-                    )
+                    f"Epoch {i} / {n_epochs}: "
+                    f"Training error: {training_errors[-1]:.4f}, "
+                    f"Learning rate: {lr:.5f}"
                 )
 
         self.training_errors += training_errors
@@ -455,9 +440,25 @@ class PytorchModel:
             "validation_errors": self.validation_errors,
         }
 
-    def predict(self, x, gpu=False):
-        ""
-        if torch.cuda.is_available() and gpu:
+    def predict(self, x, device="cpu"):
+        """
+        Evaluate the model.
+
+        Args:
+            x: The input data for which to evaluate the data.
+            device: The device on which to evaluate the prediction.
+
+        Returns:
+            The model prediction converted to numpy array.
+        """
+        # Determine device to use
+        if torch.cuda.is_available() and device in ["gpu", "cuda"]:
+            device = torch.device("cuda")
+        elif device == "cpu":
+            device = torch.device("cpu")
+        else:
+            device = torch.device(device)
+        if torch.cuda.is_available() and device in ["cuda", "gpu"]:
             device = torch.device("cuda")
         else:
             device = torch.device("cpu")

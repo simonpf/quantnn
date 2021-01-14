@@ -16,8 +16,10 @@ import keras
 from keras.models import Sequential
 from keras.layers import Dense, Activation, deserialize
 from keras.optimizers import SGD
+from keras.losses import CategoricalCrossentropy as CrossEntropyLoss
 import keras.backend as K
 
+from quantnn.common import QuantnnException
 
 def save_model(f, model):
     """
@@ -124,7 +126,7 @@ class BatchedDataset:
     Keras data loader that batches a given dataset of numpy arryas.
     """
 
-    def __init__(self, training_data, batch_size):
+    def __init__(self, training_data, batch_size=None):
         """
         Create batched dataset.
 
@@ -136,7 +138,12 @@ class BatchedDataset:
         x, y = training_data
         self.x = x
         self.y = y
-        self.bs = batch_size
+
+        if batch_size:
+            self.bs = batch_size
+        else:
+            self.bs = 256
+
         self.indices = np.random.permutation(x.shape[0])
         self.i = 0
 
@@ -172,7 +179,9 @@ class TrainingGenerator:
                  component.
     """
 
-    def __init__(self, training_data, sigma_noise=None):
+    def __init__(self,
+                 training_data,
+                 sigma_noise=None):
         """
         Args:
             training_data: Data generator providing the original (noise-free)
@@ -330,11 +339,26 @@ class LRDecay(keras.callbacks.Callback):
 
         self.min_loss = min(self.min_loss, self.losses[-1])
 
+################################################################################
+# Default scheduler and optimizer
+################################################################################
+
+def _get_default_optimizer(schedule):
+    """
+    The default optimizer. Currently set to Adam optimizer.
+    """
+    return keras.optimizers.RMSprop()
+
+def _get_default_scheduler(model):
+    """
+    The default optimizer. Currently set to Adam optimizer.
+    """
+    return LRDecay(model, 10.0, 1e-4, 5)
+
 
 ################################################################################
 # QRNN
 ################################################################################
-
 
 class KerasModel:
     r"""
@@ -383,30 +407,21 @@ class KerasModel:
         """
         self.reset_states()
 
-    def train(
-        self,
-        training_data,
-        validation_data=None,
-        loss=None,
-        batch_size=256,
-        sigma_noise=None,
-        adversarial_training=False,
-        delta_at=0.01,
-        initial_learning_rate=1e-2,
-        momentum=0.0,
-        convergence_epochs=5,
-        learning_rate_decay=2.0,
-        learning_rate_minimum=1e-6,
-        maximum_epochs=200,
-        training_split=0.9,
-        gpu=False,
-        optimizer=None,
-        learning_rate_scheduler=None
-    ):
+    def train(self,
+              training_data,
+              validation_data=None,
+              loss=None,
+              optimizer=None,
+              scheduler=None,
+              n_epochs=None,
+              adversarial_training=None,
+              batch_size=None,
+              device='cpu'):
 
+        # Input data.
         if type(training_data) == tuple:
             if not type(training_data[0]) == np.ndarray:
-                raise ValueError(
+                raise QuantnnException(
                     "When training data is provided as tuple"
                     " (x, y) it must contain numpy arrays."
                 )
@@ -417,40 +432,38 @@ class KerasModel:
 
         # Compile model
         self.custom_objects = {loss.__name__: loss}
+        if not scheduler:
+            scheduler = _get_default_scheduler(self)
         if not optimizer:
-            optimizer = SGD(lr=initial_learning_rate)
-        self.compile(loss=loss, optimizer=optimizer)
+            optimizer = _get_default_optimizer(scheduler)
+        self.compile(loss=loss,
+                     optimizer=optimizer)
 
         #
         # Setup training generator
         #
-        training_generator = TrainingGenerator(training_data, sigma_noise)
+        training_generator = TrainingGenerator(training_data)
         if adversarial_training:
             inputs = [self.input, self.targets[0], self.sample_weights[0]]
             input_gradients = K.function(
                 inputs, K.gradients(self.total_loss, self.input)
             )
             training_generator = AdversarialTrainingGenerator(
-                training_generator, input_gradients, delta_at
+                training_generator, input_gradients, adversarial_training
             )
 
         if validation_data is None:
             validation_generator = None
         else:
             validation_generator = ValidationGenerator(validation_data, sigma_noise)
-        if not learning_rate_scheduler:
-            lr_callback = LRDecay(
-                self, learning_rate_decay, learning_rate_minimum, convergence_epochs
-            )
-        else:
-            lr_callback = learning_rate_scheduler
+
         self.fit(
             training_generator,
             steps_per_epoch=len(training_generator),
-            epochs=maximum_epochs,
+            epochs=n_epochs,
             validation_data=validation_generator,
             validation_steps=1,
-            callbacks=[lr_callback])
+            callbacks=[scheduler])
 
 
 Model = KerasModel

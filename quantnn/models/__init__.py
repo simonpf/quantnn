@@ -10,5 +10,6 @@ from quantnn.models.pytorch.common import (
     save_model,
     load_model,
 )
+from torch.nn import CrossEntropyLoss
 from quantnn.models.pytorch.fully_connected import FullyConnected
 from quantnn.models.pytorch.unet import UNet

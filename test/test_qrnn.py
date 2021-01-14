@@ -46,7 +46,7 @@ class TestQrnn:
         set_backend(backend)
         qrnn = QRNN(np.linspace(0.05, 0.95, 10),
                     input_dimensions=self.x_train.shape[1])
-        qrnn.train((self.x_train, self.y_train), maximum_epochs=1)
+        qrnn.train((self.x_train, self.y_train), n_epochs=1)
 
         qrnn.predict(self.x_train)
 
@@ -76,7 +76,7 @@ class TestQrnn:
         data = backend.BatchedDataset((self.x_train, self.y_train), 256)
         qrnn = QRNN(np.linspace(0.05, 0.95, 10),
                     input_dimensions=self.x_train.shape[1])
-        qrnn.train(data, maximum_epochs=1)
+        qrnn.train(data, n_epochs=1)
 
     @pytest.mark.parametrize("backend", backends)
     def test_save_qrnn(self, backend):

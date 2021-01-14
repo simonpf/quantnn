@@ -217,20 +217,12 @@ class QRNN:
     def train(self,
               training_data,
               validation_data=None,
-              batch_size=256,
-              sigma_noise=None,
-              adversarial_training=False,
-              delta_at=0.01,
-              initial_learning_rate=1e-2,
-              momentum=0.0,
-              convergence_epochs=5,
-              learning_rate_decay=2.0,
-              learning_rate_minimum=1e-6,
-              maximum_epochs=200,
-              training_split=0.9,
               optimizer=None,
-              learning_rate_scheduler=None,
-              gpu = False):
+              scheduler=None,
+              n_epochs=None,
+              adversarial_training=None,
+              batch_size=None,
+              device='cpu'):
         """
         Train model on given training data.
 
@@ -270,23 +262,17 @@ class QRNN:
                  is the fraction of training data that is used for validation.
             gpu(``bool``): Whether or not to try to run the training on the GPU.
         """
+        loss = backend.QuantileLoss(self.quantiles)
+        print(loss)
         return self.model.train(training_data,
-                                loss=backend.QuantileLoss(self.quantiles),
                                 validation_data=validation_data,
-                                batch_size=batch_size,
-                                sigma_noise=sigma_noise,
-                                adversarial_training=adversarial_training,
-                                delta_at=delta_at,
-                                initial_learning_rate=initial_learning_rate,
-                                momentum=momentum,
-                                convergence_epochs=convergence_epochs,
-                                learning_rate_decay=learning_rate_decay,
-                                learning_rate_minimum=learning_rate_minimum,
-                                maximum_epochs=maximum_epochs,
-                                training_split=training_split,
-                                gpu=gpu,
+                                loss=loss,
                                 optimizer=optimizer,
-                                learning_rate_scheduler=learning_rate_scheduler)
+                                scheduler=scheduler,
+                                n_epochs=n_epochs,
+                                adversarial_training=adversarial_training,
+                                batch_size=batch_size,
+                                device=device)
 
     def predict(self, x):
         r"""
