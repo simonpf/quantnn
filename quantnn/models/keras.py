@@ -6,6 +6,11 @@ This module provides Keras neural network models that can be used as backend
 models with the :py:class:`quantnn.QRNN` class.
 """
 import logging
+import tempfile
+import tarfile
+import shutil
+import os
+
 import numpy as np
 import keras
 from keras.models import Sequential
@@ -23,36 +28,36 @@ def save_model(f, model):
             to store the data to.
         model(:code:`keras.models.Models`): The Keras model to save
     """
-    keras.models.save_model(model, f)
+    path = tempfile.mkdtemp()
+    filename = os.path.join(path, "keras_model.h5")
+    keras.models.save_model(model, filename)
+    archive = tarfile.TarFile(fileobj=f, mode="w")
+    archive.add(filename, arcname="keras_model.h5")
+    archive.close()
+    shutil.rmtree(path)
 
-
-def load_model(f, quantiles):
+def load_model(file):
     """
     Load keras model.
 
     Args:
-        f(:code:`str` or binary stream): Either a path or a binary stream
+        file(:code:`str` or binary stream): Either a path or a binary stream
             to read the model from
-        quantiles(:code:`np.ndarray`): Array containing the quantiles
-            that the model predicts.
 
     Returns:
         The loaded keras model.
     """
-    #
-    # This is a bit hacky but seems required to handle
-    # the custom model classes.
-    #
-    def make_fully_connected(layers=None, **kwargs):
-        layers = list(map(deserialize, layers))
-        input_dimensions = layers[0].batch_input_shape[1]
-        return FullyConnected(input_dimensions, quantiles, (), layers)
+    path = tempfile.mkdtemp()
+    tar_file = tarfile.TarFile(fileobj=file, mode="r")
+    tar_file.extract("keras_model.h5", path=path)
+    filename = os.path.join(path, "keras_model.h5")
 
     custom_objects = {
-        "FullyConnected": make_fully_connected,
+        "FullyConnected": FullyConnected,
         "QuantileLoss": QuantileLoss,
     }
-    model = keras.models.load_model(f, custom_objects=custom_objects)
+    model = keras.models.load_model(filename, custom_objects=custom_objects)
+    shutil.rmtree(path)
     return model
 
 
@@ -358,6 +363,12 @@ class KerasModel:
             The ensemble of Keras neural networks used for the quantile regression
             neural network.
     """
+    def __init__(self, *args, **kwargs):
+        """
+        Forwards call to super to support multiple inheritance.
+        """
+        super().__init__(args, kwargs)
+
     @staticmethod
     def create(input_dimension, quantiles, model):
         if isinstance(model, KerasModel):
@@ -365,21 +376,6 @@ class KerasModel:
         new_model = KerasModel(input_dimension, quantiles)
         new_model.__bases__ = (model,)
         return new_model
-
-    def __init__(self, input_dimension, quantiles):
-        """
-        Create a QRNN model.
-
-        Arguments:
-            input_dimension(int): The dimension of the measurement space, i.e. the number
-                            of elements in a single measurement vector y
-
-            quantiles(np.array): 1D-array containing the quantiles  to estimate of
-                                 the posterior distribution. Given as fractions
-                                 within the range [0, 1].
-        """
-        self.input_dimension = input_dimension
-        self.quantiles = np.array(quantiles)
 
     def reset(self):
         """
@@ -391,6 +387,7 @@ class KerasModel:
         self,
         training_data,
         validation_data=None,
+        loss=None,
         batch_size=256,
         sigma_noise=None,
         adversarial_training=False,
@@ -417,8 +414,6 @@ class KerasModel:
 
         if type(validation_data) is tuple:
             validation_data = BatchedDataset(validation_data, batch_size)
-
-        loss = QuantileLoss(self.quantiles)
 
         # Compile model
         self.custom_objects = {loss.__name__: loss}
@@ -470,7 +465,12 @@ class FullyConnected(KerasModel, Sequential):
     Keras implementation of fully-connected networks.
     """
 
-    def __init__(self, input_dimension, quantiles, arch, layers=None):
+    def __init__(self,
+                 input_dimensions=None,
+                 output_dimensions=None,
+                 arch=None,
+                 layers=None,
+                 **kwargs):
         """
         Create a fully-connected neural network.
 
@@ -483,20 +483,18 @@ class FullyConnected(KerasModel, Sequential):
                 of the network and :code:`a`, the type of activation functions
                 to be used as string.
         """
-        quantiles = np.array(quantiles)
-        output_dimension = quantiles.size
-
-        if layers is None:
-            if len(arch) == 0:
-                layers = [Dense(output_dimension, input_shape=(input_dimension))]
+        if input_dimensions and output_dimensions and arch:
+            if not arch or len(arch) == 0:
+                layers = [Dense(output_dimensions,
+                                input_shape=(input_dimensions))]
             else:
                 d, w, a = arch
-                layers = [Dense(w, input_shape=(input_dimension,))]
+                layers = [Dense(w, input_shape=(input_dimensions,))]
                 for _ in range(d - 1):
                     layers.append(Dense(w, input_shape=(w,)))
                     if a is not None:
                         layers.append(Activation(a))
-                layers.append(Dense(output_dimension, input_shape=(w,)))
-
-        KerasModel.__init__(self, input_dimension, quantiles)
-        Sequential.__init__(self, layers)
+                layers.append(Dense(output_dimensions, input_shape=(w,)))
+                super().__init__(*layers)
+        else:
+            super().__init__(**kwargs)

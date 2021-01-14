@@ -40,12 +40,12 @@ def save_model(f, model):
     torch.save(model, f)
 
 
-def load_model(f, quantiles):
+def load_model(file):
     """
     Load pytorch model.
 
     Args:
-        f(:code:`str` or binary stream): Either a path or a binary stream
+        file(:code:`str` or binary stream): Either a path or a binary stream
             to read the model from
         quantiles(:code:`np.ndarray`): Array containing the quantiles
             that the model predicts.
@@ -53,7 +53,7 @@ def load_model(f, quantiles):
     Returns:
         The loaded pytorch model.
     """
-    model = torch.load(f)
+    model = torch.load(file)
     return model
 
 
@@ -195,8 +195,8 @@ def _make_mixin_class(model):
         model object.
     """
     class Mixin(PytorchModel, type(model)):
-        def __init__(self, input_dimension, quantiles):
-            PytorchModel.__init__(self, input_dimension, quantiles)
+        def __init__(self):
+            PytorchModel.__init__(self)
     return Mixin
 
 class PytorchModel:
@@ -207,22 +207,19 @@ class PytorchModel:
     a given number of layers.
     """
     @staticmethod
-    def create(input_dimension, quantiles, model):
+    def create(model):
         if isinstance(model, PytorchModel):
             return model
-        new_model = _make_mixin_class(model)(input_dimension, quantiles)
+        new_model = _make_mixin_class(model)()
         new_model.__dict__.update(model.__dict__)
         return new_model
 
-    def __init__(self, input_dimension, quantiles):
+    def __init__(self):
         """
         Arguments:
             input_dimension(int): The number of input features.
             quantiles(array): Array of the quantiles to predict.
         """
-        self.input_dimension = input_dimension
-        self.quantiles = np.array(quantiles)
-        self.criterion = QuantileLoss(self.quantiles)
         self.training_errors = []
         self.validation_errors = []
         self.backend = "quantnn.models.pytorch"
@@ -247,7 +244,7 @@ class PytorchModel:
 
         self.apply(reset_function)
 
-    def train(self, *args, **kwargs):
+    def train(self, *args, loss=None, **kwargs):
         """
         Train the network.
 
@@ -341,7 +338,7 @@ class PytorchModel:
             )
         else:
             self.optimizer = optimizer
-        self.criterion.to(device)
+        loss.to(device)
 
         if not optimizer and not learning_rate_scheduler:
             scheduler = ReduceLROnPlateau(
@@ -375,7 +372,7 @@ class PytorchModel:
 
                 self.optimizer.zero_grad()
                 y_pred = self(x)
-                c = self.criterion(y_pred, y)
+                c = loss(y_pred, y)
                 c.backward()
                 self.optimizer.step()
 
@@ -386,7 +383,7 @@ class PytorchModel:
                     self.optimizer.zero_grad()
                     x_adv = self._make_adversarial_samples(x, y, delta_at)
                     y_pred = self(x)
-                    c = self.criterion(y_pred, y)
+                    c = loss(y_pred, y)
                     c.backward()
                     self.optimizer.step()
 
@@ -415,7 +412,7 @@ class PytorchModel:
                     y = y.reshape(shape)
 
                     y_pred = self(x)
-                    c = self.criterion(y_pred, y)
+                    c = loss(y_pred, y)
 
                     val_err += c.item() * x.size()[0]
                     n += x.size()[0]
@@ -525,8 +522,6 @@ class PytorchModel:
         """
         torch.save(
             {
-                "input_dimension": self.input_dimension,
-                "quantiles": self.quantiles,
                 "width": self.width,
                 "depth": self.depth,
                 "activation": self.activation,
@@ -545,7 +540,7 @@ class PytorchModel:
             path: Path of the file where the QRNN was stored.
         """
         state = torch.load(path, map_location=torch.device("cpu"))
-        keys = ["input_dimension", "quantiles", "depth", "width", "activation"]
+        keys = ["depth", "width", "activation"]
         qrnn = QRNN(*[state[k] for k in keys])
         qrnn.load_state_dict["network_state"]
         qrnn.optimizer.load_state_dict["optimizer_state"]

@@ -24,9 +24,15 @@ try:
     import jax
     import jax.numpy as jnp
     _JAX_KEY = jax.random.PRNGKey(0)
-    BACKENDS["jax"] = jnp
+    BACKENDS["jax.numpy"] = jnp
 except ModuleNotFoundError:
     jnp = None
+
+try:
+    import tensorflow as tf
+    BACKENDS["tensorflow"] = tf
+except ModuleNotFoundError:
+    tf = None
 
 
 def get_array_module(x):
@@ -38,9 +44,18 @@ def get_array_module(x):
         The module object providing array operations on the
         array type.
     """
-    module_name = type(x).__module__.split(".")[0]
-    if module_name in BACKENDS:
-        return BACKENDS[module_name]
+    module_name = type(x).__module__
+    if module_name == "numpy":
+        return np
+    if module_name == "numpy.ma":
+        return ma
+    base_module = module_name.split(".")[0]
+    if base_module == "torch":
+        return torch
+    if base_module == "jax":
+        return jnp
+    if base_module == "tensorflow":
+        return tf
     raise UnknownArrayTypeException(f"The provided input of type {type(x)} is"
                                     "not a supported array type.")
 
@@ -58,13 +73,15 @@ def to_array(module, array):
         Array-object corresponding to the given backend module containing the
         data in array.
     """
-    if module.__name__ == "numpy":
+    if module in [np, ma]:
         return module.asarray(array)
-    elif module.__name__ == "torch":
+    elif module == torch:
         return module.tensor(array)
-    elif module.__name__.split(".")[0] == "jax":
+    elif module == jnp:
         return module.asarray(array)
-    return UnknownModuleException(f"Module {module.__name__} not supported.")
+    elif module == tf:
+        return module.convert_to_tensor(array)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
 
 
 def sample_uniform(module, shape):
@@ -80,12 +97,15 @@ def sample_uniform(module, shape):
          Array object corresponding to the given module object containing
          random values.
     """
-    if module.__name__ == "numpy":
+    if module in [np, ma]:
         return module.random.rand(*shape)
-    elif module.__name__ == "torch":
+    elif module == torch:
         return module.rand(shape)
-    elif module.__name__.split(".")[0] == "jax":
+    elif module == jnp:
         return jax.random.uniform(_JAX_KEY, shape)
+    elif module == tf:
+        return tf.random.uniform(shape)
+
     return UnknownModuleException(f"Module {module.__name__} not supported.")
 
 
@@ -102,12 +122,14 @@ def sample_gaussian(module, shape):
          Array object corresponding to the given module object containing
          random values.
     """
-    if module.__name__ in ["numpy", "numpy.ma.core"]:
+    if module in [np, ma]:
         return module.random.randn(*shape)
-    elif module.__name__ == "torch":
+    elif module == torch:
         return module.randn(*shape)
-    elif module.__name__.split(".")[0] == "jax":
+    elif module == jnp:
         return jax.random.normal(_JAX_KEY, shape)
+    elif module == tf:
+        return tf.random.normal(shape)
     return UnknownModuleException(f"Module {module.__name__} not supported.")
 
 
@@ -131,6 +153,8 @@ def numel(array):
         return array.numel()
     elif module_name.split(".")[0] == "jax":
         return array.size
+    elif module_name.split(".")[0] == "tensorflow":
+        return tf.size(array)
     raise UnknownArrayTypeException(f"The provided input of type {type(x)} is"
                                     "not a supported array type.")
 
@@ -152,6 +176,8 @@ def concatenate(module, arrays, dimension):
         return module.concatenate(arrays, dimension)
     elif module == torch:
         return module.cat(arrays, dimension)
+    elif module == tf:
+        return tf.concat(arrays, axis=dimension)
     return UnknownModuleException(f"Module {module.__name__} not supported.")
 
 
@@ -171,11 +197,11 @@ def expand_dims(module, array, dimension):
     Returns:
         The reshaped array with a dimension added at the given index.
     """
-    if module in [np, ma, jnp]:
+    if module in [np, ma, jnp, tf]:
         return module.expand_dims(array, dimension)
     elif module == torch:
         return module.unsqueeze(array, dimension)
-    return UnknownModuleException(f"Module {module.__name__} not supported.")
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
 
 def pad_zeros(module, array, n, dimension):
     """
@@ -191,7 +217,7 @@ def pad_zeros(module, array, n, dimension):
         A new array with the given number of 0s added to
         each edge along the given dimension.
     """
-    if module in [np, ma, jnp]:
+    if module in [np, ma, jnp, tf]:
         n_dims = len(array.shape)
         pad = [(0, 0)] * n_dims
         pad[dimension] = (n, n)
@@ -203,4 +229,115 @@ def pad_zeros(module, array, n, dimension):
         pad[2 * n_dims - 2 - 2 * dimension] = n
         pad[2 * n_dims - 1 - 2 * dimension] = n
         return module.nn.functional.pad(array, pad, "constant", 0.0)
-    return UnknownModuleException(f"Module {module.__name__} not supported.")
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+def as_type(module, x, y):
+    """
+    Converts data type of input ``x`` to that of input ``y``.
+
+    Arguments:
+         x: The array to be converted
+         y: The array to whose data type to convert x.
+
+    Return:
+         The input ``x`` converted to the data type of ``y``.
+    """
+    if module in [np, ma, jnp]:
+        return x.astype(y.dtype)
+    elif module == tf:
+        return tf.cast(x, y.dtype)
+    elif module == torch:
+        return x.to(y.dtype)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+def arange(module, start, end, step):
+    """
+    Crate array with stepped sequence of values.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        start: Start value of the sequence.
+        end: Maximum value of the sequence.
+        step: Step size.
+
+    Return:
+        1D array containing the sequence starting with the given start value
+        increasing with the given step size up until the largest value that
+        is strictly smaller than the given end value.
+    """
+    if module in [np, ma, jnp]:
+        return module.arange(start, end, step)
+    elif module == torch:
+        return module.arange(start, end, step, dtype=torch.float)
+    elif module == tf:
+        return tf.range(start, end, step)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+def reshape(module, array, shape):
+    """
+    Reshape array into given shape.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        array: The array to reshape
+        shape: The shape into which to rehshape the array.
+
+    Returns:
+        The array reshaped into the requested shape.
+    """
+    if module in [np, ma, torch, jnp]:
+        return array.reshape(shape)
+    if module == tf:
+        return tf.reshape(array, shape)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+def _trapz(module, y, x, dimension):
+    """
+    Numeric integration using  trapezoidal rule.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        y: Rank k-tensor to integrate over the given dimension.
+        x: The domain values to integrate over.
+        dimension: The dimension to integrate over.
+
+    Return:
+       The rank k-1 tensor containing the numerical integrals corresponding
+       to y.
+    """
+
+    n = len(y.shape)
+    x_shape = [1] * n
+    x_shape[dimension] = -1
+    x = reshape(module, x, x_shape)
+
+    selection = [slice(0, None)] * n
+    selection_l = selection[:]
+    selection_l[dimension] = slice(0, -1)
+    selection_r = selection[:]
+    selection_r[dimension] = slice(1, None)
+
+    dx = x[selection_r] - x[selection_l]
+    return module.math.reduce_sum(0.5 * (dx * y[selection_l] + dx * y[selection_r]), axis=dimension)
+
+def trapz(module, y, x, dimension):
+    """
+    Numeric integration using  trapezoidal rule.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        y: Rank k-tensor to integrate over the given dimension.
+        x: The domain values to integrate over.
+        dimension: The dimension to integrate over.
+
+    Return:
+       The rank k-1 tensor containing the numerical integrals corresponding
+       to y.
+    """
+    if module in [np, ma, torch, jnp]:
+        return module.trapz(y, x=x,  axis=dimension)
+    elif module == tf:
+        return _trapz(module, y, x, dimension)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+

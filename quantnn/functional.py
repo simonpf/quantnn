@@ -18,7 +18,10 @@ from quantnn.generic import (get_array_module,
                              numel,
                              expand_dims,
                              concatenate,
-                             pad_zeros)
+                             pad_zeros,
+                             as_type,
+                             trapz,
+                             reshape)
 
 
 def cdf(y_pred,
@@ -180,7 +183,7 @@ def posterior_mean(y_pred, quantiles, quantile_axis=1):
     xp = get_array_module(y_pred)
 
     x_cdf, y_cdf = cdf(y_pred, quantiles, quantile_axis=quantile_axis)
-    return xp.trapz(x_cdf, x=y_cdf, axis=quantile_axis)
+    return trapz(xp, x_cdf, y_cdf, quantile_axis)
 
 def crps(y_pred, quantiles, y_true, quantile_axis=1):
     r"""
@@ -221,7 +224,7 @@ def crps(y_pred, quantiles, y_true, quantile_axis=1):
     y_true_shape = list(x_cdf.shape)
     y_true_shape[quantile_axis] = 1
     y_true = to_array(xp, y_true)
-    y_true = y_true.reshape(y_true_shape)
+    y_true = reshape(xp, y_true, y_true_shape)
 
     ind = xp.ones(x_cdf.shape) * (x_cdf > y_true)
 
@@ -299,7 +302,7 @@ def probability_less_than(y_pred, quantiles, y, quantile_axis=1):
         x_index[quantile_axis] = i
         x_r = x_cdf[tuple(x_index)]
 
-        mask = (x_l < y) * (x_r >= y)
+        mask = as_type(xp, (x_l < y) * (x_r >= y), x_l)
         probabilities += y_l * (x_r - y) * mask
         probabilities += y_r * (y - x_l) * mask
         probabilities /= (mask * (x_r - x_l) + (1.0 - mask))
@@ -307,7 +310,7 @@ def probability_less_than(y_pred, quantiles, y, quantile_axis=1):
         y_l = y_r
         x_l = x_r
 
-    mask = x_r < y
+    mask = as_type(xp, x_r < y, x_r)
     probabilities += mask
     return probabilities
 
@@ -387,7 +390,7 @@ def sample_posterior(y_pred,
         x_index[quantile_axis] = slice(i, i + 1)
         x_r = x_cdf[tuple(x_index)]
 
-        mask = (samples > y_l) * (samples <= y_r)
+        mask = as_type(xp, (samples > y_l) * (samples <= y_r), y_l)
         results += (x_l * (y_r - samples)) * mask
         results += (x_r * (samples - y_l)) * mask
         results /= (mask * (y_r - y_l) + (1.0 - mask))
@@ -424,7 +427,7 @@ def fit_gaussian_to_quantiles(y_pred, quantiles, quantile_axis=1):
     x_shape = [1,] * n_dims
     x_shape[quantile_axis] = -1
     x_shape = tuple(x_shape)
-    x = x.reshape(x_shape)
+    x = reshape(xp, x, x_shape)
 
     output_shape = list(y_pred.shape)
     output_shape[quantile_axis] = 1
@@ -441,9 +444,9 @@ def fit_gaussian_to_quantiles(y_pred, quantiles, quantile_axis=1):
     d2e_inv_10 = -d2e_det_inv * d2e_10
     d2e_inv_11 = d2e_det_inv * d2e_00
 
-    x = x.reshape(x_shape)
-    de_0 = -(y_pred - x).sum(axis=quantile_axis).reshape(output_shape)
-    de_1 = -(x * (y_pred - x)).sum(axis=quantile_axis).reshape(output_shape)
+    x = reshape(xp, x, x_shape)
+    de_0 = reshape(xp, -(y_pred - x).sum(axis=quantile_axis), output_shape)
+    de_1 = reshape(xp, -(x * (y_pred - x)).sum(axis=quantile_axis), output_shape)
 
     mu = -(d2e_inv_00 * de_0 + d2e_inv_01 * de_1)
     sigma = 1.0 - (d2e_inv_10 * de_0 + d2e_inv_11 * de_1)
@@ -510,7 +513,7 @@ def quantile_loss(y_pred,
     y_true_shape = list(y_pred.shape)
     y_true_shape[quantile_axis] = 1
     try:
-        y_true = y_true.reshape(y_true_shape)
+        y_true = reshape(xp, y_true, y_true_shape)
     except Exception:
         raise InvalidDimensionException(
             "Could not reshape 'y_true' argument into expected shape "
@@ -520,11 +523,11 @@ def quantile_loss(y_pred,
     quantiles = to_array(xp, quantiles)
     quantiles_shape = [1] * n_dims
     quantiles_shape[quantile_axis] = len(quantiles)
-    quantiles = quantiles.reshape(quantiles_shape)
+    quantiles = reshape(xp, quantiles, quantiles_shape)
 
     dy = y_pred - y_true
     loss = xp.zeros(dy.shape)
-    mask = dy > 0.0
+    mask = as_type(xp, dy > 0.0, dy)
     loss += mask * ((1.0 - quantiles) * dy)
     loss += -(1.0 - mask) * (quantiles * dy)
     return loss

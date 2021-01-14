@@ -26,13 +26,13 @@ from quantnn.common import QuantnnException, UnsupportedBackendException
 try:
     import quantnn.models.keras as keras
     backend = keras
-except Exception:
+except ModuleNotFoundError:
     pass
 
 try:
     import quantnn.retrieval.qrnn.models.pytorch as pytorch
     backend = pytorch
-except Exception:
+except ModuleNotFoundError:
     pass
 
 
@@ -165,11 +165,9 @@ class QRNN:
             The neural network regression model used to predict the quantiles.
     """
     def __init__(self,
-                 input_dimensions,
-                 quantiles=None,
-                 model=(3, 128, "relu"),
-                 ensemble_size=1,
-                 **kwargs):
+                 quantiles,
+                 input_dimensions=None,
+                 model=(3, 128, "relu")):
         """
         Create a QRNN model.
 
@@ -182,18 +180,19 @@ class QRNN:
                 the posterior distribution. Given as fractions within the range
                 [0, 1].
             model:
-                A (possibly trained) model instance or a tuple
-                ``(d, w, act)`` describing the architecture of a
-                fully-connected neural network with :code:`d` hidden layers with
-                :code:`w` neurons and :code:`act` activation functions.
+                A (possibly trained) model instance or a tuple ``(d, w, act)``
+                describing the architecture of a fully-connected neural network
+                with :code:`d` hidden layers with :code:`w` neurons and
+                :code:`act` activation functions.
         """
         self.input_dimensions = input_dimensions
+        self.output_dimensions = len(quantiles)
         self.quantiles = np.array(quantiles)
 
         # Provided model is just an architecture tuple
         if type(model) == tuple:
             model = backend.FullyConnected(self.input_dimensions,
-                                           self.quantiles,
+                                           self.output_dimensions,
                                            model)
             if quantiles is None:
                 raise QuantnnException("If model is given as architecture tuple"
@@ -208,27 +207,8 @@ class QRNN:
                     "The provided model comes from a unsupported "
                     "backend module. ")
             set_backend(model.__module__.split(".")[0])
-
-            # Quantiles kwarg is provided.
-            if quantiles:
-                if hasattr(model, "quantiles"):
-                    if not all(quantiles == model.quantiles):
-                        raise QuantnnException(
-                            "Provided quantiles do not match those of "
-                            "the provided model."
-                        )
-                model.quantiles = quantiles
-            # Quantiles kwarg is not provided.
-            else:
-                if not hasattr(model, "quantiles"):
-                    raise QuantnnException(
-                        "If 'quantiles' kwarg is not provided, the provided"
-                        "neural network model must have a 'quantiles'"
-                        " attribute."
-                    )
-                self.quantiles = model.quantiles
-            model = backend.Model.create(input_dimensions,
-                                         self.quantiles,
+            model = backend.Model.create(self.input_dimensions,
+                                         self.output_dimensions,
                                          model)
 
         self.model = model
@@ -291,6 +271,7 @@ class QRNN:
             gpu(``bool``): Whether or not to try to run the training on the GPU.
         """
         return self.model.train(training_data,
+                                loss=backend.QuantileLoss(self.quantiles),
                                 validation_data=validation_data,
                                 batch_size=batch_size,
                                 sigma_noise=sigma_noise,
@@ -540,10 +521,10 @@ class QRNN:
 
             The loaded QRNN object.
         """
-        with open(path, 'rb') as f:
-            qrnn = pickle.load(f)
+        with open(path, 'rb') as file:
+            qrnn = pickle.load(file)
             backend = importlib.import_module(qrnn.backend)
-            model = backend.load_model(f, qrnn.quantiles)
+            model = backend.load_model(file)
             qrnn.model = model
         return qrnn
 
@@ -561,11 +542,10 @@ class QRNN:
                        store the model.
 
         """
-        f = open(path, "wb")
-        pickle.dump(self, f)
-        backend = importlib.import_module(self.backend)
-        backend.save_model(f, self.model)
-        f.close()
+        with open(path, "wb") as file:
+            pickle.dump(self, file)
+            backend = importlib.import_module(self.backend)
+            backend.save_model(file, self.model)
 
 
     def __getstate__(self):
