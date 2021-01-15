@@ -9,7 +9,8 @@ import numpy.ma as ma
 import itertools
 
 from quantnn.common import (UnknownArrayTypeException,
-                            UnknownModuleException)
+                            UnknownModuleException,
+                            InvalidDimensionException)
 
 BACKENDS = {"numpy": np,
             "numpy.ma.core": ma,
@@ -367,6 +368,14 @@ def trapz(module, y, x, dimension):
        The rank k-1 tensor containing the numerical integrals corresponding
        to y.
     """
+    if len(x) == y.shape[dimension] + 1:
+        dx = x[1:] - x[:-1]
+        n = len(y.shape)
+        dx_shape = [1] * n
+        dx_shape[dimension] = -1
+        dx = reshape(module, dx, dx_shape)
+        return module.sum(y * dx, dimension)
+
     if module in [np, ma, torch, jnp]:
         return module.trapz(y, x=x,  axis=dimension)
     elif module == tf:
@@ -422,7 +431,17 @@ def cumtrapz(module, y, x, dimension):
     selection_r = tuple(selection_r)
 
     dx = x[selection_r] - x[selection_l]
-    y_int = cumsum(module, 0.5 * (dx * y[selection_l] + dx * y[selection_r]), dimension)
+
+    if dx.shape[dimension] == y.shape[dimension]:
+        y_int = cumsum(module, dx * y, dimension)
+    elif dx.shape[dimension] == y.shape[dimension] - 1:
+        y_int = cumsum(module, 0.5 * (dx * y[selection_l] + dx * y[selection_r]), dimension)
+    else:
+        InvalidDimensionException(
+            "To integrate y over x, x must have exactly as many or one more "
+            "along dimension."
+        )
+
     return pad_zeros_left(module, y_int, 1, dimension)
 
 
