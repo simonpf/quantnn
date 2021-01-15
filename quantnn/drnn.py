@@ -114,5 +114,6 @@ class DRNN(NeuralNetworkModel):
         y_pred = self.model.predict(x)
         y_pred = softmax(y_pred, axis=-1)
         x = 0.5 * (self.bins[1:] + self.bins[:-1])
-        norm = np.tapz(y_pred, x=x, axis=-1, keepdims=True)
+        norm = np.trapz(y_pred, x=x, axis=-1)
+        norm = np.expand_dims(norm, -1)
         return y_pred / norm

@@ -5,6 +5,10 @@ quantnn.models.pytorch.common
 This module provides common functionality required to realize QRNNs in pytorch.
 """
 from inspect import signature
+import os
+import shutil
+import tarfile
+import tempfile
 
 import torch
 import numpy as np
@@ -39,7 +43,13 @@ def save_model(f, model):
             to store the data to.
         model(:code:`pytorch.nn.Moduel`): The pytorch model to save
     """
-    torch.save(model, f)
+    path = tempfile.mkdtemp()
+    filename = os.path.join(path, "keras_model.h5")
+    torch.save(model, filename)
+    archive = tarfile.TarFile(fileobj=f, mode="w")
+    archive.add(filename, arcname="keras_model.h5")
+    archive.close()
+    shutil.rmtree(path)
 
 
 def load_model(file):
@@ -55,7 +65,12 @@ def load_model(file):
     Returns:
         The loaded pytorch model.
     """
-    model = torch.load(file)
+    path = tempfile.mkdtemp()
+    tar_file = tarfile.TarFile(fileobj=file, mode="r")
+    tar_file.extract("keras_model.h5", path=path)
+    filename = os.path.join(path, "keras_model.h5")
+    model = torch.load(filename)
+    shutil.rmtree(path)
     return model
 
 

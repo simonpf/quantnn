@@ -203,6 +203,7 @@ def expand_dims(module, array, dimension):
         return module.unsqueeze(array, dimension)
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
 
+
 def pad_zeros(module, array, n, dimension):
     """
     Pads array with 0s along given dimension.
@@ -231,6 +232,35 @@ def pad_zeros(module, array, n, dimension):
         return module.nn.functional.pad(array, pad, "constant", 0.0)
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
 
+def pad_zeros_left(module, array, n, dimension):
+    """
+    Pads array with 0s along given dimension but only on left side.
+
+    Args:
+        module: Module object corresponding to the arrays.
+        array: The array to pad.
+        n: The number of zeros to add to each edge.
+        dimension: Along which dimension to add zeros.
+
+    Returns:
+        A new array with the given number of 0s added to
+        only the left edge along the given dimension.
+    """
+    if module in [np, ma, jnp, tf]:
+        n_dims = len(array.shape)
+        pad = [(0, 0)] * n_dims
+        pad[dimension] = (n, 0)
+        return module.pad(array, pad, mode="constant", constant_values=0.0)
+    elif module == torch:
+        n_dims = len(array.shape)
+        dimension = dimension % n_dims
+        pad = [0] * 2 * n_dims
+        pad[2 * n_dims - 2 - 2 * dimension] = n
+        pad[2 * n_dims - 1 - 2 * dimension] = 0
+        return module.nn.functional.pad(array, pad, "constant", 0.0)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+
 def as_type(module, x, y):
     """
     Converts data type of input ``x`` to that of input ``y``.
@@ -249,6 +279,7 @@ def as_type(module, x, y):
     elif module == torch:
         return x.to(y.dtype)
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
 
 def arange(module, start, end, step):
     """
@@ -273,6 +304,7 @@ def arange(module, start, end, step):
         return tf.range(start, end, step)
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
 
+
 def reshape(module, array, shape):
     """
     Reshape array into given shape.
@@ -291,6 +323,7 @@ def reshape(module, array, shape):
         return tf.reshape(array, shape)
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
 
+
 def _trapz(module, y, x, dimension):
     """
     Numeric integration using  trapezoidal rule.
@@ -305,7 +338,6 @@ def _trapz(module, y, x, dimension):
        The rank k-1 tensor containing the numerical integrals corresponding
        to y.
     """
-
     n = len(y.shape)
     x_shape = [1] * n
     x_shape[dimension] = -1
@@ -319,6 +351,7 @@ def _trapz(module, y, x, dimension):
 
     dx = x[selection_r] - x[selection_l]
     return module.math.reduce_sum(0.5 * (dx * y[selection_l] + dx * y[selection_r]), axis=dimension)
+
 
 def trapz(module, y, x, dimension):
     """
@@ -339,5 +372,57 @@ def trapz(module, y, x, dimension):
     elif module == tf:
         return _trapz(module, y, x, dimension)
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+def cumsum(module, y, dimension):
+    """
+    Cumulative sum along given axis.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        y: Rank k-tensor to accumulate along given dimension.
+        dimension: The dimension to sum over.
+
+    Return:
+       The rank k tensor containing the cumulative sum along the given dimension.
+    """
+    if module in [np, ma, torch, jnp]:
+        return module.cumsum(y, axis=dimension)
+    elif module == tf:
+        return tf.math.cumsum(y, dimension)
+
+def cumtrapz(module, y, x, dimension):
+    """
+    Cumulative integral along given axis.
+
+    The returned tensor has the same shape as the input tensor y and the
+    values correspond to the numeric integral computed up to the corresponding
+    value of the provided x vector assuming that the function described by y
+    is 0 outside of the domain described by x.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        y: Rank k-tensor to accumulate along given dimension.
+        dimension: The dimension to sum over.
+
+    Return:
+       The rank k tensor containing the cumulative integral along the
+       given dimension.
+    """
+    n = len(y.shape)
+    x_shape = [1] * n
+    x_shape[dimension] = -1
+    x = reshape(module, x, x_shape)
+
+    selection = [slice(0, None)] * n
+    selection_l = selection[:]
+    selection_l[dimension] = slice(0, -1)
+    selection_l = tuple(selection_l)
+    selection_r = selection[:]
+    selection_r[dimension] = slice(1, None)
+    selection_r = tuple(selection_r)
+
+    dx = x[selection_r] - x[selection_l]
+    y_int = cumsum(module, 0.5 * (dx * y[selection_l] + dx * y[selection_r]), dimension)
+    return pad_zeros_left(module, y_int, 1, dimension)
 
 

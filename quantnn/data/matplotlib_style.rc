@@ -200,11 +200,11 @@ mathtext.sf  : sans
 mathtext.fontset : dejavusans ## Should be 'dejavusans' (default),
                                ## 'dejavuserif', 'cm' (Computer Modern), 'stix',
                                ## 'stixsans' or 'custom'
-mathtext.fallback_to_cm : True  ## When True, use symbols from the Computer Modern
-                                 ## fonts when a symbol can not be found in one of
-                                 ## the custom math fonts.
-                                 ## fonts when a symbol can not be found in one of
-                                 ## the custom math fonts.
+mathtext.fallback : cm  ## When True, use symbols from the Computer Modern
+                        ## fonts when a symbol can not be found in one of
+                        ## the custom math fonts.
+                        ## fonts when a symbol can not be found in one of
+                        ## the custom math fonts.
 mathtext.default : it ## The default font to use for math.
                        ## Can be any of the LaTeX font names, including
                        ## the special name "regular" for the same font

@@ -12,7 +12,7 @@ import pickle
 import importlib
 
 import numpy as np
-import quantnn.functional as qf
+import quantnn.quantiles as qq
 from quantnn.neural_network_model import NeuralNetworkModel
 from quantnn.common import QuantnnException, UnsupportedBackendException
 
@@ -210,7 +210,7 @@ class QRNN(NeuralNetworkModel):
 
         """
         y_pred = self.predict(x)
-        return qf.cdf(y_pred, self.quantiles, quantile_axis=1)
+        return qq.cdf(y_pred, self.quantiles, quantile_axis=1)
 
     def calibration(self, *args, **kwargs):
         """
@@ -239,7 +239,7 @@ class QRNN(NeuralNetworkModel):
 
         """
         y_pred = self.predict(x)
-        return qf.pdf(y_pred, self.quantiles, quantile_axis=1)
+        return qq.pdf(y_pred, self.quantiles, quantile_axis=1)
 
     def sample_posterior(self, x, n_samples=1):
         r"""
@@ -261,7 +261,7 @@ class QRNN(NeuralNetworkModel):
             values of the posterior CDF :math: `F(x)` in `fs`.
         """
         y_pred = self.predict(x)
-        return qf.sample_posterior(y_pred,
+        return qq.sample_posterior(y_pred,
                                    self.quantiles,
                                    n_samples=n_samples,
                                    quantile_axis=1)
@@ -286,7 +286,7 @@ class QRNN(NeuralNetworkModel):
             values of the posterior CDF :math: `F(x)` in `fs`.
         """
         y_pred = self.predict(x)
-        return qf.sample_posterior_gaussian(y_pred,
+        return qq.sample_posterior_gaussian(y_pred,
                                             self.quantiles,
                                             n_samples=n_samples,
                                             quantile_axis=1)
@@ -305,7 +305,7 @@ class QRNN(NeuralNetworkModel):
             Array containing the posterior means for the provided inputs.
         """
         y_pred = self.predict(x)
-        return qf.posterior_mean(y_pred,
+        return qq.posterior_mean(y_pred,
                                  self.quantiles,
                                  quantile_axis=1)
 
@@ -341,7 +341,7 @@ class QRNN(NeuralNetworkModel):
             predictions in `y_pred`.
         """
         y_pred = self.predict(x)
-        return qf.crps(y_pred,
+        return qq.crps(y_pred,
                        self.quantiles,
                        y_true,
                        quantile_axis=1)
@@ -356,7 +356,7 @@ class QRNN(NeuralNetworkModel):
             threshold: The numeric threshold to apply for classification.
         """
         y_pred = self.predict(x)
-        return qf.probability_larger_than(y_pred,
+        return qq.probability_larger_than(y_pred,
                                           self.quantiles,
                                           y,
                                           quantile_axis=1)
@@ -372,7 +372,7 @@ class QRNN(NeuralNetworkModel):
             threshold: The numeric threshold to apply for classification.
         """
         y_pred = self.predict(x)
-        return qf.probability_less_than(y_pred,
+        return qq.probability_less_than(y_pred,
                                         self.quantiles,
                                         y,
                                         quantile_axis=1)

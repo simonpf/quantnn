@@ -11,10 +11,13 @@ from quantnn.generic import (get_array_module,
                              concatenate,
                              expand_dims,
                              pad_zeros,
+                             pad_zeros_left,
                              as_type,
                              arange,
                              reshape,
-                             trapz)
+                             trapz,
+                             cumsum,
+                             cumtrapz)
 
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_get_array_module(backend):
@@ -98,6 +101,19 @@ def test_pad_zeros(backend):
     assert result[-1, -2] == 0.0
 
 @pytest.mark.parametrize("backend", pytest.backends)
+def test_pad_zeros_left(backend):
+    """
+    Ensures that zero padding pads zeros only on left side.
+    """
+    array = backend.ones((10, 10))
+    result = pad_zeros_left(backend, array, 2, 1)
+    result = pad_zeros_left(backend, result, 1, 0)
+    assert result.shape[0] == 11
+    assert result.shape[1] == 12
+    assert result[0, 1] == 0.0
+    assert result[-1, -2] != 0.0
+
+@pytest.mark.parametrize("backend", pytest.backends)
 def test_as_type(backend):
     """
     Ensures that conversion of types works.
@@ -129,3 +145,24 @@ def test_trapz(backend):
     array = arange(backend, 0, 10.1, 1)
     result = trapz(backend, array, array, 0)
     assert result == 50
+
+@pytest.mark.parametrize("backend", pytest.backends)
+def test_cumsum(backend):
+    array = reshape(backend, arange(backend, 0, 10.1, 1), (11, 1))
+    result = cumsum(backend, array, 0)
+    assert result[-1, 0] == 55
+    result = cumsum(backend, array, 1)
+    assert result[-1, 0] == 10
+
+@pytest.mark.parametrize("backend", pytest.backends)
+def test_cumtrapz(backend):
+    y = reshape(backend, arange(backend, 0, 10.1, 1), (11, 1))
+    x = arange(backend, 0, 10.1, 1)
+
+    result = cumtrapz(backend, y, x, 0)
+    assert result[0, 0] == 0.0
+    assert result[-1, 0] == 50.0
+
+    result = cumtrapz(backend, y, 2.0 * x, 0)
+    assert result[0, 0] == 0.0
+    assert result[-1, 0] == 100.0

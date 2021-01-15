@@ -1,13 +1,16 @@
+"""
+Tests for the quantnn.quantiles module.
+"""
 import einops as eo
 import numpy as np
 import pytest
 from quantnn.generic import sample_uniform, to_array, arange, reshape
-from quantnn.functional import (cdf, pdf, posterior_mean, crps,
-                                probability_less_than,
-                                probability_larger_than,
-                                sample_posterior,
-                                sample_posterior_gaussian,
-                                quantile_loss)
+from quantnn.quantiles import (cdf, pdf, posterior_mean, crps,
+                               probability_less_than,
+                               probability_larger_than,
+                               sample_posterior,
+                               sample_posterior_gaussian,
+                               quantile_loss)
 
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_cdf(xp):
