@@ -99,3 +99,25 @@ class TestQrnn:
             x_pred = x_pred.detach()
 
         assert np.allclose(x_pred, x_pred_loaded)
+
+    @pytest.mark.skipif(not "pytorch" in backends,
+                        reason="No PyTorch backend.")
+    def test_save_qrnn_pytorch_model(self):
+        """
+        Test saving and loading of QRNNs.
+        """
+        from torch import nn
+        model = nn.Sequential(nn.Linear(self.x_train.shape[1], 9))
+        qrnn = QRNN(np.linspace(0.05, 0.95, 10),
+                    model=model)
+        f = tempfile.NamedTemporaryFile()
+        qrnn.save(f.name)
+        qrnn_loaded = QRNN.load(f.name)
+
+        x_pred = qrnn.predict(self.x_train)
+        x_pred_loaded = qrnn.predict(self.x_train)
+
+        if not type(x_pred) == np.ndarray:
+            x_pred = x_pred.detach()
+
+        assert np.allclose(x_pred, x_pred_loaded)

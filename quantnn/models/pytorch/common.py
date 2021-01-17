@@ -270,9 +270,9 @@ class PytorchModel:
                 "backend")
         if isinstance(model, PytorchModel):
             return model
-        new_model = _make_mixin_class(model)()
-        new_model.__dict__.update(model.__dict__)
-        return new_model
+        new_model = PytorchModel()
+        model.__class__ = type("__QuantnnMixin__", (PytorchModel, type(model)), {})
+        return model
 
     def __init__(self):
         """
