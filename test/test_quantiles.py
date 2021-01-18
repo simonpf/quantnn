@@ -5,7 +5,7 @@ import einops as eo
 import numpy as np
 import pytest
 from quantnn.generic import sample_uniform, to_array, arange, reshape
-from quantnn.quantiles import (cdf, pdf, posterior_mean, crps,
+from quantnn.quantiles import (cdf, pdf, pdf_binned, posterior_mean, crps,
                                probability_less_than,
                                probability_larger_than,
                                sample_posterior,
@@ -113,6 +113,93 @@ def test_pdf(xp):
     assert np.all(np.isclose(y_pdf[:, 0, :], xp.zeros_like(y_pdf[:, 0, :])))
     assert np.all(np.isclose(y_pdf[:, -1, :], xp.zeros_like(y_pdf[:, -1, :])))
     assert np.all(np.isclose(y_pdf[:, 2:-2, :], 0.1 * xp.ones_like(y_pdf[:, 2:-2, :])))
+
+@pytest.mark.parametrize("xp", pytest.backends)
+def test_pdf_binned(xp):
+    """
+    Tests the calculation of the pdf for different shapes of input
+    arrays.
+    """
+
+    #
+    # 1D predictions
+    #
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    y_pred = arange(xp, 1.0, 9.1, 1.0)
+    bins = arange(xp, 1.0, 9.01, 0.1)
+    y_pdf_binned = pdf_binned(y_pred, quantiles, bins)
+    assert np.all(np.isclose(y_pdf_binned, 0.1, 1e-3))
+
+    # Test extrapolation left
+    bins = arange(xp, -2.0, -1.0, 0.1)
+    y_pdf_binned = pdf_binned(y_pred, quantiles, bins)
+    assert np.all(np.isclose(y_pdf_binned, 0.0, 1e-3))
+
+    # Test extrapolation right
+    bins = arange(xp, 11.1, 12.0, 0.1)
+    y_pdf_binned = pdf_binned(y_pred, quantiles, bins)
+    assert np.all(np.isclose(y_pdf_binned, 0.0, 1e-3))
+
+    #
+    # 2D predictions
+    #
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> w q', w=10)
+    bins = arange(xp, 1.0, 9.01, 0.1)
+    y_pdf_binned = pdf_binned(y_pred, quantiles, bins)
+    assert np.all(np.isclose(y_pdf_binned, 0.1, 1e-3))
+
+    # Test extrapolation left
+    bins = arange(xp, -2.0, -1.0, 0.1)
+    y_pdf_binned = pdf_binned(y_pred, quantiles, bins)
+    assert np.all(np.isclose(y_pdf_binned, 0.0, 1e-3))
+
+    # Test extrapolation right
+    bins = arange(xp, 11.1, 12.0, 0.1)
+    y_pdf_binned = pdf_binned(y_pred, quantiles, bins)
+    assert np.all(np.isclose(y_pdf_binned, 0.0, 1e-3))
+
+    #
+    # 3D predictions, quantiles along last axis
+    #
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> h w q', h=10, w=10)
+    bins = arange(xp, 1.0, 9.01, 0.1)
+    y_pdf_binned = pdf_binned(y_pred, quantiles, bins, quantile_axis=-1)
+    assert np.all(np.isclose(y_pdf_binned, 0.1, 1e-3))
+
+    # Test extrapolation left
+    bins = arange(xp, -2.0, -1.0, 0.1)
+    y_pdf_binned = pdf_binned(y_pred, quantiles, bins, quantile_axis=-1)
+    assert np.all(np.isclose(y_pdf_binned, 0.0, 1e-3))
+
+    # Test extrapolation right
+    bins = arange(xp, 11.1, 12.0, 0.1)
+    y_pdf_binned = pdf_binned(y_pred, quantiles, bins, quantile_axis=-1)
+    assert np.all(np.isclose(y_pdf_binned, 0.0, 1e-3))
+
+    #
+    # 3D predictions, quantiles along first axis
+    #
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> q h w', h=10, w=10)
+    bins = arange(xp, 1.0, 9.01, 0.1)
+    y_pdf_binned = pdf_binned(y_pred, quantiles, bins, quantile_axis=0)
+    assert np.all(np.isclose(y_pdf_binned, 0.1, 1e-3))
+
+    # Test extrapolation left
+    bins = arange(xp, -2.0, -1.0, 0.1)
+    y_pdf_binned = pdf_binned(y_pred, quantiles, bins, quantile_axis=0)
+    assert np.all(np.isclose(y_pdf_binned, 0.0, 1e-3))
+
+    # Test extrapolation right
+    bins = arange(xp, 11.1, 12.0, 0.1)
+    y_pdf_binned = pdf_binned(y_pred, quantiles, bins, quantile_axis=0)
+    assert np.all(np.isclose(y_pdf_binned, 0.0, 1e-3))
 
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_posterior_mean(xp):

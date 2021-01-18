@@ -161,6 +161,116 @@ def pdf(y_pred,
 
     return x_pdf, y_pdf
 
+def pdf_binned(y_pred,
+               quantiles,
+               bins,
+               quantile_axis=1):
+    """
+    Calculate binned representation of the posterior probability density
+    function (PDF).
+
+    The binned PDF is simple calculated by linearly interpolating the
+    piece-wise linear PDF computed using the :py:meth`pdf` method.
+
+    Args:
+        y_pred: Rank-k Tensor containing the predicted quantiles along the
+            quantile axis.
+        quantiles: The quantile fractions corresponding to the predicted
+            quantiles in y_pred.
+        bins: Rank-1 tensor containing the ``n_bins`` boundaries for the bins
+            to use to bin the PDF.
+        quantile_axis: The axis of y_pred along which the predicted
+            quantiles are located.
+
+    Returns:
+        Rank-k tensor with ``n_bins - 1`` elements along ``quantile_axis``
+        containing the probability of the result to fall between the
+        corresponding bin edges.
+    """
+    if len(y_pred.shape) == 1:
+        quantile_axis = 0
+
+    xp = get_array_module(y_pred)
+    n = len(y_pred.shape)
+    x_cdf, y_cdf = cdf(y_pred, quantiles, quantile_axis=quantile_axis)
+
+    y_cdf_shape = [1] * n
+    y_cdf_shape[quantile_axis] = -1
+    y_cdf = reshape(xp, y_cdf, y_cdf_shape)
+
+    selection_l = [slice(0, None)] * n
+    selection_l[quantile_axis] = slice(0, -1)
+    selection_l = tuple(selection_l)
+    selection_r = [slice(0, None)] * n
+    selection_r[quantile_axis] = slice(1, None)
+    selection_r = tuple(selection_r)
+
+    selection_le = [slice(0, None)] * n
+    selection_le[quantile_axis] = 0
+    selection_le = tuple(selection_le)
+
+    selection_re = [slice(0, None)] * n
+    selection_re[quantile_axis] = -1
+    selection_re = tuple(selection_re)
+
+    y_pdf_binned = []
+
+    #
+    # Interpolate CDF for leftmost bin boundary.
+    #
+    b_l = bins[0]
+    mask_r = as_type(xp, (x_cdf[selection_r] >= b_l), y_cdf)
+    mask_l = as_type(xp, (x_cdf[selection_l] < b_l), y_cdf)
+    mask = mask_l * mask_r
+
+    mask_xr = as_type(xp, xp.sum(mask_r, quantile_axis) == 0.0, mask_r)
+    mask_xl = as_type(xp, xp.sum(mask_l, quantile_axis) == 0.0, mask_l)
+
+    x_cdf_l = xp.sum(x_cdf[selection_l] * mask, quantile_axis)
+    x_cdf_r = xp.sum(x_cdf[selection_r] * mask, quantile_axis)
+    d = (x_cdf_r - x_cdf_l) + (1.0 - xp.sum(mask, quantile_axis))
+    w_cdf_l = (x_cdf_r - b_l) / d
+    w_cdf_r = (b_l - x_cdf_l) / d
+
+    y_cdf_l = (xp.sum(mask * y_cdf[selection_l] * mask, quantile_axis) * w_cdf_l
+               + xp.sum(mask * y_cdf[selection_r] * mask, quantile_axis) * w_cdf_r
+               + mask_xl * y_cdf[selection_le]
+               + mask_xr * y_cdf[selection_re])
+
+
+    for i in range(len(bins) - 1):
+
+        b_r = bins[i + 1]
+
+        #
+        # Interpolate CDF for right bin boundary.
+        #
+        mask_r = as_type(xp, (x_cdf[selection_r] >= b_r), y_cdf)
+        mask_l = as_type(xp, (x_cdf[selection_l] < b_r), y_cdf)
+        mask = mask_l * mask_r
+
+        mask_xr = as_type(xp, xp.sum(mask_r, quantile_axis) == 0.0, mask_r)
+        mask_xl = as_type(xp, xp.sum(mask_l, quantile_axis) == 0.0, mask_l)
+
+
+        x_cdf_l = xp.sum(x_cdf[selection_l] * mask, quantile_axis)
+        x_cdf_r = xp.sum(x_cdf[selection_r] * mask, quantile_axis)
+        d = (x_cdf_r - x_cdf_l) + (1.0 - xp.sum(mask, quantile_axis))
+        w_cdf_l = (x_cdf_r - b_r) / d
+        w_cdf_r = (b_r - x_cdf_l) / d
+
+        y_cdf_r = (xp.sum(mask * y_cdf[selection_l] * mask, quantile_axis) * w_cdf_l
+                   + xp.sum(mask * y_cdf[selection_r] * mask, quantile_axis) * w_cdf_r
+                   + mask_xl * y_cdf[selection_le]
+                   + mask_xr * y_cdf[selection_re])
+
+        dy_cdf = expand_dims(xp, y_cdf_r - y_cdf_l, quantile_axis)
+        y_pdf_binned.append(dy_cdf / (b_r - b_l))
+        y_cdf_l = y_cdf_r
+        b_l = b_r
+
+    return concatenate(xp, y_pdf_binned, quantile_axis)
+
 
 def posterior_mean(y_pred, quantiles, quantile_axis=1):
     r"""
