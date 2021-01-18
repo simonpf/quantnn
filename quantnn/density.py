@@ -116,6 +116,15 @@ def posterior_quantiles(y_pred,
     y_q = concatenate(xp, y_qs, bin_axis)
     return y_q
 
+def posterior_median(y_pred,
+                     bins,
+                     bin_axis=1):
+    quantiles = posterior_quantiles(y_pred, bins, [0.5], bin_axis=bin_axis)
+    n = len(y_pred.shape)
+    selection = [slice(0, None)] * n
+    selection[bin_axis] = 0
+    return quantiles[tuple(selection)]
+
 def probability_larger_than(y_pred,
                             bins,
                             quantiles,

@@ -11,7 +11,8 @@ import numpy as np
 from scipy.stats import norm
 
 from quantnn.common import InvalidDimensionException
-from quantnn.generic import (get_array_module,
+from quantnn.generic import (arange,
+                             get_array_module,
                              to_array,
                              sample_uniform,
                              sample_gaussian,
@@ -294,6 +295,112 @@ def posterior_mean(y_pred, quantiles, quantile_axis=1):
 
     x_cdf, y_cdf = cdf(y_pred, quantiles, quantile_axis=quantile_axis)
     return trapz(xp, x_cdf, y_cdf, quantile_axis)
+
+def posterior_median(y_pred, quantiles, quantile_axis=1):
+    r"""
+    Computes the median of the posterior distribution defined by an array
+    of predicted quantiles.
+
+    Args:
+        y_pred: A rank-k tensor of predicted quantiles with the quantiles
+             located along the axis given by ``quantile_axis``.
+        quantiles: The quantile fractions corresponding to the quantiles
+             located along the quantile axis.
+        quantile_axis: The axis along which the quantiles are located.
+
+    Returns:
+
+        Rank k-1 tensor containing the posterior median for the provided inputs.
+    """
+    if len(y_pred.shape) == 1:
+        quantile_axis = 0
+    xp = get_array_module(y_pred)
+
+    n = len(y_pred.shape)
+    indices = arange(xp, 0, len(quantiles), 1.0)
+    mask = (quantiles[1:] > 0.5) * (quantiles[:-1] <= 0.5)
+
+    selection = [slice(0, None)] * n
+
+    index = indices[:-1][mask]
+    if len(index) == 0:
+        if quantiles[0] < 0.5:
+            selection[quantile_axis] = 0
+            selection_l = tuple(selection)
+            return y_pred[selection_l]
+        else:
+            selection[quantile_axis] = -1
+            selection_r = tuple(selection)
+            return y_pred[selection_r]
+
+    index = int(index[0])
+    d = quantiles[index + 1] - quantiles[index]
+    w_l = (quantiles[index + 1] - 0.5) / d
+    w_r = (0.5 - quantiles[index]) / d
+
+    selection = [slice(0, None)] * n
+    selection[quantile_axis] = index
+    selection_l = tuple(selection)
+    selection[quantile_axis] = index + 1
+    selection_r = tuple(selection)
+
+    return w_l * y_pred[selection_l] + w_r * y_pred[selection_r]
+
+def posterior_quantiles(y_pred, quantiles, new_quantiles, quantile_axis=1):
+    r"""
+    Computes the median of the posterior distribution defined by an array
+    of predicted quantiles.
+
+    Args:
+        y_pred: A rank-k tensor of predicted quantiles with the quantiles
+             located along the axis given by ``quantile_axis``.
+        quantiles: The quantile fractions corresponding to the quantiles
+             located along the quantile axis.
+        quantile_axis: The axis along which the quantiles are located.
+
+    Returns:
+
+        Rank k-1 tensor containing the posterior median for the provided inputs.
+    """
+    if len(y_pred.shape) == 1:
+        quantile_axis = 0
+    xp = get_array_module(y_pred)
+
+    n = len(y_pred.shape)
+    indices = arange(xp, 0, len(quantiles), 1.0)
+    selection = [slice(0, None)] * n
+
+    y_qs = []
+
+    for q in new_quantiles:
+        mask = (quantiles[1:] > q) * (quantiles[:-1] <= q)
+        index = indices[:-1][mask]
+        if len(index) == 0:
+            if quantiles[0] < q:
+                selection[quantile_axis] = 0
+                selection_l = tuple(selection)
+                return y_pred[selection_l]
+            else:
+                selection[quantile_axis] = -1
+                selection_r = tuple(selection)
+                return y_pred[selection_r]
+
+        index = int(index[0])
+        d = quantiles[index + 1] - quantiles[index]
+        w_l = (quantiles[index + 1] - q) / d
+        w_r = (q - quantiles[index]) / d
+
+        selection = [slice(0, None)] * n
+        selection[quantile_axis] = index
+        selection_l = tuple(selection)
+        selection[quantile_axis] = index + 1
+        selection_r = tuple(selection)
+
+        y_q = w_l * y_pred[selection_l] + w_r * y_pred[selection_r]
+        y_q = expand_dims(xp, y_q, quantile_axis)
+        y_qs.append(y_q)
+
+    return concatenate(xp, y_qs, quantile_axis)
 
 def crps(y_pred, quantiles, y_true, quantile_axis=1):
     r"""
