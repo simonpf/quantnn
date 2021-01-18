@@ -48,7 +48,7 @@ class TestQrnn:
         set_default_backend(backend)
         qrnn = QRNN(np.linspace(0.05, 0.95, 10),
                     input_dimensions=self.x_train.shape[1])
-        qrnn.train((self.x_train, self.y_train), n_epochs=1)
+        qrnn.train((self.x_train, self.y_train), n_epochs=2)
 
         qrnn.predict(self.x_train)
 
@@ -78,7 +78,7 @@ class TestQrnn:
         data = backend.BatchedDataset((self.x_train, self.y_train), 256)
         qrnn = QRNN(np.linspace(0.05, 0.95, 10),
                     input_dimensions=self.x_train.shape[1])
-        qrnn.train(data, n_epochs=1)
+        qrnn.train(data, n_epochs=2)
 
     @pytest.mark.parametrize("backend", backends)
     def test_save_qrnn(self, backend):
@@ -107,16 +107,23 @@ class TestQrnn:
         Test saving and loading of QRNNs.
         """
         from torch import nn
-        model = nn.Sequential(nn.Linear(self.x_train.shape[1], 9))
-        qrnn = QRNN(np.linspace(0.05, 0.95, 10),
-                    model=model)
+        quantiles = np.linspace(0.05, 0.95, 10)
+        model = nn.Sequential(nn.Linear(self.x_train.shape[1], quantiles.size))
+        qrnn = QRNN(quantiles, model=model)
+
+        # Train the model
+        data = quantnn.models.pytorch.BatchedDataset((self.x_train, self.y_train), 256)
+        qrnn.train(data, n_epochs=2)
+        assert qrnn.model.training_errors[1] < qrnn.model.training_errors[0]
+
+        # Save the model
         f = tempfile.NamedTemporaryFile()
         qrnn.save(f.name)
         qrnn_loaded = QRNN.load(f.name)
 
+        # Compare predictions from saved and loaded model.
         x_pred = qrnn.predict(self.x_train)
         x_pred_loaded = qrnn.predict(self.x_train)
-
         if not type(x_pred) == np.ndarray:
             x_pred = x_pred.detach()
 

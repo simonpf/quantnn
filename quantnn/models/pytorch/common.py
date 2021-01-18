@@ -116,12 +116,21 @@ class BatchedDataset(Dataset):
     def __init__(self, training_data, batch_size=None):
         x, y = training_data
 
-        self.x = torch.tensor(x, dtype=torch.float)
+        # x
+        if isinstance(x, torch.Tensor):
+            self.x = x.clone().detach().float()
+        else:
+            self.x = torch.tensor(x, dtype=torch.float)
+
+        # y
         dtype_y = torch.float
         if "int" in str(y.dtype):
             dtype_y = torch.long
+        if isinstance(y, torch.Tensor):
+            self.y = y.clone().detach().float()
+        else:
+            self.y = torch.tensor(y, dtype=dtype_y)
 
-        self.y = torch.tensor(y, dtype=dtype_y)
         if batch_size:
             self.batch_size = batch_size
         else:
@@ -272,6 +281,7 @@ class PytorchModel:
             return model
         new_model = PytorchModel()
         model.__class__ = type("__QuantnnMixin__", (PytorchModel, type(model)), {})
+        PytorchModel.__init__(model)
         return model
 
     def __init__(self):
@@ -282,7 +292,6 @@ class PytorchModel:
         """
         self.training_errors = []
         self.validation_errors = []
-        self.backend = "quantnn.models.pytorch"
 
     def _make_adversarial_samples(self, x, y, eps):
         self.zero_grad()
