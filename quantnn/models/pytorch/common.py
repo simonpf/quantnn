@@ -127,7 +127,7 @@ class BatchedDataset(Dataset):
         if "int" in str(y.dtype):
             dtype_y = torch.long
         if isinstance(y, torch.Tensor):
-            self.y = y.clone().detach().float()
+            self.y = y.clone().detach().to(dtype=dtype_y)
         else:
             self.y = torch.tensor(y, dtype=dtype_y)
 
