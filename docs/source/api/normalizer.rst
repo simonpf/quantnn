@@ -1,0 +1,2 @@
+.. automodule:: quantnn.normalizer
+   :members:

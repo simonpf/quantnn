@@ -148,7 +148,6 @@ class QRNN(NeuralNetworkModel):
             gpu(``bool``): Whether or not to try to run the training on the GPU.
         """
         loss = self.backend.QuantileLoss(self.quantiles)
-        print(loss)
         return self.model.train(training_data,
                                 validation_data=validation_data,
                                 loss=loss,

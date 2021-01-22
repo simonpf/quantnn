@@ -51,8 +51,9 @@ html_theme_options = {
     "navigation_bar_minimum_height": "15vh",
     "navigation_bar_targets": ["index.html",
                                "user_guide.html",
-                               "examples.html"],
-    "navigation_bar_names": ["Home", "User guide", "Examples"],
+                               "examples.html",
+                               "api_reference.html"],
+    "navigation_bar_names": ["Home", "User guide", "Examples", "API Reference"],
     "navigation_bar_element_padding": "40px",
     "navigation_bar_background_color": "#333333",
     "navigation_bar_element_hover_color": "#ff5050",
@@ -62,7 +63,8 @@ html_theme_options = {
 
     "sidebars_right": [],
     "sidebars_left":["localtoc.html", "globaltoc.html"],
-    "globaltoc_maxdepth": 1
+    "globaltoc_maxdepth": 1,
+    "inline_code_border_radius": "2px"
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,

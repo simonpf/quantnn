@@ -6,27 +6,41 @@
 quantnn
 =======
 
-The **quantnn** package provides an implementation of **quantile regression neural
-networks (QRNNs)** in Python. QRNNs can be used to estimate the epistemic uncertainty
-in a regression task by learning to predict the quantiles :math:`y_\tau` of the conditional
-distribution :math:`p(y | \mathbf{x})`.
+**quantnn** is a package for probabilistic modeling using (deterministic) deep
+neural networks. It currently provides implementations of two distinct methods to
+predict the conditional distribution :math:`P(y|x)` of the output :math:`y`
+given the input :math:`x`:
 
-.. figure:: quantiles.svg
-   :width: 600
-   :alt: Plot of empirical and predicted quantiles.
+1. **Quantile regression neural networks (QRNNs)** predict the quantiles
+   of the conditional distribution :math:`P(y|x)`, which can be used to estimate its
+   cumulative distribution function (CDF).
 
-   Example of a QRNN applied to predict the quantiles of a function :math:`y` with heteroscedastic
-   noise.
+   .. figure:: cdf_qrnn.png
+    :width: 800
+    :alt: A conditional Cumulative distribution function predicted using a QRNN.
+
+    Example of a QRNN applied to predict the quantiles of a function with
+    heteroscedastic noise.
+
+2. **Density regression neural networks (DRNNs)**  predict a binned
+   version of the probability density function (PDF) of :math:`P(y|x)`.
+
+   .. figure:: pdf_drnn.png
+      :width: 800
+      :alt: A conditional probability density function predicted using a DRNN.
+
+      Example of a DRNN applied to predict the quantiles of a function with
+      heteroscedastic noise.
 
 
 
 Features
 --------
 
-- A flexible, high-level implementation of QRNNs currently supporting PyTorch and Keras (Tensorflow)
+- A flexible, high-level implementation of QRNN and DRNNs supporting both PyTorch and Keras (Tensorflow)
   as backends.
-- Generic functions to manipulate and process quantile predictions such as computing the posterior mean
-  or classifying inputs.
+- Generic functions to manipulate and process QRNN and DRNN predictions such as computing the
+  posterior mean or classifying inputs.
 
 Installation
 ------------
@@ -46,6 +60,7 @@ Content
 
    user_guide
    examples
+   api_reference
 
 
 
