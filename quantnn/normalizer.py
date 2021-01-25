@@ -34,7 +34,10 @@ class Normalizer:
         self.means = {}
         self.std_devs = {}
 
-        self.exclude_indices = exclude_indices
+        if exclude_indices is None:
+            self.exclude_indices = []
+        else:
+            self.exclude_indices = exclude_indices
         self.feature_axis = feature_axis
         selection = [slice(0, None)] * len(x.shape)
 
@@ -63,11 +66,14 @@ class Normalizer:
         for i in range(n):
             selection[self.feature_axis] = i
             if i in self.means:
-                x_normed = ((x[tuple(selection)] - self.means[i])
-                            / self.std_devs[i])
+                x_slice = x[tuple(selection)].astype(np.float64)
+                if np.isclose(self.std_devs[i], 0.0):
+                    x_normed = -1.0 * np.ones_like(x_slice)
+                else:
+                    x_normed = ((x_slice - self.means[i]) / self.std_devs[i])
             else:
                 x_normed = x[tuple(selection)]
             x_normed = np.expand_dims(x_normed, self.feature_axis)
-            normalized.append(x_normed)
+            normalized.append(x_normed.astype(np.float32))
 
         return np.concatenate(normalized, self.feature_axis)
