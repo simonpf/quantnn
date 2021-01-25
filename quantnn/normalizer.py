@@ -60,11 +60,13 @@ class Normalizer:
         n = x.shape[self.feature_axis]
         selection = [slice(0, None)] * len(x.shape)
 
-        indices = [i for i in range(n) if not i in self.exclude_indices]
-        for i in indices:
-
+        for i in range(n):
             selection[self.feature_axis] = i
-            x_normed = (x[tuple(selection)] - self.means[i]) / self.std_devs[i]
+            if i in self.means:
+                x_normed = ((x[tuple(selection)] - self.means[i])
+                            / self.std_devs[i])
+            else:
+                x_normed = x[tuple(selection)]
             x_normed = np.expand_dims(x_normed, self.feature_axis)
             normalized.append(x_normed)
 
