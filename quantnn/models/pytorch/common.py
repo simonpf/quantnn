@@ -69,7 +69,7 @@ def load_model(file):
     tar_file = tarfile.TarFile(fileobj=file, mode="r")
     tar_file.extract("keras_model.h5", path=path)
     filename = os.path.join(path, "keras_model.h5")
-    model = torch.load(filename)
+    model = torch.load(filename, map_location=torch.device("cpu"))
     shutil.rmtree(path)
     return model
 
