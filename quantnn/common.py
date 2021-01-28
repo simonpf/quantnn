@@ -31,3 +31,10 @@ class InvalidDimensionException(QuantnnException):
 class ModelNotSupported(QuantnnException):
     """Thrown when a provided model isn't supported by the chosen backend."""
 
+class MissingAuthenticationInfo(QuantnnException):
+    """Thrown when required authentication information is not available."""
+
+class DatasetError(QuantnnException):
+    """
+    Thrown when a given dataset object does not provide the expected interface.
+    """

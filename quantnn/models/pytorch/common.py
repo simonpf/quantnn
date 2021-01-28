@@ -405,12 +405,16 @@ class PytorchModel:
                     self.optimizer.step()
 
                 if j % 100:
-                    print(
-                        "Epoch {} / {}: Batch {} / {}, Training error: {:.3f}".format(
-                            i, n_epochs, j, len(training_data), error / n
-                        ),
-                        end="\r",
-                    )
+                    try:
+                        print(
+                            "Epoch {} / {}: Batch {} / {}, Training error: {:.3f}".format(
+                                i, n_epochs, j, len(training_data), error / n
+                            ),
+                            end="\r",
+                        )
+                    except TypeError:
+                        pass
+
 
             # Save training error
             training_errors.append(error / n)
