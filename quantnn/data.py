@@ -1,89 +1,16 @@
-from collections.abc import Iterable, Mapping, Sequence
-from contextlib import contextmanager
-from concurrent.futures import ThreadPoolExecutor
+from collections import OrderedDict
+from collections.abc import Iterable, Mapping
+from concurrent.futures import ProcessPoolExecutor
 import multiprocessing
-import os
-from pathlib import Path
+from queue import Queue
 import tempfile
 
 import numpy as np
-import paramiko
-from quantnn.common import MissingAuthenticationInfo, DatasetError
-from torch.utils.data import get_worker_info, IterableDataset
+from quantnn.common import DatasetError
+from quantnn.files import sftp
 
 _DATASET_LOCK = multiprocessing.Lock()
 
-
-def get_login_info():
-    """
-    Retrieves SFTP login info from the 'QUANTNN_SFTP_USER' AND
-    'QUANTNN_SFTP_PASSWORD' environment variables.
-
-    Returns:
-
-        Tuple ``(user_name, password)`` containing the SFTP user name and
-        password retrieved from the environment variables.
-
-    Raises:
-
-        MissingAuthenticationInfo exception when required information is
-        not provided as environment variable.
-    """
-    user_name = os.environ.get("QUANTNN_SFTP_USER")
-    password = os.environ.get("QUANTNN_SFTP_PASSWORD")
-    if user_name is None or password is None:
-        raise MissingAuthenticationInfo(
-            "SFTPStream dataset requires the 'QUANTNN_SFTP' and "
-            "'QUANTNN_SFTP_PASSWORD' to be set."
-        )
-    return user_name, password
-
-@contextmanager
-def get_sftp_connection(host):
-    """
-    Contextmanager to open and close an SFTP connection to
-    a given host.
-
-    Login credentials for the SFTP server are retrieved from the
-    'QUANTNN_SFTP_USER' and 'QUANTNN_SFTP_PASSWORD' environment variables.
-
-    Args:
-        host: IP address of the host.
-
-    Returns:
-        ``paramiko.SFTP`` object providing access to the open SFTP connection.
-    """
-    user_name, password = get_login_info()
-    transport = None
-    sftp = None
-    try:
-        transport = paramiko.Transport(host)
-        transport.connect(username=user_name,
-                          password=password)
-        sftp = paramiko.SFTPClient.from_transport(transport)
-        yield sftp
-    finally:
-        if sftp:
-            sftp.close()
-        if transport:
-            transport.close()
-
-def list_files(host, path):
-    """
-    List files in SFTP folder.
-
-    Args:
-        host: IP address of the host.
-        path: The path for which to list the files
-
-
-    Returns:
-        List of absolute paths to the files discovered under
-        the given path.
-    """
-    with get_sftp_connection(host) as sftp:
-        files = sftp.listdir(path)
-    return [Path(path) / f for f in files]
 
 def iterate_dataset(dataset):
     """
@@ -105,7 +32,9 @@ def iterate_dataset(dataset):
         for i in range(len(dataset)):
             yield dataset[i]
     else:
-        raise DatasetError("The provided dataset is neither iterable nor a sequence.")
+        raise DatasetError("The provided dataset is neither iterable nor "
+                           "a sequence.")
+
 
 def open_dataset(host,
                  path,
@@ -141,83 +70,122 @@ def open_dataset(host,
         raise ValueError("Provided postitional arguments 'kwargs' must be "
                          "a mapping.")
 
-    with tempfile.TemporaryDirectory() as directory:
-        destination = Path(directory) / path.name
-        with get_sftp_connection(host) as sftp:
-            sftp.get(str(path), str(destination))
-            with _DATASET_LOCK:
-                dataset = dataset_factory(destination, *args, **kwargs)
+    with sftp.download_file(host, path) as file:
+        dataset = dataset_factory(file, *args, **kwargs)
     return dataset
 
 
-class SFTPStream(IterableDataset):
+class SFTPStream:
+    """
+    Datset class to stream data via SFTP.
+
+    This class can be used to iterate over multiple datasets located
+    on a remote machine that is accessible via SFTP. It provides an
+    iterable over the batches in all of the files in that folder.
+
+
+    """
     def __init__(self,
                  host,
                  path,
                  dataset_factory,
                  args=None,
-                 kwargs=None):
+                 kwargs=None,
+                 n_workers=4):
+        """
+        Create new SFTPStream dataset.
+
+        Args:
+            host: The IP address of the host as string.
+            path: The path on the SFTP server where the datasets are located.
+            dataset_factory: The function used to construct the dataset
+                 instances for each file.
+            args: Additional, positional arguments passed to
+                 ``dataset_factory`` following the local file path of the
+                 local copy of the dataset file.
+            kwargs: Dictionary of keyword arguments passed to the dataset
+                 factory.
+        """
         self.host = host
         self.path = path
         self.dataset_factory = dataset_factory
         self.args = args
         self.kwargs = kwargs
-        self.files = list_files(self.host, self.path)
-        # Sort datasets into random order.
-        self.files = np.random.permutation(self.files)
+        self.n_workers = n_workers
+        self.files = sftp.list_files(self.host, self.path)
 
+        # Sort datasets into random order.
+        self.epoch_queue = Queue()
+        self.active_queue = Queue()
+        self.cache = OrderedDict()
+        self.pool = ProcessPoolExecutor(max_workers=self.n_workers)
+        self._prefetch()
+
+    def _prefetch(self):
+        if self.epoch_queue.empty():
+            for f in np.random.permutation(self.files):
+                self.epoch_queue.put(f)
+
+        for i in range(self.n_workers):
+
+            if not self.epoch_queue.empty():
+
+                file = self.epoch_queue.get()
+                self.active_queue.put(file)
+
+                if file in self.cache:
+                    continue
+                else:
+                    if len(self.cache) > self.n_workers:
+                        self.cache.popitem(last=False)
+                    arguments = [self.host, file, self.dataset_factory,
+                                 self.args, self.kwargs]
+                    self.cache[file] = self.pool.submit(open_dataset, *arguments)
+
+    def get_next_dataset(self):
+        """
+        Returns the next dataset of the current epoch and issues the prefetch
+        of the following data.
+
+        Returns:
+            The dataset instance that is the next in the random sequence
+            of the current epoch.
+        """
+
+        #
+        # Prepare download of next file.
+        #
+
+        if self.epoch_queue.empty():
+            for f in np.random.permutation(self.files):
+                self.epoch_queue.put(f)
+
+        file = self.epoch_queue.get()
+        self.active_queue.put(file)
+
+        if file in self.cache:
+            self.cache.move_to_end(file)
+        else:
+            if len(self.cache) > self.n_workers:
+                self.cache.popitem(last=False)
+            arguments = [self.host, file, self.dataset_factory,
+                            self.args, self.kwargs]
+            self.cache[file] = self.pool.submit(open_dataset, *arguments)
+
+        #
+        # Return current file.
+        #
+
+        file = self.active_queue.get()
+        dataset = self.cache[file].result()
+
+        return dataset
 
 
     def __iter__(self):
-
-        pool = ThreadPoolExecutor(max_workers=2)
-
-        info = get_worker_info()
-        if info is None:
-            n_workers = 1
-            worker_id = 0
-        else:
-            n_workers = info.num_workers
-            worker_id = info.id
-
-        indices = np.arange(worker_id, len(self.files), n_workers)
-
-        if len(indices) == 0:
-            raise StopIteration
-
-        files = [self.files[i] for i in indices]
-
-        datasets = []
-        arguments = [self.host, files[0], self.dataset_factory,
-                     self.args, self.kwargs]
-        datasets.append(pool.submit(open_dataset, *arguments))
-
-        for i in range(len(files)):
-            if i + 1 < len(files):
-                arguments = [self.host, files[i+1], self.dataset_factory,
-                             self.args, self.kwargs]
-                datasets.append(pool.submit(open_dataset, *arguments))
-            dataset = datasets.pop(0).result()
+        """
+        Iterate over all batches in all remote files.
+        """
+        for _ in self.files:
+            dataset = self.get_next_dataset()
             yield from iterate_dataset(dataset)
-
-
-    def _open_connection(self, username, password):
-        transport = paramiko.Transport(self.host)
-        transport.connect(username=username,
-                          password=password)
-        self.sftp = paramiko.SFTPClient.from_transport(transport)
-
-    def _discover_files(self):
-        self.sftp.chdir(self.path)
-        self.files = self.sftp.listdir()
-
-
-os.environ["QUANTNN_SFTP_USER"] = "simon"
-os.environ["QUANTNN_SFTP_PASSWORD"] = "dendrite_geheim"
-
-stream = SFTPStream(
-    "129.16.35.202",
-    "array1/share/Datasets/gprof/simple/training_data",
-    str
-)
-

@@ -6,7 +6,11 @@ quantnn.normalizer
 This module provides a simple normalizer class, which can be used
 to normalize input data and store the normalization data.
 """
+import pickle
+
 import numpy as np
+from quantnn.files import read_file
+
 
 class Normalizer:
     """
@@ -24,7 +28,7 @@ class Normalizer:
 
         Arguments:
             x: Tensor containing the input data.
-            exclude_indices: List of integer containing feature indices 
+            exclude_indices: List of integer containing feature indices
                 that should not be normalized.
             feature_axis: The axis along which the input features are located.
         """
@@ -41,12 +45,11 @@ class Normalizer:
         self.feature_axis = feature_axis
         selection = [slice(0, None)] * len(x.shape)
 
-        indices = [i for i in range(n) if not i in self.exclude_indices]
+        indices = [i for i in range(n) if i not in self.exclude_indices]
         for i in indices:
             selection[feature_axis] = i
             self.means[i] = x[tuple(selection)].mean()
             self.std_devs[i] = x[tuple(selection)].std()
-
 
     def __call__(self, x):
         """
@@ -77,3 +80,29 @@ class Normalizer:
             normalized.append(x_normed.astype(np.float32))
 
         return np.concatenate(normalized, self.feature_axis)
+
+    @staticmethod
+    def load(filename):
+        """
+        Load normalizer from file.
+
+        Args:
+            filename: The path to the file containing the normalizer.
+
+        Returns:
+            The loaded Normalizer object
+        """
+        with read_file(filename, "rb") as file:
+            return pickle.load(file)
+
+    def save(self, filename):
+        """
+        Store normalizer to file.
+
+        Saves normalizer to a file using pickle.
+
+        Args:
+            filename: The file to which to store the normalizer.
+        """
+        with open(filename, "wb") as file:
+            pickle.dump(self, file)

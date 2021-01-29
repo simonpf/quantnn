@@ -34,4 +34,18 @@ def test_normalizer_2d():
     x_normed = normalizer(x)
     assert np.all(np.isclose(x_normed, -1.0))
 
-    
+def test_save_and_load(tmp_path):
+    """
+    Ensure that saved and loaded normalizer yields same results as original.
+    """
+    x = np.random.normal(size=(100000, 10)) + np.arange(10).reshape(1, -1)
+    normalizer = Normalizer(x,
+                            exclude_indices=range(1, 10, 2))
+    normalizer.save(tmp_path / "normalizer.pckl")
+    loaded = Normalizer.load(tmp_path / "normalizer.pckl")
+
+    x_normed = normalizer(x)
+    x_normed_loaded = loaded(x)
+
+    assert np.all(np.isclose(x_normed,
+                             x_normed_loaded))

@@ -38,3 +38,8 @@ class DatasetError(QuantnnException):
     """
     Thrown when a given dataset object does not provide the expected interface.
     """
+
+class InvalidURL(QuantnnException):
+    """
+    Thrown when a provided file URL is invalid.
+    """
