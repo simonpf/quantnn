@@ -22,6 +22,7 @@ def test_local_file(tmp_path):
 
     assert content == "test"
 
+@pytest.mark.skipif(not HAS_LOGIN_INFO, reason="No SFTP login info.")
 def test_remote_file():
     """
     Ensures that opening a local file works.

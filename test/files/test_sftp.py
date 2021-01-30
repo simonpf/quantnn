@@ -13,7 +13,8 @@ def test_list_files():
     files = sftp.list_files(host, path)
     assert len(files) == 8
 
-def test_download_file(tmp_path):
+@pytest.mark.skipif(not HAS_LOGIN_INFO, reason="No SFTP login info.")
+def test_download_file():
     """
     Ensure that downloading of files work and the data is cleaned up after
     usage.

@@ -424,6 +424,7 @@ class PytorchModel:
             validation_error = 0.0
             if not validation_data is None:
                 n = 0
+                self.eval()
                 for x, y in validation_data:
                     x = x.to(device).detach()
                     y = y.to(device).detach()
@@ -438,6 +439,7 @@ class PytorchModel:
                     validation_error += c.item() * x.size()[0]
                     n += x.size()[0]
                 validation_errors.append(validation_error / n)
+                nn.Module.train(self, True)
 
                 print(
                     f"Epoch {i} / {n_epochs}: "
