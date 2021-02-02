@@ -17,6 +17,6 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     install_requires=["numpy", "scipy", "paramiko"],
-    tests_require=["sphinx_rtd_theme", "pytest", "einops"],
+    tests_require=["sphinx_rtd_theme", "pytest", "einops", "matplotlib"],
     python_requires=">=3.6",
 )

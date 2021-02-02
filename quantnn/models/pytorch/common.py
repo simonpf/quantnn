@@ -16,7 +16,6 @@ from torch import nn
 from torch import optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import Dataset
-from tqdm import tqdm
 
 from quantnn.common import ModelNotSupported
 
@@ -515,7 +514,6 @@ class PytorchModel:
 
         total = 0.0
 
-        iterator = tqdm(data)
         for x, y in iterator:
             x = x.to(dev).detach()
             y = y.to(dev).detach()
