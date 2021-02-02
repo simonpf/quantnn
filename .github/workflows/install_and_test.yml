@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install torch torchvision pytest
-      - run: pip install .[tests]
+      - run: pip install .
       - run: pytest test
         env:
           QUANTNN_SFTP_USER: ${{ secrets.QUANTNN_SFTP_USER }}
