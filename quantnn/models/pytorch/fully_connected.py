@@ -52,7 +52,7 @@ class FullyConnected(PytorchModel, nn.Module):
                  width,
                  activation=nn.ReLU,
                  batch_norm=False,
-                 skip_connections=True):
+                 skip_connections=False):
         """
         Create a fully-connect neural network model.
 
@@ -85,10 +85,13 @@ class FullyConnected(PytorchModel, nn.Module):
         for i in range(n_layers):
             modules.append(FullyConnectedBlock(n_in, n_out, activation,
                                                batch_norm=batch_norm))
-            if i == 0:
-                n_in = n_out + n_inputs
+            if self.skips:
+                if i == 0:
+                    n_in = n_out + n_inputs
+                else:
+                    n_in = 2 * n_out + n_inputs
             else:
-                n_in = 2 * n_out + n_inputs
+                n_in = n_out
 
         modules.append(nn.Linear(n_in, n_outputs))
         self.mods = nn.ModuleList(modules)
