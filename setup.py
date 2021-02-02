@@ -16,7 +16,6 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent",
     ],
-    install_requires=["numpy", "scipy", "paramiko"],
-    tests_require=["sphinx_rtd_theme", "pytest", "einops", "matplotlib"],
+    install_requires=["numpy", "scipy", "paramiko", "einops"],
     python_requires=">=3.6",
 )
