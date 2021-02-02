@@ -1,4 +1,4 @@
-# QuantNN
+# quantnn
 
-The ``QuantNN`` package provides an implementation of quantile regression neural
+The ``quantnn`` package provides an implementation of quantile regression neural
 networks on top of Keras and Pytorch.
