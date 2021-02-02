@@ -1,0 +1,19 @@
+name: install_and_test
+on: [push]
+jobs:
+  install_and_test_job:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: [3.8, 3.9]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install torch torchvision Keras
+      - run: python setup.py test
+        env:
+          QUANTNN_SFTP_USER: ${{ secrets.QUANTNN_SFTP_USER }}
+          QUANTNN_SFTP_PASSWORD: ${{ secrets.QUANTNN_SFTP_PASSWORD }}

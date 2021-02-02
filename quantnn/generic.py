@@ -4,6 +4,8 @@ quantnn.generic
 
 This module provides backend-agnostic array operations.
 """
+import os
+
 import numpy as np
 import numpy.ma as ma
 import itertools
@@ -12,28 +14,61 @@ from quantnn.common import (UnknownArrayTypeException,
                             UnknownModuleException,
                             InvalidDimensionException)
 
-BACKENDS = {"numpy": np,
-            "numpy.ma.core": ma,
-            }
-try:
-    import torch
-    BACKENDS["torch"] = torch
-except ModuleNotFoundError:
-    torch = None
-    pass
-try:
-    import jax
-    import jax.numpy as jnp
-    _JAX_KEY = jax.random.PRNGKey(0)
-    BACKENDS["jax.numpy"] = jnp
-except ModuleNotFoundError:
-    jnp = None
+# Placeholders for modules.
+torch = None
+jnp = None
+jax = None
+_JAX_KEY = None
+tf = None
 
-try:
-    import tensorflow as tf
-    BACKENDS["tensorflow"] = tf
-except ModuleNotFoundError:
-    tf = None
+def _get_backend_module(name):
+    """
+    Return module object corresponding to given backend.
+
+    Args:
+       The name of the backend.
+
+    Return:
+       The corresponding module object.
+    """
+    if name == "numpy":
+        import numpy as np
+        return np
+    if name == "numpy.ma":
+        import numpy as np
+        return np.ma
+    if name == "torch":
+        import torch
+        return torch
+    if name == "jax":
+        import jax
+        import jax.numpy as jnp
+        _JAX_KEY = jax.random.PRNGKey(0)
+        return jnp
+    if name == "tensorflow":
+        import tensorflow as tf
+        return tf
+
+
+def _import_modules():
+    global torch, jax, jnp, _JAX_KEY, tf
+
+    try:
+        import torch
+    except ModuleNotFoundError:
+        pass
+
+    try:
+        import jax
+        import jax.numpy as jnp
+        _JAX_KEY = jax.random.PRNGKey(0)
+    except ModuleNotFoundError:
+        pass
+
+    try:
+        import tensorflow as tf
+    except:
+        pass
 
 
 def get_array_module(x):
@@ -47,16 +82,16 @@ def get_array_module(x):
     """
     module_name = type(x).__module__
     if module_name == "numpy":
-        return np
+        return _get_backend_module("numpy")
     if module_name == "numpy.ma":
-        return ma
+        return _get_backend_module("numpy.ma")
     base_module = module_name.split(".")[0]
     if base_module == "torch":
-        return torch
+        return _get_backend_module("torch")
     if base_module == "jax":
-        return jnp
+        return _get_backend_module("jax")
     if base_module == "tensorflow":
-        return tf
+        return _get_backend_module("tensorflow")
     raise UnknownArrayTypeException(f"The provided input of type {type(x)} is"
                                     "not a supported array type.")
 
@@ -74,6 +109,7 @@ def to_array(module, array):
         Array-object corresponding to the given backend module containing the
         data in array.
     """
+    _import_modules()
     if module in [np, ma]:
         return module.asarray(array)
     elif module == torch:
@@ -98,6 +134,7 @@ def sample_uniform(module, shape):
          Array object corresponding to the given module object containing
          random values.
     """
+    _import_modules()
     if module in [np, ma]:
         return module.random.rand(*shape)
     elif module == torch:
@@ -123,6 +160,7 @@ def sample_gaussian(module, shape):
          Array object corresponding to the given module object containing
          random values.
     """
+    _import_modules()
     if module in [np, ma]:
         return module.random.randn(*shape)
     elif module == torch:
@@ -147,6 +185,7 @@ def numel(array):
          Array object corresponding to the given module object containing
          random values.
     """
+    _import_modules()
     module_name = type(array).__module__.split(".")[0]
     if module_name in ["numpy", "numpy.ma.core"]:
         return array.size
@@ -173,6 +212,7 @@ def concatenate(module, arrays, dimension):
         The array resulting from concatenating the given arrays along
         the given dimension.
     """
+    _import_modules()
     if module in [np, ma, jnp]:
         return module.concatenate(arrays, dimension)
     elif module == torch:
@@ -198,6 +238,7 @@ def expand_dims(module, array, dimension):
     Returns:
         The reshaped array with a dimension added at the given index.
     """
+    _import_modules()
     if module in [np, ma, jnp, tf]:
         return module.expand_dims(array, dimension)
     elif module == torch:
@@ -219,6 +260,7 @@ def pad_zeros(module, array, n, dimension):
         A new array with the given number of 0s added to
         each edge along the given dimension.
     """
+    _import_modules()
     if module in [np, ma, jnp, tf]:
         n_dims = len(array.shape)
         pad = [(0, 0)] * n_dims
@@ -247,6 +289,7 @@ def pad_zeros_left(module, array, n, dimension):
         A new array with the given number of 0s added to
         only the left edge along the given dimension.
     """
+    _import_modules()
     if module in [np, ma, jnp, tf]:
         n_dims = len(array.shape)
         pad = [(0, 0)] * n_dims
@@ -273,6 +316,7 @@ def as_type(module, x, y):
     Return:
          The input ``x`` converted to the data type of ``y``.
     """
+    _import_modules()
     if module in [np, ma, jnp]:
         return x.astype(y.dtype)
     elif module == tf:
@@ -297,6 +341,7 @@ def arange(module, start, end, step):
         increasing with the given step size up until the largest value that
         is strictly smaller than the given end value.
     """
+    _import_modules()
     if module in [np, ma, jnp]:
         return module.arange(start, end, step)
     elif module == torch:
@@ -318,6 +363,7 @@ def reshape(module, array, shape):
     Returns:
         The array reshaped into the requested shape.
     """
+    _import_modules()
     if module in [np, ma, torch, jnp]:
         return array.reshape(shape)
     if module == tf:
@@ -394,6 +440,7 @@ def cumsum(module, y, dimension):
     Return:
        The rank k tensor containing the cumulative sum along the given dimension.
     """
+    _import_modules()
     if module in [np, ma, torch, jnp]:
         return module.cumsum(y, axis=dimension)
     elif module == tf:

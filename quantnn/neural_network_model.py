@@ -18,29 +18,14 @@ and load neural network models.
 import copy
 import pickle
 import importlib
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 from quantnn.common import (QuantnnException,
                             UnsupportedBackendException,
                             ModelNotSupported)
 
 _DEFAULT_BACKEND = None
-try:
-    import quantnn.models.keras as keras
-    _DEFAULT_BACKEND = keras
-except ModuleNotFoundError:
-    keras = None
-try:
-    import quantnn.models.pytorch as pytorch
-    _DEFAULT_BACKEND = pytorch
-except ModuleNotFoundError:
-    pytorch = None
-
-if _DEFAULT_BACKEND == None:
-    print(_DEFAULT_BACKEND)
-    raise QuantnnException(
-        "Couldn't load neither Keras nor PyTorch. You need to install "
-        "at least one of those frameworks to use quantnn."
-    )
 
 def set_default_backend(name):
     """
@@ -70,7 +55,48 @@ def set_default_backend(name):
         raise Exception("\"{}\" is not a supported backend.".format(name))
 
 def get_default_backend():
-    return _DEFAULT_BACKEND
+
+    global _DEFAULT_BACKEND
+
+    if _DEFAULT_BACKEND is not None:
+        return _DEFAULT_BACKEND
+
+    try:
+        import quantnn.models.pytorch as pytorch
+        _DEFAULT_BACKEND = pytorch
+        return _DEFAULT_BACKEND
+    except ModuleNotFoundError:
+        pytorch = None
+
+    try:
+        import quantnn.models.keras as keras
+        _DEFAULT_BACKEND = keras
+        return _DEFAULT_BACKEND
+    except ModuleNotFoundError:
+        keras = None
+
+    if _DEFAULT_BACKEND is None:
+        raise QuantnnException(
+            "Couldn't load neither Keras nor PyTorch. You need to install "
+            "at least one of those frameworks to use quantnn."
+        )
+
+
+def get_available_backends():
+    backends = []
+    try:
+        import quantnn.models.pytorch as pytorch
+        backends.append(pytorch)
+    except ModuleNotFoundError:
+        pass
+
+    try:
+        import quantnn.models.keras as keras
+        backends.append(keras)
+    except ModuleNotFoundError:
+        pass
+    return backends
+
 
 class NeuralNetworkModel:
     def __init__(self,
@@ -80,7 +106,7 @@ class NeuralNetworkModel:
 
         # Provided model is just an architecture tuple
         if type(model) == tuple:
-            self.backend = _DEFAULT_BACKEND
+            self.backend = get_default_backend()
             self.model = self.backend.FullyConnected(input_dimensions,
                                                      output_dimensions,
                                                      *model)
@@ -88,20 +114,12 @@ class NeuralNetworkModel:
         else:
             # Determine module and check if supported.
             self.model = None
-            if keras:
+            for backend in get_available_backends():
                 try:
-                    self.model = keras.Model.create(model)
-                    self.backend = keras
+                    self.model = backend.Model.create(model)
+                    self.backend = backend
                 except ModelNotSupported:
                     pass
-
-            if pytorch:
-                try:
-                    self.model = pytorch.Model.create(model)
-                    self.backend = pytorch
-                except ModelNotSupported:
-                    pass
-
             if not self.model:
                 raise UnsupportedBackendException(
                     "The provided model is not supported by any "
