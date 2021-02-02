@@ -12,8 +12,9 @@ jobs:
       - uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install torch torchvision
-      - run: python setup.py test
+      - run: pip install torch torchvision pytest
+      - run: pip install .[test]
+      - run: pytest test
         env:
           QUANTNN_SFTP_USER: ${{ secrets.QUANTNN_SFTP_USER }}
           QUANTNN_SFTP_PASSWORD: ${{ secrets.QUANTNN_SFTP_PASSWORD }}
