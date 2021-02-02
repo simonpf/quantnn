@@ -91,7 +91,8 @@ class SFTPStream:
                  dataset_factory,
                  args=None,
                  kwargs=None,
-                 n_workers=4):
+                 n_workers=4,
+                 n_files=None):
         """
         Create new SFTPStream dataset.
 
@@ -113,6 +114,8 @@ class SFTPStream:
         self.kwargs = kwargs
         self.n_workers = n_workers
         self.files = sftp.list_files(self.host, self.path)
+        if n_files is not None:
+            self.files = self.files[:n_files]
 
         # Sort datasets into random order.
         self.epoch_queue = Queue()

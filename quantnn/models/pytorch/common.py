@@ -248,22 +248,6 @@ def _get_default_scheduler(optimizer):
 # QRNN
 ################################################################################
 
-def _make_mixin_class(model):
-    """
-    Create mixin class which inherits from model's class.
-
-    Args:
-        model: A pytorch model object.
-
-    Return:
-        A class object which is child class of the class of the given
-        model object.
-    """
-    class Mixin(PytorchModel, type(model)):
-        def __init__(self):
-            PytorchModel.__init__(self)
-    return Mixin
-
 class PytorchModel:
     """
     Quantile regression neural network (QRNN)
@@ -461,7 +445,7 @@ class PytorchModel:
                         scheduler.step()
                     else:
                         if validation_data:
-                            scheduler.step(validation_errors[-1])
+                            scheduler.step(training_errors[-1])
 
                 print(
                     f"Epoch {i} / {n_epochs}: "

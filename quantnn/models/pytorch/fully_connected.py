@@ -6,48 +6,105 @@ This module provides an implementation of a fully-connected feed forward
 neural networks in pytorch.
 """
 from torch import nn
+import torch
 from quantnn.models.pytorch.common import PytorchModel, activations
 
-################################################################################
-# Fully-connected network
-################################################################################
+###############################################################################
+# Fully-connected neural network model.
+###############################################################################
 
 
-class FullyConnected(PytorchModel, nn.Sequential):
+class FullyConnectedBlock(nn.Sequential):
     """
-    Pytorch implementation of a fully-connected QRNN model.
+    Building block for fully-connected network. Consists of fully-connected
+    layer followed by an optional batch norm layer and the activation.
     """
-
     def __init__(self,
-                 input_dimensions,
-                 output_dimensions,
-                 arch):
-
+                 n_inputs,
+                 n_outputs,
+                 activation,
+                 batch_norm=True):
         """
-        Create a fully-connected neural network.
+        Create block.
 
         Args:
-            input_dimension(:code:`int`): Number of input features
-            quantiles(:code:`array`): The quantiles to predict given
-                as fractions within [0, 1].
-            arch(tuple): Tuple :code:`(d, w, a)` containing :code:`d`, the
-                number of hidden layers in the network, :code:`w`, the width
-                of the network and :code:`a`, the type of activation functions
-                to be used as string.
+             n_inputs: The number of input features of the block.
+             n_outputs: The number of outputs of the block.
+             activation: The activation function to use.
+             batch_norm: Whether or not to include a batch norm layer
+                         in the block.
         """
-        PytorchModel.__init__(self)
-        self.arch = arch
+        modules = [nn.Linear(n_inputs, n_outputs)]
+        if batch_norm:
+            modules.append(nn.BatchNorm1d(n_outputs))
+        modules.append(activation())
+        super().__init__(*modules)
 
-        if len(arch) == 0:
-            layers = [nn.Linear(input_dimensions, output_dimensions)]
-        else:
-            d, w, act = arch
-            if isinstance(act, str):
-                act = activations[act]
-            layers = [nn.Linear(input_dimensions, w)]
-            for _ in range(d - 1):
-                layers.append(nn.Linear(w, w))
-                if act is not None:
-                    layers.append(act())
-            layers.append(nn.Linear(w, output_dimensions))
-        nn.Sequential.__init__(self, *layers)
+
+class FullyConnected(PytorchModel, nn.Module):
+    """
+    A fully-connected neural network model.
+    """
+    def __init__(self,
+                 n_inputs,
+                 n_outputs,
+                 n_layers,
+                 width,
+                 activation=nn.ReLU,
+                 batch_norm=False,
+                 skip_connections=True):
+        """
+        Create a fully-connect neural network model.
+
+        Args:
+            n_inputs: The number of input features to the network.
+            n_outputs: The number of outputs of the model.
+            layers: The number of hidden layers in the model.
+            width: The number of neurons in the hidden layers.
+            activation: The activation function to use in the hidden
+                  layers.
+            batch_norm: Whether to include a batch-norm layer after
+                 each hidden layer.
+        """
+        self.skips = skip_connections
+
+        super().__init__()
+        nn.Module.__init__(self)
+
+        if type(activation) == str:
+            activation = activations[activation]
+
+        nominal_width = width
+        if self.skips:
+            nominal_width = (nominal_width - n_inputs) // 2
+
+        n_in = n_inputs
+        n_out = nominal_width
+
+        modules = []
+        for i in range(n_layers):
+            modules.append(FullyConnectedBlock(n_in, n_out, activation,
+                                               batch_norm=batch_norm))
+            if i == 0:
+                n_in = n_out + n_inputs
+            else:
+                n_in = 2 * n_out + n_inputs
+
+        modules.append(nn.Linear(n_in, n_outputs))
+        self.mods = nn.ModuleList(modules)
+
+    def forward(self, x):
+        """ Propagate input through network. """
+
+        y_p = []
+        y_l = self.mods[0](x)
+
+
+        for l in self.mods[1:]:
+            if self.skips:
+                y = torch.cat(y_p + [y_l, x], 1)
+                y_p = [y_l]
+            else:
+                y = y_l
+            y_l = l(y)
+        return y_l

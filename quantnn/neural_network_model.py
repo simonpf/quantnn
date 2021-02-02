@@ -83,7 +83,7 @@ class NeuralNetworkModel:
             self.backend = _DEFAULT_BACKEND
             self.model = self.backend.FullyConnected(input_dimensions,
                                                      output_dimensions,
-                                                     model)
+                                                     *model)
         # Provided model is predefined model.
         else:
             # Determine module and check if supported.

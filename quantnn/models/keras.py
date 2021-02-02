@@ -473,9 +473,9 @@ class KerasModel:
 
 Model = KerasModel
 
-################################################################################
+###############################################################################
 # Fully-connected network
-################################################################################
+###############################################################################
 
 
 class FullyConnected(KerasModel, Sequential):
@@ -484,10 +484,11 @@ class FullyConnected(KerasModel, Sequential):
     """
 
     def __init__(self,
-                 input_dimensions=None,
-                 output_dimensions=None,
-                 arch=None,
-                 layers=None,
+                 n_inputs=None,
+                 n_outputs=None,
+                 n_layers=None,
+                 width=None,
+                 activation=None,
                  **kwargs):
         """
         Create a fully-connected neural network.
@@ -496,23 +497,23 @@ class FullyConnected(KerasModel, Sequential):
             input_dimension(:code:`int`): Number of input features
             quantiles(:code:`array`): The quantiles to predict given
                 as fractions within [0, 1].
-            arch(tuple): Tuple :code:`(d, w, a)` containing :code:`d`, the
-                number of hidden layers in the network, :code:`w`, the width
-                of the network and :code:`a`, the type of activation functions
-                to be used as string.
+            n_layers: The number of hidden layers in the network.
+            width: The number of neurons in the hidden layers.
+            activation: The activation function to use after each linear
+                 layers.
         """
-        if input_dimensions and output_dimensions and arch:
-            if not arch or len(arch) == 0:
-                layers = [Dense(output_dimensions,
-                                input_shape=(input_dimensions))]
-            else:
-                d, w, a = arch
-                layers = [Dense(w, input_shape=(input_dimensions,))]
-                for _ in range(d - 1):
-                    layers.append(Dense(w, input_shape=(w,)))
-                    if a is not None:
-                        layers.append(Activation(a))
-                layers.append(Dense(output_dimensions, input_shape=(w,)))
-                super().__init__(*layers)
-        else:
+        inputs = [n_inputs, n_outputs, n_layers, width, activation]
+        if all([x is None for x in inputs]):
             super().__init__(**kwargs)
+            return
+
+        n_in = n_inputs
+        n_out = width
+
+        layers = []
+        for i in range(n_layers - 1):
+            layers.append(Dense(n_out, activation=activation, input_shape=(n_in,)))
+            n_in = n_out
+
+        layers.append(Dense(n_outputs, input_shape=(n_in,)))
+        super().__init__(*layers)
