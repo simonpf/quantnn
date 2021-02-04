@@ -29,7 +29,7 @@ def _to_categorical(y, bins):
         Array of same shape as y containing the bin indices corresponding
         to each value.
     """
-    return np.digitize(y, bins[:-1])
+    return np.digitize(y, bins[1:-1])
 
 class DRNN(NeuralNetworkModel):
     r"""

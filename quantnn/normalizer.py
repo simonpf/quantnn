@@ -66,6 +66,8 @@ class Normalizer:
         n = x.shape[self.feature_axis]
         selection = [slice(0, None)] * len(x.shape)
 
+        dtype = x.dtype
+
         for i in range(n):
             selection[self.feature_axis] = i
             if i in self.means:
@@ -79,7 +81,7 @@ class Normalizer:
             x_normed = np.expand_dims(x_normed, self.feature_axis)
             normalized.append(x_normed.astype(np.float32))
 
-        return np.concatenate(normalized, self.feature_axis)
+        return np.concatenate(normalized, self.feature_axis).astype(dtype)
 
     @staticmethod
     def load(filename):

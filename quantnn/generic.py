@@ -491,4 +491,40 @@ def cumtrapz(module, y, x, dimension):
 
     return pad_zeros_left(module, y_int, 1, dimension)
 
+def zeros(module, shape, like=None):
+    _import_modules()
+    if module in [np, ma]:
+        if like is not None:
+            return module.zeros(shape, dtype=like.dtype)
+        else:
+            return module.zeros(shape)
+    elif module == torch:
+        if like is not None:
+            return module.zeros(shape, dtype=like.dtype, device=like.device)
+        else:
+            return module.zeros(shape)
+    elif module == jnp:
+        return module.zeros(shape)
+    elif module == tf:
+        return module.zeros(shape)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+
+def ones(module, shape, like=None):
+    _import_modules()
+    if module in [np, ma]:
+        if like is not None:
+            return module.ones(shape, dtype=like.dtype)
+        else:
+            return module.ones(shape)
+    elif module == torch:
+        if like is not None:
+            return module.ones(shape, dtype=like.dtype, device=like.device)
+        else:
+            return module.ones(shape)
+    elif module == jnp:
+        return module.ones(shape)
+    elif module == tf:
+        return module.ones(shape)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
 
