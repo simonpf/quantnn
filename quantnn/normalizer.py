@@ -83,6 +83,38 @@ class Normalizer:
 
         return np.concatenate(normalized, self.feature_axis).astype(dtype)
 
+    def invert(self, x):
+        """
+        Reverses application of normalizer to given data.
+
+        Args:
+            x: The input tensor to denormalize.
+
+        Returns:
+            The input tensor x denormalized using the normalization data
+            of this normalizer object.
+        """
+        inverted = []
+        n = x.shape[self.feature_axis]
+        selection = [slice(0, None)] * len(x.shape)
+
+        dtype = x.dtype
+
+        for i in range(n):
+            selection[self.feature_axis] = i
+            if i in self.means:
+                x_slice = x[tuple(selection)].astype(np.float64)
+                if np.isclose(self.std_devs[i], 0.0):
+                    x_inverted = self.means[i]
+                else:
+                    x_inverted = ((x_slice * self.std_devs[i]) + self.means[i])
+            else:
+                x_inverted = x[tuple(selection)]
+            x_inverted = np.expand_dims(x_inverted, self.feature_axis)
+            inverted.append(x_inverted.astype(np.float32))
+
+        return np.concatenate(inverted, self.feature_axis).astype(dtype)
+
     @staticmethod
     def load(filename):
         """
