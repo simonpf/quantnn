@@ -27,6 +27,26 @@ def _check_dimensions(n_y, n_b):
             f" one more bin edge than bins values is 'y_pred'."
         )
 
+def normalize(y_pred,
+              bins,
+              bin_axis=1):
+    if len(y_pred.shape) == 1:
+        bin_axis = 0
+    n_y = y_pred.shape[bin_axis]
+    n_b = len(bins)
+    _check_dimensions(n_y, n_b)
+    xp = get_array_module(y_pred)
+    n = len(y_pred.shape)
+
+    norm = y_pred.sum(bin_axis)
+    norm = expand_dims(xp, norm, bin_axis)
+
+    dx = bins[1:] - bins[:-1]
+    shape = [1] * n
+    shape[bin_axis] = -1
+    dx = reshape(xp, dx, shape)
+
+    return y_pred / dx
 
 def posterior_cdf(y_pred,
                   bins,

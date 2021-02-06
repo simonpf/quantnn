@@ -105,7 +105,7 @@ class Normalizer:
             if i in self.means:
                 x_slice = x[tuple(selection)].astype(np.float64)
                 if np.isclose(self.std_devs[i], 0.0):
-                    x_inverted = self.means[i]
+                    x_inverted = self.means[i] * np.ones_like(x_slice)
                 else:
                     x_inverted = ((x_slice * self.std_devs[i]) + self.means[i])
             else:

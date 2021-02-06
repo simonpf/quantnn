@@ -39,6 +39,7 @@ def iterate_dataset(dataset):
 def open_dataset(host,
                  path,
                  dataset_factory,
+                 lock,
                  args=None,
                  kwargs=None):
     """
@@ -70,8 +71,9 @@ def open_dataset(host,
         raise ValueError("Provided postitional arguments 'kwargs' must be "
                          "a mapping.")
 
-    with sftp.download_file(host, path) as file:
-        dataset = dataset_factory(file, *args, **kwargs)
+    with lock:
+        with sftp.download_file(host, path) as file:
+            dataset = dataset_factory(file, *args, **kwargs)
     return dataset
 
 
@@ -114,6 +116,8 @@ class SFTPStream:
         self.kwargs = kwargs
         self.n_workers = n_workers
         self.files = sftp.list_files(self.host, self.path)
+        self.manager = multiprocessing.Manager()
+        self.lock = self.manager.Lock()
         if n_files is not None:
             self.files = self.files[:n_files]
 
@@ -141,8 +145,12 @@ class SFTPStream:
                 else:
                     if len(self.cache) > self.n_workers:
                         self.cache.popitem(last=False)
-                    arguments = [self.host, file, self.dataset_factory,
-                                 self.args, self.kwargs]
+                    arguments = [self.host,
+                                 file,
+                                 self.dataset_factory,
+                                 self.lock,
+                                 self.args,
+                                 self.kwargs]
                     self.cache[file] = self.pool.submit(open_dataset, *arguments)
 
     def get_next_dataset(self):
@@ -172,7 +180,7 @@ class SFTPStream:
             if len(self.cache) > self.n_workers:
                 self.cache.popitem(last=False)
             arguments = [self.host, file, self.dataset_factory,
-                            self.args, self.kwargs]
+                         self.lock, self.args, self.kwargs]
             self.cache[file] = self.pool.submit(open_dataset, *arguments)
 
         #
