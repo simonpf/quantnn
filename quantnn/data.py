@@ -71,9 +71,10 @@ def open_dataset(host,
         raise ValueError("Provided postitional arguments 'kwargs' must be "
                          "a mapping.")
 
-    with lock:
-        with sftp.download_file(host, path) as file:
-            dataset = dataset_factory(file, *args, **kwargs)
+    lock.acquire()
+    with sftp.download_file(host, path) as file:
+        lock.release()
+        dataset = dataset_factory(file, *args, **kwargs)
     return dataset
 
 
