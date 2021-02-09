@@ -71,7 +71,7 @@ class _DummyCache:
         """Create dummy cache."""
         pass
 
-    def download_files(self, host, files):
+    def download_files(self, host, files, pool):
         pass
 
     def get(self, host, path):
