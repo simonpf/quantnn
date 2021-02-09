@@ -7,7 +7,9 @@ This module provides high-level functions to access file via
 SFTP.
 """
 from contextlib import contextmanager
+from concurrent.futures import Future
 import io
+import logging
 import os
 from pathlib import Path
 import tempfile
@@ -15,6 +17,7 @@ import tempfile
 import paramiko
 from quantnn.common import MissingAuthenticationInfo, DatasetError
 
+_LOGGER = logging.getLogger("quantnn.files.sftp")
 
 
 def get_login_info():
@@ -109,73 +112,18 @@ def download_file(host,
     with tempfile.TemporaryDirectory() as directory:
         destination = Path(directory) / path.name
         with get_sftp_connection(host) as sftp:
+            _LOGGER.info("Downloading file %s to %s.", path, destination)
             sftp.get(str(path), str(destination))
             yield destination
 
 
-class TemporaryFile:
-    """
-    Generic temporary file that can be either on disk or in memory.
-
-    Attributes:
-        file: tempfile.TemporaryFile object or io.BytesIO.
-    """
-    def __init__(self, on_disk=True):
-        """
-        Create new temporary file.
-
-        Args:
-           on_disk: Whether the data should be stored on disk (True)
-               or in memory (False).
-        """
-        self.on_disk = on_disk
-        if self.on_disk:
-            self.file = tempfile.TemporaryFile()
-        else:
-            self.file = io.BytesIO()
-        self.closed = False
-
-    def close(self):
-        """ Forwarded to file attribute. """
-        if self.on_disk and not self.closed:
-            self.file_close()
-            self.closed = False
-
-    def read(self, *args, **kwargs):
-        """ Forwarded to file attribute. """
-        return self.file.read(*args, **kwargs)
-
-    def readlines(self, *args, **kwargs):
-        """ Forwarded to file attribute. """
-        return self.file.readlines(*args, **kwargs)
-
-    def seek(self, *args, **kwargs):
-        """ Forwarded to file attribute. """
-        return self.file.seek(*args, **kwargs)
-
-    def file_close(self, *args, **kwargs):
-        """ Forwarded to file attribute. """
-        return self.file.file_close(*args, **kwargs)
-
-    def flush(self):
-        """ Forwarded to file attribute. """
-        return self.file.flush()
-
-    @property
-    def seekable(self):
-        """ Forwarded to file attribute. """
-        return self.file.seekable
-
-    def tell(self, *args, **kwargs):
-        """ Forwarded to file attribute. """
-        return self.file.tell(*args, **kwargs)
-
-    def write(self, *args, **kwargs):
-        """ Forwarded to file attribute. """
-        self.file.write(*args, **kwargs)
-
-    def __del__(self):
-        self.close()
+def _download_file(host, path):
+    _, file = tempfile.mkstemp()
+    print(file)
+    with get_sftp_connection(host) as sftp:
+        sftp.get(str(path), file)
+        _LOGGER.info("Downloading file %s to %s.", path, file)
+    return file
 
 class SFTPCache:
     """
@@ -186,10 +134,30 @@ class SFTPCache:
         files: Dictionary mapping tuples ``(host, path)`` to temporary
             file object.
     """
-    def __init__(self, on_disk=True):
-        self.on_disk = on_disk
+    def __init__(self):
         self.files = {}
 
+    def download_files(self, host, paths, pool):
+        tasks = {}
+        for path in paths:
+            if (host, path) not in self.files:
+                task = pool.submit(_download_file, host, path)
+                tasks[path] = task
+        for path in paths:
+            self.files[(host, path)] = tasks[path].result()
+
+    def cleanup(self):
+        """
+        Clean up temporary files.
+        """
+        _LOGGER.info("Cleaning up SFTP cache.")
+        for file in self.files.values():
+            if isinstance(file, Future):
+                file = file.result()
+            if type(file) is str:
+                os.remove(file)
+            else:
+                os.remove(file.name)
 
     def get(self, host, path):
         """
@@ -201,13 +169,17 @@ class SFTPCache:
             path: The path of the file on the host.
 
         Return:
-            The requested file.
+            The temporary file object containing the requested file.
         """
         key = (host, path)
         if not key in self.files:
-            file = TemporaryFile(self.on_disk)
+            _, file = tempfile.mkstemp()
             with get_sftp_connection(host) as sftp:
                 sftp.getfo(str(path), file)
                 file.seek(0)
             self.files[key] = file
+
+        value = self.files[key]
+        if isinstance(value, Future):
+            return value.result()
         return self.files[key]

@@ -24,7 +24,7 @@ Example
 
 """
 from contextlib import contextmanager
-from pathlib import PurePath
+from pathlib import PurePath, Path
 from urllib.parse import urlparse
 
 from quantnn.files import sftp
@@ -60,3 +60,98 @@ def read_file(path, *args, **kwargs):
         return
 
     raise InvalidURL(f"The provided protocol '{url.scheme}' is not supported.")
+
+class _DummyCache:
+    """
+    A dummy cache for local files, which are not cached
+    at all.
+
+    """
+    def __init__(self):
+        """Create dummy cache."""
+        pass
+
+    def download_files(self, host, files):
+        pass
+
+    def get(self, host, path):
+        """Get file from cache."""
+        return path
+
+    def cleanup(self):
+        pass
+
+class CachedDataFolder:
+    """
+    This class provides an interface to generic folder containing
+    datasets, which are cached if files are remote.
+
+    Attributes:
+        files: List of available files in the folder.
+        host: The name of the host where the folder is located or
+             "" if the folder is local.
+        cache: Cache object used to cache data accesses.
+    """
+    def __init__(self,
+                 path,
+                 pattern="*"):
+        if isinstance(path, PurePath):
+            files = path.iterdir()
+            self.host = ""
+            self.cache = _DummyCache()
+        else:
+            url = urlparse(path)
+            if url.netloc == "":
+                files = Path(path).iterdir()
+                self.host = ""
+                self.cache = _DummyCache()
+            else:
+                if url.scheme == "sftp":
+                    self.host = url.netloc
+                    if self.host == "":
+                        raise InvalidURL(
+                            f"No host in SFTP URL."
+                            f"To load a file using SFTP, the URL must be of the "
+                            f" form 'sftp://<host>/<path>'."
+                        )
+                    files = sftp.list_files(self.host, url.path)
+                    self.cache = sftp.SFTPCache()
+                else:
+                    raise InvalidURL(f"The provided protocol '{url.scheme}' "
+                                    f" is not supported.")
+        self.files = list(filter(lambda f: f.match(pattern), files))
+
+    def download(self, pool):
+        self.cache.download_files(self.host, self.files, pool)
+
+    def get(self, path):
+        """
+        Retrieve file from folder.
+
+        Args:
+             path: The path of the file to retrieve.
+
+        Return:
+             If it is a local file, the filename of the file is returned.
+             If the file is remote a cached temporary file object with
+             the data is returned.
+        """
+        return self.cache.get(self.host, path)
+
+    def open(self, path, *args, **kwargs):
+        """
+        Retrieve file from cache and open.
+
+        Args:
+            path: The path of the file to retrieve.
+            *args: Passed to open call if file is local.
+            **kwargs: Passed to open call if file is local.
+
+        """
+        file = self.get(path)
+        if isinstance(file, PurePath):
+            return open(file, *args, **kwargs)
+        return file
+
+    def cleanup(self):
+        self.cache.cleanup()

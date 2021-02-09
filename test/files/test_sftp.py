@@ -43,8 +43,3 @@ def test_sftp_cache():
     file = cache.get(host, path)
     data = np.load(file, allow_pickle=True)
     assert np.all(np.isclose(data["x"], 0.0))
-
-    cache = sftp.SFTPCache(on_disk=False)
-    file = cache.get(host, path)
-    data = np.load(file, allow_pickle=True)
-    assert np.all(np.isclose(data["x"], 0.0))
