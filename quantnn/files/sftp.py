@@ -120,8 +120,11 @@ def download_file(host,
 def _download_file(host, path):
     _, file = tempfile.mkstemp()
     with get_sftp_connection(host) as sftp:
-        sftp.get(str(path), file)
         _LOGGER.info("Downloading file %s to %s.", path, file)
+        try:
+            sftp.get(str(path), file)
+        finally:
+            os.remove(file)
     return file
 
 class SFTPCache:
@@ -144,6 +147,7 @@ class SFTPCache:
                 tasks[path] = task
         for path in paths:
             self.files[(host, path)] = tasks[path].result()
+
 
     def cleanup(self):
         """
