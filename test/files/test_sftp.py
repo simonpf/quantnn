@@ -10,7 +10,7 @@ HAS_LOGIN_INFO = ("QUANTNN_SFTP_USER" in os.environ and
 @pytest.mark.skipif(not HAS_LOGIN_INFO, reason="No SFTP login info.")
 def test_list_files():
     host = "129.16.35.202"
-    path = "/mnt/array1/share/Datasets/test"
+    path = "/mnt/array1/share/MLDatasets/test"
     files = sftp.list_files(host, path)
     assert len(files) == 8
 
@@ -21,7 +21,7 @@ def test_download_file():
     usage.
     """
     host = "129.16.35.202"
-    path = "/mnt/array1/share/Datasets/test/data_0.npz"
+    path = "/mnt/array1/share/MLDatasets/test/data_0.npz"
     tmp_file = None
     with sftp.download_file(host, path) as file:
         tmp_file = file
@@ -29,3 +29,22 @@ def test_download_file():
         assert np.all(np.isclose(data["x"], 0.0))
 
     assert not tmp_file.exists()
+
+@pytest.mark.skipif(not HAS_LOGIN_INFO, reason="No SFTP login info.")
+def test_sftp_cache():
+    """
+    Ensure that downloading of files work and the data is cleaned up after
+    usage.
+    """
+    host = "129.16.35.202"
+    path = "/mnt/array1/share/MLDatasets/test/data_0.npz"
+
+    cache = sftp.SFTPCache()
+    file = cache.get(host, path)
+    data = np.load(file, allow_pickle=True)
+    assert np.all(np.isclose(data["x"], 0.0))
+
+    cache = sftp.SFTPCache(on_disk=False)
+    file = cache.get(host, path)
+    data = np.load(file, allow_pickle=True)
+    assert np.all(np.isclose(data["x"], 0.0))

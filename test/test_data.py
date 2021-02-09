@@ -66,7 +66,7 @@ def test_sftp_stream():
     and that kwargs are correctly passed on to dataset class.
     """
     stream = SFTPStream("129.16.35.202",
-                        "/mnt/array1/share/Datasets/test/",
+                        "/mnt/array1/share/MLDatasets/test/",
                         Dataset,
                         kwargs={"batch_size": 2},
                         n_workers=2)
