@@ -84,7 +84,9 @@ class _DummyCache:
 class CachedDataFolder:
     """
     This class provides an interface to generic folder containing
-    datasets, which are cached if files are remote.
+    dataset files. This folder can accessible via the local file
+    system or SFTP. If the folder is located on a remote SFTP server,
+    the files are cached to avoid having to retransfer the files.
 
     Attributes:
         files: List of available files in the folder.
@@ -122,6 +124,13 @@ class CachedDataFolder:
         self.files = list(filter(lambda f: f.match(pattern), files))
 
     def download(self, pool):
+        """
+        This method download all files in the folder to populate the
+        cache.
+
+        Args:
+            The PoolExecutor to use for the conurrent download.
+        """
         self.cache.download_files(self.host, self.files, pool)
 
     def get(self, path):
@@ -152,6 +161,3 @@ class CachedDataFolder:
         if isinstance(file, PurePath):
             return open(file, *args, **kwargs)
         return file
-
-    def cleanup(self):
-        self.cache.cleanup()

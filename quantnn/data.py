@@ -44,12 +44,12 @@ def open_dataset(folder,
                  args=None,
                  kwargs=None):
     """
-    Downloads file using SFTP and opens dataset using a temporary directory
-    for file transfer.
+    Open a dataset.
 
     Args:
-        host: IP address of the host.
-        path: The path for which to list the files
+        folder: DatasetFolder object providing cached access to data
+             files.
+        path: The path of the dataset to open.
         dataset_class: The class used to read in the file.
         args: List of positional arguments passed to the dataset_factory method
               after the downloaded file.
@@ -58,8 +58,8 @@ def open_dataset(folder,
 
     Returns:
         An object created using the provided dataset_factory
-        using the downloaded file as first arguments and the provided
-        args and kwargs as positional and keyword arguments.
+        using the provided args and kwargs as positional and
+        keyword arguments.
     """
     if args is None:
         args = []
@@ -81,12 +81,8 @@ def open_dataset(folder,
 
 class DataFolder:
     """
-    Dataset to stream data spread across multiple files from a
-    local or remote folder.
-
-    This class can be used to iterate over multiple datasets located
-    on a remote machine that is accessible via SFTP. It provides an
-    iterable over the batches in all of the files in that folder.
+    Interface to load and iterate over multiple dataset files in a
+    folder.
     """
     def __init__(self,
                  path,
@@ -96,11 +92,10 @@ class DataFolder:
                  n_workers=4,
                  n_files=None):
         """
-        Create new SFTPStream dataset.
+        Create new DataFolder object.
 
         Args:
-            host: The IP address of the host as string.
-            path: The path on the SFTP server where the datasets are located.
+            path: The path of the folder containing the dataset files.
             dataset_factory: The function used to construct the dataset
                  instances for each file.
             args: Additional, positional arguments passed to
@@ -108,6 +103,9 @@ class DataFolder:
                  local copy of the dataset file.
             kwargs: Dictionary of keyword arguments passed to the dataset
                  factory.
+            n_workers: The number of workers to use for concurrent loading
+                 of the dataset files.
+            n_files: How many of the file from the folder.
         """
         print(path)
         self.path = path
@@ -126,10 +124,6 @@ class DataFolder:
         self.pool = ProcessPoolExecutor(max_workers=self.n_workers)
         self.folder.download(self.pool)
         self._prefetch()
-
-    def __del__(self):
-        if hasattr(self, "folder"):
-            self.folder.cleanup()
 
     def _prefetch(self):
         if self.epoch_queue.empty():
