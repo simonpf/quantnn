@@ -119,7 +119,6 @@ def download_file(host,
 
 def _download_file(host, path):
     _, file = tempfile.mkstemp()
-    print(file)
     with get_sftp_connection(host) as sftp:
         sftp.get(str(path), file)
         _LOGGER.info("Downloading file %s to %s.", path, file)

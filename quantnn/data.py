@@ -109,6 +109,7 @@ class DataFolder:
             kwargs: Dictionary of keyword arguments passed to the dataset
                  factory.
         """
+        print(path)
         self.path = path
         self.folder = CachedDataFolder(path)
         self.dataset_factory = dataset_factory
@@ -127,7 +128,8 @@ class DataFolder:
         self._prefetch()
 
     def __del__(self):
-        self.folder.cleanup()
+        if hasattr(self, "folder"):
+            self.folder.cleanup()
 
     def _prefetch(self):
         if self.epoch_queue.empty():
