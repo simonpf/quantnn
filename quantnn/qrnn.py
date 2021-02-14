@@ -107,7 +107,8 @@ class QRNN(NeuralNetworkModel):
               scheduler=None,
               n_epochs=None,
               adversarial_training=None,
-              device='cpu'):
+              device='cpu',
+              mask=None):
         """
         Train model on given training data.
 
@@ -147,7 +148,7 @@ class QRNN(NeuralNetworkModel):
                  is the fraction of training data that is used for validation.
             gpu(``bool``): Whether or not to try to run the training on the GPU.
         """
-        loss = self.backend.QuantileLoss(self.quantiles)
+        loss = self.backend.QuantileLoss(self.quantiles, mask=mask)
         return self.model.train(training_data,
                                 validation_data=validation_data,
                                 loss=loss,

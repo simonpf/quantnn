@@ -106,9 +106,10 @@ class QuantileLoss:
 
     """
 
-    def __init__(self, quantiles):
+    def __init__(self, quantiles, mask=None):
         self.__name__ = "QuantileLoss"
         self.quantiles = quantiles
+        self.maks = None
 
     def __call__(self, y_true, y_pred):
         return quantile_loss(y_true, y_pred, self.quantiles)

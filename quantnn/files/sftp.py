@@ -174,7 +174,8 @@ class SFTPCache:
                 task = pool.submit(_download_file, host, path)
                 tasks[path] = task
         for path in paths:
-            self.files[(host, path)] = tasks[path].result()
+            if (host, path) not in self.files:
+                self.files[(host, path)] = tasks[path].result()
 
     def get(self, host, path):
         """
@@ -192,8 +193,7 @@ class SFTPCache:
         if key not in self.files:
             _, file = tempfile.mkstemp()
             with get_sftp_connection(host) as sftp:
-                sftp.getfo(str(path), file)
-                file.seek(0)
+                sftp.get(str(path), file)
             self.files[key] = file
 
         value = self.files[key]

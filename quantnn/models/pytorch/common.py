@@ -189,7 +189,10 @@ class QuantileLoss:
     computed by taking the mean over all samples in the batch.
     """
 
-    def __init__(self, quantiles, mask=None):
+    def __init__(self,
+                 quantiles,
+                 mask=None,
+                 quantile_axis=1):
         """
         Create an instance of the quantile loss function with the given quantiles.
 
@@ -201,6 +204,7 @@ class QuantileLoss:
         self.mask = mask
         if self.mask:
             self.mask = np.float32(mask)
+        self.quantile_axis = quantile_axis
 
     def to(self, device):
         self.quantiles = self.quantiles.to(device)
@@ -220,10 +224,14 @@ class QuantileLoss:
         """
         dy = y_pred - y_true
         n = self.quantiles.size()[0]
-        qs = self.quantiles.reshape((n,) + (1,) * max(len(dy.size()) - 2, 0))
+
+        shape = [1,] * len(dy.size())
+        shape[self.quantile_axis] = self.n_quantiles
+        qs = self.quantiles.reshape(shape)
         l = torch.where(dy >= 0.0, (1.0 - qs) * dy, (-qs) * dy)
         if self.mask:
-            l = torch.where(y_true == self.mask, torch.zeros_like(l), l)
+            mask = y_true > self.mask
+            return (l * mask).sum() / (mask.sum() * self.n_quantiles)
         return l.mean()
 
 ################################################################################
