@@ -4,11 +4,9 @@ quantnn.generic
 
 This module provides backend-agnostic array operations.
 """
-import os
-
 import numpy as np
 import numpy.ma as ma
-import itertools
+import scipy as sp
 
 from quantnn.common import (UnknownArrayTypeException,
                             UnknownModuleException,
@@ -492,6 +490,18 @@ def cumtrapz(module, y, x, dimension):
     return pad_zeros_left(module, y_int, 1, dimension)
 
 def zeros(module, shape, like=None):
+    """
+    Zero tensor of given shape.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        shape: Tuple defining the desired shape of the tensor to create.
+        like: Optional tensor to use to determine additional properties
+            such as data type, device, etc ...
+
+    Return:
+         Zero tensor of given shape.
+    """
     _import_modules()
     if module in [np, ma]:
         if like is not None:
@@ -511,6 +521,18 @@ def zeros(module, shape, like=None):
 
 
 def ones(module, shape, like=None):
+    """
+    One tensor of given shape.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        shape: Tuple defining the desired shape of the tensor to create.
+        like: Optional tensor to use to determine additional properties
+            such as data type, device, etc ...
+
+    Return:
+         One tensor of given shape.
+    """
     _import_modules()
     if module in [np, ma]:
         if like is not None:
@@ -528,3 +550,25 @@ def ones(module, shape, like=None):
         return module.ones(shape)
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
 
+
+def softmax(module, x):
+    """
+    Apply softmax to tensor.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        x: The tensor to apply the softmax to.
+
+    Return:
+         softmax(x)
+    """
+    _import_modules()
+    if module in [np, ma]:
+        return sp.special.softmax(x)
+    elif module == torch:
+        return module.nn.functional.softmax(x)
+    elif module == jnp:
+        return jax.nn.softmax(x)
+    elif module == tf:
+        return module.nn.softmax(x)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")

@@ -1,7 +1,7 @@
 """
 Tests for the PyTorch NN backend.
 """
-from quantnn.models.pytorch import QuantileLoss
+from quantnn.models.pytorch import QuantileLoss, CrossEntropyLoss
 import torch
 import numpy as np
 
@@ -31,3 +31,30 @@ def test_quantile_loss():
     l = loss(y_pred, y).detach().numpy()
     l_ref = loss(y_pred[:10], y[:10]).detach().numpy()
     assert np.isclose(l, l_ref)
+
+def test_cross_entropy_loss():
+    """
+    Test masking for cross entropy loss.
+    """
+    y_pred = torch.rand(10, 10, 10)
+    y = torch.ones(10, 1, 10, dtype=torch.long)
+    y[:, 0, :] = 5
+
+    loss = CrossEntropyLoss(mask=-1.0)
+    ref = -y_pred[:, 5, :] + torch.log(torch.exp(y_pred).sum(1))
+    assert np.all(np.isclose(loss(y_pred, y).detach().numpy(),
+                             ref.mean().detach().numpy()))
+
+
+    y[5:, :, :] = -1.0
+    y[:, :, 5:] = -1.0
+    ref = -y_pred[:5, 5, :5] + torch.log(torch.exp(y_pred[:5, :, :5]).sum(1))
+    print(ref)
+    print(loss(y_pred, y))
+    print(ref.mean())
+    assert np.all(np.isclose(loss(y_pred, y).detach().numpy(),
+                             ref.mean().detach().numpy()))
+
+
+
+

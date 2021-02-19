@@ -8,15 +8,16 @@ using a binned approximation of the probability density function.
 """
 import numpy as np
 import scipy
-from scipy.special import softmax
 
+import quantnn.density as qd
 from quantnn.common import QuantnnException
+from quantnn.generic import softmax
 from quantnn.neural_network_model import NeuralNetworkModel
 
 def _to_categorical(y, bins):
     """
-    Converts scalar values to discrete, categorical representation where each
-    value is represented by a bin index.
+    Converts scalar values to categorical representation where each value
+    is represented by a bin index.
 
     Values that lie outside the provided range of
 
@@ -53,43 +54,8 @@ class DRNN(NeuralNetworkModel):
               scheduler=None,
               n_epochs=None,
               adversarial_training=None,
-              device='cpu'):
-        """
-        Train model on given training data.
-
-        The training is performed on the provided training data and an
-        optionally-provided validation set. Training can use the following
-        augmentation methods:
-            - Gaussian noise added to input
-            - Adversarial training
-        The learning rate is decreased gradually when the validation or training
-        loss did not decrease for a given number of epochs.
-
-        Args:
-            training_data: Tuple of numpy arrays or a dataset object to use to
-                train the model.
-            loss: Loss object to use as training criterion.
-            validation_data: Optional validation data in the same format as the
-                training data.
-            batch_size: If training data is provided as arrays, this batch size
-                will be used to for the training.
-            optimizer: Optimizer object to use to train the model. Defaults to
-                Adam optimizer.
-            scheduler: Learning rate scheduler to use to schedule the learning
-                rate. Defaults to plateau scheduler with a reduction factor
-                of 10.0 and a patience of 5 epochs.
-            n_epochs: The number of epochs for which to train the model.
-            adversarial_training(``float`` or ``None``): Whether or not to
-                perform adversarial training using the fast gradient sign
-                method. When ``None`` no adversarial training is performed.
-                When a ``float`` value is given this value will be used as
-                the adversarial-training step length.
-            device: "cpu" or "gpu" depending on whether the model should
-                should be trained on CPU or GPU.
-
-        Returns:
-            Dictionary containing the training and validation losses.
-        """
+              device='cpu',
+              mask=None):
         if type(training_data) == tuple:
             x_train, y_train = training_data
             y_train = _to_categorical(y_train, self.bins[:-1])
@@ -99,7 +65,7 @@ class DRNN(NeuralNetworkModel):
                 y_val = _to_categorical(y_val, self.bins[:-1])
                 validation_data = x_val, y_val
 
-        loss = self.backend.CrossEntropyLoss()
+        loss = self.backend.CrossEntropyLoss(mask=None)
         return self.model.train(training_data,
                                 validation_data=validation_data,
                                 loss=loss,
@@ -109,9 +75,65 @@ class DRNN(NeuralNetworkModel):
                                 adversarial_training=adversarial_training,
                                 device=device)
 
-    def predict(self,
-                x):
+    def predict(self, x):
         y_pred = self.model.predict(x)
         y_pred = softmax(y_pred, axis=-1)
         norm = np.sum(y_pred * (self.bins[1:] - self.bins[:-1]), axis=-1, keepdims=True)
         return y_pred / norm
+
+    def posterior_mean(self, x=None, y_pred=None):
+        r"""
+        Computes the posterior mean by computing the first moment of the
+        predicted posterior PDF.
+
+        Arguments:
+
+            x: Rank-k tensor containing the input data with the input channels
+                (or features) for each sample located along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
+        Returns:
+
+            Tensor or rank k-1 the posterior means for all provided inputs.
+        """
+        if y_pred is None:
+            if x is None:
+                raise ValueError("One of the input arguments x or y_pred must be "
+                                 " provided.")
+            y_pred = self.predict(x)
+        return qd.posterior_mean(y_pred,
+                                 self.bins,
+                                 quantile_axis=1)
+
+    def posterior_quantiles(self, x=None, y_pred=None, quantiles=None):
+        r"""
+        Compute the posterior quantiles.
+
+        Arguments:
+
+            x: Rank-k tensor containing the input data with the input channels
+                (or features) for each sample located along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
+            quantiles: List of quantile fraction values :math:`\tau_i \in [0, 1]`.
+        Returns:
+
+            Rank-k tensor containing the desired predicted quantiles along its
+            first dimension.
+        """
+        if y_pred is None:
+            if x is None:
+                raise ValueError("One of the keyword arguments 'x' or 'y_pred'"
+                                 " must be provided.")
+            y_pred = self.predict(x)
+
+        if quantiles is None:
+            raise ValueError("The 'quantiles' keyword argument must be provided to"
+                             "calculate the posterior quantiles.")
+
+        return qd.posterior_quantiles(y_pred,
+                                      self.bins,
+                                      quantiles,
+                                      quantile_axis=1)

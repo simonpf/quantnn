@@ -100,15 +100,15 @@ def get_available_backends():
 
 class NeuralNetworkModel:
     def __init__(self,
-                 input_dimensions,
-                 output_dimensions,
+                 n_inputs,
+                 n_outputs,
                  model):
 
         # Provided model is just an architecture tuple
         if type(model) == tuple:
             self.backend = get_default_backend()
-            self.model = self.backend.FullyConnected(input_dimensions,
-                                                     output_dimensions,
+            self.model = self.backend.FullyConnected(n_inputs,
+                                                     n_outputs,
                                                      *model)
         # Provided model is predefined model.
         else:

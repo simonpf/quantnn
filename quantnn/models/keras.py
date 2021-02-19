@@ -16,7 +16,7 @@ import keras
 from keras.models import Sequential
 from keras.layers import Dense, Activation, deserialize
 from keras.optimizers import SGD
-from keras.losses import CategoricalCrossentropy as CrossEntropyLoss
+from keras.losses import SparseCategoricalCrossentropy
 import keras.backend as K
 
 from quantnn.common import QuantnnException, ModelNotSupported
@@ -57,6 +57,7 @@ def load_model(file):
     custom_objects = {
         "FullyConnected": FullyConnected,
         "QuantileLoss": QuantileLoss,
+        "CrossEntropyLoss": CrossEntropyLoss,
     }
     model = keras.models.load_model(filename, custom_objects=custom_objects)
     shutil.rmtree(path)
@@ -68,6 +69,21 @@ def load_model(file):
 ################################################################################
 
 LOGGER = logging.getLogger(__name__)
+
+class CrossEntropyLoss(SparseCategoricalCrossentropy):
+    """
+    Wrapper class around Keras' SparseCategoricalCrossEntropy class to support
+    masking of input values.
+    """
+    def __init__(self, mask=None):
+        super().__init__()
+        self.mask = None
+
+    def __call__(self, *args, **kwargs):
+        SparseCategoricalCrossentropy.__call__(self, *args, **kwargs)
+
+    def __repr__(self):
+        return "CrossEntropyLoss(" + repr(self.quantiles) + ")"
 
 
 def skewed_absolute_error(y_true, y_pred, tau):
@@ -96,8 +112,8 @@ def quantile_loss(y_true, y_pred, taus):
 class QuantileLoss:
     """
     Wrapper class for the quantile error loss function. A class is used here
-    to allow the implementation of a custom `__repr` function, so that the
-    loss function object can be easily loaded using `keras.model.load`.
+    to allow the implementation of a custom ``__repr`` function, so that the
+    loss function object can be easily loaded using ``keras.model.load``.
 
     Attributes:
 

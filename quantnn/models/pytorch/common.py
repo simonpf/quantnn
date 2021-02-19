@@ -155,16 +155,47 @@ class BatchedDataset(Dataset):
 ################################################################################
 
 class CrossEntropyLoss(nn.CrossEntropyLoss):
+    """
+    Cross entropy loss with optional masking.
 
-    def __init__(self):
-        super().__init__()
+    This loss function class calculates the mean cross entropy loss
+    over the given inputs but applies an optional masking to the
+    inputs, in order to allow the handling of missing values.
+    """
+    def __init__(self, mask=None):
+        """
+        Args:
+            mask: All values that are smaller than or equal to this value will
+                 be excluded from the calculation of the loss.
+        """
+        self.mask = mask
+        if mask is None:
+            reduction = "mean"
+        else:
+            reduction = "none"
+        super().__init__(reduction=reduction)
 
-    def __call__(self, y_pred, y):
-        return nn.CrossEntropyLoss.__call__(
-            self,
-            y_pred,
-            y.flatten()
-        )
+    def __call__(self, y_pred, y_true):
+        """Evaluate the loss."""
+        if len(y_true.shape) == len(y_pred.shape):
+            y_true = y_true.squeeze(1)
+
+        if self.mask is None:
+            return nn.CrossEntropyLoss.__call__(
+                self,
+                y_pred,
+                y_true
+            )
+        else:
+            loss = nn.CrossEntropyLoss.__call__(
+                self,
+                y_pred,
+                torch.maximum(y_true, torch.zeros_like(y_true))
+            )
+            mask = y_true > self.mask
+            return (loss * mask).sum() / mask.sum()
+
+
 
 class QuantileLoss:
     r"""
