@@ -94,7 +94,7 @@ def get_array_module(x):
                                     "not a supported array type.")
 
 
-def to_array(module, array):
+def to_array(module, array, like=None):
     """
     Turn a list into an array.
 
@@ -109,9 +109,15 @@ def to_array(module, array):
     """
     _import_modules()
     if module in [np, ma]:
-        return module.asarray(array)
+        if like is not None:
+            return module.asarray(array, dtype=like.dtype)
+        else:
+            return module.asarray(array)
     elif module == torch:
-        return module.tensor(array)
+        if like is not None:
+            return module.tensor(array, dtype=like.dtype, device=like.device)
+        else:
+            return module.tensor(array)
     elif module == jnp:
         return module.asarray(array)
     elif module == tf:
@@ -551,7 +557,7 @@ def ones(module, shape, like=None):
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
 
 
-def softmax(module, x):
+def softmax(module, x, axis=None):
     """
     Apply softmax to tensor.
 
@@ -564,11 +570,11 @@ def softmax(module, x):
     """
     _import_modules()
     if module in [np, ma]:
-        return sp.special.softmax(x)
+        return sp.special.softmax(x, axis=axis)
     elif module == torch:
-        return module.nn.functional.softmax(x)
+        return module.nn.functional.softmax(x, dim=axis)
     elif module == jnp:
-        return jax.nn.softmax(x)
+        return jax.nn.softmax(x, axis=axis)
     elif module == tf:
-        return module.nn.softmax(x)
+        return module.nn.softmax(x, axis=axis)
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
