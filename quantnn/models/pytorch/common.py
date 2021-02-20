@@ -18,6 +18,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import Dataset
 
 from quantnn.common import ModelNotSupported
+from quantnn.generic import to_array
 
 activations = {
     "elu": nn.ELU,
@@ -511,19 +512,12 @@ class PytorchModel:
             The model prediction converted to numpy array.
         """
         # Determine device to use
-        if torch.cuda.is_available() and device in ["gpu", "cuda"]:
-            device = torch.device("cuda")
-        elif device == "cpu":
-            device = torch.device("cpu")
-        else:
-            device = torch.device(device)
-        if torch.cuda.is_available() and device in ["cuda", "gpu"]:
-            device = torch.device("cuda")
-        else:
-            device = torch.device("cpu")
-        x = handle_input(x, device)
-        self.to(device)
-        return self(x.detach()).detach().numpy()
+        with torch.no_grad():
+            w = next(iter(self.parameters())).data
+            x_torch = to_array(torch, x, like=w)
+            self.to(x_torch.device)
+            y = self(x_torch)
+            return y
 
     def calibration(self, data, gpu=False):
         """

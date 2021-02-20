@@ -11,7 +11,7 @@ import scipy
 
 import quantnn.density as qd
 from quantnn.common import QuantnnException
-from quantnn.generic import softmax
+from quantnn.generic import softmax, to_array, get_array_module
 from quantnn.neural_network_model import NeuralNetworkModel
 
 def _to_categorical(y, bins):
@@ -77,9 +77,12 @@ class DRNN(NeuralNetworkModel):
 
     def predict(self, x):
         y_pred = self.model.predict(x)
-        y_pred = softmax(y_pred, axis=-1)
-        norm = np.sum(y_pred * (self.bins[1:] - self.bins[:-1]), axis=-1, keepdims=True)
-        return y_pred / norm
+
+        module = get_array_module(y_pred)
+        y_pred = softmax(module, y_pred, axis=1)
+        bins = to_array(module, self.bins, like=y_pred)
+        y_pred = qd.normalize(y_pred, bins, bin_axis=1)
+        return y_pred
 
     def posterior_mean(self, x=None, y_pred=None):
         r"""
@@ -102,9 +105,12 @@ class DRNN(NeuralNetworkModel):
                 raise ValueError("One of the input arguments x or y_pred must be "
                                  " provided.")
             y_pred = self.predict(x)
+
+        module = get_array_module(y_pred)
+        bins = to_array(module, self.bins, like=y_pred)
         return qd.posterior_mean(y_pred,
-                                 self.bins,
-                                 quantile_axis=1)
+                                 bins,
+                                 bin_axis=1)
 
     def posterior_quantiles(self, x=None, y_pred=None, quantiles=None):
         r"""
@@ -133,7 +139,43 @@ class DRNN(NeuralNetworkModel):
             raise ValueError("The 'quantiles' keyword argument must be provided to"
                              "calculate the posterior quantiles.")
 
+        module = get_array_module(y_pred)
+        bins = to_array(module, self.bins, like=y_pred)
         return qd.posterior_quantiles(y_pred,
-                                      self.bins,
+                                      bins,
                                       quantiles,
-                                      quantile_axis=1)
+                                      bin_axis=1)
+
+    def probability_larger_than(self, x=None, y=None, y_pred=None):
+        """
+        Calculate probability of the output value being larger than a
+        given numeric threshold.
+
+        Args:
+            x: Rank-k tensor containing the input data with the input channels
+                (or features) for each sample located along its first dimension.
+            y: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
+            y: The threshold value.
+
+        Returns:
+
+            Tensor of rank k-1 containing the for each input sample the
+            probability of the corresponding y-value to be larger than the
+            given threshold.
+        """
+        if y_pred is None:
+            if x is None:
+                raise ValueError("One of the input arguments x or y_pred must be "
+                                 " provided.")
+            y_pred = self.predict(x)
+        if y is None:
+            raise ValueError("The y argument must be provided to compute the "
+                             " probability.")
+        module = get_array_module(y_pred)
+        bins = to_array(module, self.bins, like=y_pred)
+        return qd.probability_larger_than(y_pred,
+                                          bins,
+                                          y,
+                                          bin_axis=1)
