@@ -48,7 +48,9 @@ class TestQrnn:
         set_default_backend(backend)
         qrnn = QRNN(np.linspace(0.05, 0.95, 10),
                     input_dimensions=self.x_train.shape[1])
-        qrnn.train((self.x_train, self.y_train), n_epochs=2)
+        qrnn.train((self.x_train, self.y_train),
+                   validation_data=(self.x_train, self.y_train),
+                   n_epochs=2)
 
         qrnn.predict(self.x_train)
 
