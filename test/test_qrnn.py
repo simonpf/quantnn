@@ -47,7 +47,7 @@ class TestQrnn:
         """
         set_default_backend(backend)
         qrnn = QRNN(np.linspace(0.05, 0.95, 10),
-                    input_dimensions=self.x_train.shape[1])
+                    n_inputs=self.x_train.shape[1])
         qrnn.train((self.x_train, self.y_train),
                    validation_data=(self.x_train, self.y_train),
                    n_epochs=2)
@@ -79,7 +79,7 @@ class TestQrnn:
         backend = get_default_backend()
         data = backend.BatchedDataset((self.x_train, self.y_train), 256)
         qrnn = QRNN(np.linspace(0.05, 0.95, 10),
-                    input_dimensions=self.x_train.shape[1])
+                    n_inputs=self.x_train.shape[1])
         qrnn.train(data, n_epochs=2)
 
     @pytest.mark.parametrize("backend", backends)
@@ -89,7 +89,7 @@ class TestQrnn:
         """
         set_default_backend(backend)
         qrnn = QRNN(np.linspace(0.05, 0.95, 10),
-                    input_dimensions=self.x_train.shape[1])
+                    n_inputs=self.x_train.shape[1])
         f = tempfile.NamedTemporaryFile()
         qrnn.save(f.name)
         qrnn_loaded = QRNN.load(f.name)

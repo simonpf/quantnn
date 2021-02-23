@@ -1,15 +1,16 @@
 from collections import OrderedDict
 from collections.abc import Iterable, Mapping
 from concurrent.futures import ProcessPoolExecutor
+import logging
 import multiprocessing
 from queue import Queue
 import tempfile
 
 import numpy as np
 from quantnn.common import DatasetError
-from quantnn.files import sftp
+from quantnn.files import CachedDataFolder, sftp
 
-_DATASET_LOCK = multiprocessing.Lock()
+_LOGGER = logging.getLogger("quantnn.data")
 
 
 def iterate_dataset(dataset):
@@ -26,6 +27,7 @@ def iterate_dataset(dataset):
         a sequence.
 
     """
+    _LOGGER.info("Iterating dataset: %s", dataset)
     if isinstance(dataset, Iterable):
         yield from dataset
     elif hasattr(dataset, "__len__") and hasattr(dataset, "__getitem__"):
@@ -36,18 +38,18 @@ def iterate_dataset(dataset):
                            "a sequence.")
 
 
-def open_dataset(host,
+def open_dataset(folder,
                  path,
                  dataset_factory,
                  args=None,
                  kwargs=None):
     """
-    Downloads file using SFTP and opens dataset using a temporary directory
-    for file transfer.
+    Open a dataset.
 
     Args:
-        host: IP address of the host.
-        path: The path for which to list the files
+        folder: DatasetFolder object providing cached access to data
+             files.
+        path: The path of the dataset to open.
         dataset_class: The class used to read in the file.
         args: List of positional arguments passed to the dataset_factory method
               after the downloaded file.
@@ -56,8 +58,8 @@ def open_dataset(host,
 
     Returns:
         An object created using the provided dataset_factory
-        using the downloaded file as first arguments and the provided
-        args and kwargs as positional and keyword arguments.
+        using the provided args and kwargs as positional and
+        keyword arguments.
     """
     if args is None:
         args = []
@@ -70,23 +72,19 @@ def open_dataset(host,
         raise ValueError("Provided postitional arguments 'kwargs' must be "
                          "a mapping.")
 
-    with sftp.download_file(host, path) as file:
-        dataset = dataset_factory(file, *args, **kwargs)
+    _LOGGER.info("Opening dataset: %s", path)
+
+    file = folder.get(path)
+    dataset = dataset_factory(file, *args, **kwargs)
     return dataset
 
 
-class SFTPStream:
+class DataFolder:
     """
-    Datset class to stream data via SFTP.
-
-    This class can be used to iterate over multiple datasets located
-    on a remote machine that is accessible via SFTP. It provides an
-    iterable over the batches in all of the files in that folder.
-
-
+    Interface to load and iterate over multiple dataset files in a
+    folder.
     """
     def __init__(self,
-                 host,
                  path,
                  dataset_factory,
                  args=None,
@@ -94,11 +92,10 @@ class SFTPStream:
                  n_workers=4,
                  n_files=None):
         """
-        Create new SFTPStream dataset.
+        Create new DataFolder object.
 
         Args:
-            host: The IP address of the host as string.
-            path: The path on the SFTP server where the datasets are located.
+            path: The path of the folder containing the dataset files.
             dataset_factory: The function used to construct the dataset
                  instances for each file.
             args: Additional, positional arguments passed to
@@ -106,22 +103,26 @@ class SFTPStream:
                  local copy of the dataset file.
             kwargs: Dictionary of keyword arguments passed to the dataset
                  factory.
+            n_workers: The number of workers to use for concurrent loading
+                 of the dataset files.
+            n_files: How many of the file from the folder.
         """
-        self.host = host
+        print(path)
         self.path = path
+        self.folder = CachedDataFolder(path)
         self.dataset_factory = dataset_factory
         self.args = args
         self.kwargs = kwargs
+
         self.n_workers = n_workers
-        self.files = sftp.list_files(self.host, self.path)
-        if n_files is not None:
-            self.files = self.files[:n_files]
+        self.files = self.folder.files
 
         # Sort datasets into random order.
         self.epoch_queue = Queue()
         self.active_queue = Queue()
         self.cache = OrderedDict()
         self.pool = ProcessPoolExecutor(max_workers=self.n_workers)
+        self.folder.download(self.pool)
         self._prefetch()
 
     def _prefetch(self):
@@ -141,9 +142,13 @@ class SFTPStream:
                 else:
                     if len(self.cache) > self.n_workers:
                         self.cache.popitem(last=False)
-                    arguments = [self.host, file, self.dataset_factory,
-                                 self.args, self.kwargs]
-                    self.cache[file] = self.pool.submit(open_dataset, *arguments)
+                    arguments = [self.folder,
+                                 file,
+                                 self.dataset_factory,
+                                 self.args,
+                                 self.kwargs]
+                    self.cache[file] = self.pool.submit(open_dataset,
+                                                        *arguments)
 
     def get_next_dataset(self):
         """
@@ -171,9 +176,10 @@ class SFTPStream:
         else:
             if len(self.cache) > self.n_workers:
                 self.cache.popitem(last=False)
-            arguments = [self.host, file, self.dataset_factory,
-                            self.args, self.kwargs]
-            self.cache[file] = self.pool.submit(open_dataset, *arguments)
+            arguments = [self.folder, file, self.dataset_factory,
+                         self.args, self.kwargs]
+            self.cache[file] = self.pool.submit(open_dataset,
+                                                *arguments)
 
         #
         # Return current file.

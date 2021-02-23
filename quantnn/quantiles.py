@@ -22,7 +22,9 @@ from quantnn.generic import (arange,
                              pad_zeros,
                              as_type,
                              trapz,
-                             reshape)
+                             reshape,
+                             zeros,
+                             ones)
 
 
 def cdf(y_pred,
@@ -65,7 +67,10 @@ def cdf(y_pred,
     xp = get_array_module(y_pred)
 
     y_cdf = quantiles
-    y_cdf = concatenate(xp, [xp.zeros(1), y_cdf, xp.ones(1)], 0)
+
+    y_cdf = concatenate(xp, [zeros(xp, 1, like=y_cdf),
+                             y_cdf,
+                             ones(xp, 1, like=y_cdf)], 0)
 
     selection = [slice(0, None)] * len(y_pred.shape)
     selection_c = copy(selection)
@@ -443,11 +448,11 @@ def crps(y_pred, quantiles, y_true, quantile_axis=1):
     y_true = to_array(xp, y_true)
     y_true = reshape(xp, y_true, y_true_shape)
 
-    ind = xp.ones(x_cdf.shape) * (x_cdf > y_true)
+    ind = ones(xp, x_cdf.shape, like=y_pred) * (x_cdf > y_true)
 
     output_shape = list(x_cdf.shape)
     del output_shape[quantile_axis]
-    integral = xp.zeros(output_shape)
+    integral = zeros(xp, output_shape, like=y_pred)
     x_index = [slice(0, None)] * n_dims
 
     y_l = y_cdf[0]
@@ -507,7 +512,7 @@ def probability_less_than(y_pred, quantiles, y, quantile_axis=1):
 
     output_shape = list(x_cdf.shape)
     del output_shape[quantile_axis]
-    probabilities = xp.zeros(output_shape)
+    probabilities = zeros(xp, output_shape, like=y_pred)
 
     y_l = y_cdf[0]
     x_index = [slice(0, None)] * n_dims
@@ -595,7 +600,7 @@ def sample_posterior(y_pred,
     output_shape[quantile_axis] = n_samples
 
     samples = sample_uniform(xp, tuple(output_shape))
-    results = xp.zeros(samples.shape)
+    results = zeros(xp, samples.shape, like=y_pred)
 
     y_l = y_cdf[0]
     x_index = [slice(0, None)] * n_dims
@@ -743,7 +748,7 @@ def quantile_loss(y_pred,
     quantiles = reshape(xp, quantiles, quantiles_shape)
 
     dy = y_pred - y_true
-    loss = xp.zeros(dy.shape)
+    loss = zeros(xp, dy.shape, like=y_pred)
     mask = as_type(xp, dy > 0.0, dy)
     loss += mask * ((1.0 - quantiles) * dy)
     loss += -(1.0 - mask) * (quantiles * dy)

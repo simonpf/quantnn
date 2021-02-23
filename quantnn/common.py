@@ -25,6 +25,11 @@ class UnsupportedBackendException(QuantnnException):
 
     """
 
+class MissingBackendException(QuantnnException):
+    """
+    Thrown when a requested backend could not be imported.
+    """
+
 class InvalidDimensionException(QuantnnException):
     """Thrown when an input array doesn't match expected shape."""
 

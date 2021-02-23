@@ -4,11 +4,9 @@ quantnn.generic
 
 This module provides backend-agnostic array operations.
 """
-import os
-
 import numpy as np
 import numpy.ma as ma
-import itertools
+import scipy as sp
 
 from quantnn.common import (UnknownArrayTypeException,
                             UnknownModuleException,
@@ -96,7 +94,7 @@ def get_array_module(x):
                                     "not a supported array type.")
 
 
-def to_array(module, array):
+def to_array(module, array, like=None):
     """
     Turn a list into an array.
 
@@ -111,9 +109,15 @@ def to_array(module, array):
     """
     _import_modules()
     if module in [np, ma]:
-        return module.asarray(array)
+        if like is not None:
+            return module.asarray(array, dtype=like.dtype)
+        else:
+            return module.asarray(array)
     elif module == torch:
-        return module.tensor(array)
+        if like is not None:
+            return module.tensor(array, dtype=like.dtype, device=like.device)
+        else:
+            return module.tensor(array)
     elif module == jnp:
         return module.asarray(array)
     elif module == tf:
@@ -491,4 +495,86 @@ def cumtrapz(module, y, x, dimension):
 
     return pad_zeros_left(module, y_int, 1, dimension)
 
+def zeros(module, shape, like=None):
+    """
+    Zero tensor of given shape.
 
+    Arguments:
+        module: The backend array corresponding to the given array.
+        shape: Tuple defining the desired shape of the tensor to create.
+        like: Optional tensor to use to determine additional properties
+            such as data type, device, etc ...
+
+    Return:
+         Zero tensor of given shape.
+    """
+    _import_modules()
+    if module in [np, ma]:
+        if like is not None:
+            return module.zeros(shape, dtype=like.dtype)
+        else:
+            return module.zeros(shape)
+    elif module == torch:
+        if like is not None:
+            return module.zeros(shape, dtype=like.dtype, device=like.device)
+        else:
+            return module.zeros(shape)
+    elif module == jnp:
+        return module.zeros(shape)
+    elif module == tf:
+        return module.zeros(shape)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+
+def ones(module, shape, like=None):
+    """
+    One tensor of given shape.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        shape: Tuple defining the desired shape of the tensor to create.
+        like: Optional tensor to use to determine additional properties
+            such as data type, device, etc ...
+
+    Return:
+         One tensor of given shape.
+    """
+    _import_modules()
+    if module in [np, ma]:
+        if like is not None:
+            return module.ones(shape, dtype=like.dtype)
+        else:
+            return module.ones(shape)
+    elif module == torch:
+        if like is not None:
+            return module.ones(shape, dtype=like.dtype, device=like.device)
+        else:
+            return module.ones(shape)
+    elif module == jnp:
+        return module.ones(shape)
+    elif module == tf:
+        return module.ones(shape)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+
+def softmax(module, x, axis=None):
+    """
+    Apply softmax to tensor.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        x: The tensor to apply the softmax to.
+
+    Return:
+         softmax(x)
+    """
+    _import_modules()
+    if module in [np, ma]:
+        return sp.special.softmax(x, axis=axis)
+    elif module == torch:
+        return module.nn.functional.softmax(x, dim=axis)
+    elif module == jnp:
+        return jax.nn.softmax(x, axis=axis)
+    elif module == tf:
+        return module.nn.softmax(x, axis=axis)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")

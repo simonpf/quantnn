@@ -3,21 +3,11 @@ Tests for generic array manipulation functions.
 """
 import numpy as np
 import pytest
-from quantnn.generic import (get_array_module,
-                             to_array,
-                             sample_uniform,
-                             sample_gaussian,
-                             numel,
-                             concatenate,
-                             expand_dims,
-                             pad_zeros,
-                             pad_zeros_left,
-                             as_type,
-                             arange,
-                             reshape,
-                             trapz,
-                             cumsum,
-                             cumtrapz)
+from quantnn.generic import (get_array_module, to_array, sample_uniform,
+                             sample_gaussian, numel, concatenate, expand_dims,
+                             pad_zeros, pad_zeros_left, as_type, arange,
+                             reshape, trapz, cumsum, cumtrapz, ones, zeros,
+                             softmax)
 
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_get_array_module(backend):
@@ -166,3 +156,18 @@ def test_cumtrapz(backend):
     result = cumtrapz(backend, y, 2.0 * x, 0)
     assert result[0, 0] == 0.0
     assert result[-1, 0] == 100.0
+
+@pytest.mark.parametrize("backend", pytest.backends)
+def test_zeros(backend):
+    x = ones(backend, (1, 1))
+    assert x[0, 0] == 1.0
+
+@pytest.mark.parametrize("backend", pytest.backends)
+def test_zeros(backend):
+    x = zeros(backend, (1, 1))
+    assert x[0, 0] == 0.0
+
+@pytest.mark.parametrize("backend", pytest.backends)
+def test_softmax(backend):
+    array = arange(backend, 0, 10.1, 1)
+    y = softmax(backend, array)

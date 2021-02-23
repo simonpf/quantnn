@@ -10,241 +10,136 @@ for biomedical image segmentation", Proc. Int. Conf. Med. Image Comput.
 Comput.-Assist. Intervent. (MICCAI), pp. 234-241, 2015.
 """
 import torch
-from torch import nn
+import torch.nn as nn
 
-from quantnn.models.pytorch.common import PytorchModel
+def _conv2(channels_in, channels_out, kernel_size):
+    """2D convolution with padding to keep image size constant. """
+    return nn.Conv2d(channels_in,
+                     channels_out,
+                     kernel_size=kernel_size,
+                     padding=kernel_size // 2,
+                     padding_mode="reflect")
 
 
-class Layer(nn.Sequential):
+class ConvolutionBlock(nn.Module):
     """
-    Basic building block of a UNet. Consists of a convolutional
-    layer followed by an activation layers and an optional batch
-    norm layer.
-
-    Args:
-        features_in(:code:`int`): Number of features of input
-        features_out(:code:`int`): Raw number of output features of the
-            layer not including skip connections.
-        batch_norm(:code:`bool`): Whether or not to include a batch norm
-            layer.
-        kernel_size(:code:`int`): Kernel size to use for the conv. layer.
-        activation(:code:`activation`): Activation to use after conv. layer.
-        skip_connection(:code:`bool`): Whether to include skip connections, i.e.
-            to include input in layer output.
+    A convolution block consisting of a pair of 2x2
+    convolutions followed by a batch normalization layer and
+    ReLU activaitons.
     """
-
-    def __init__(
-        self,
-        features_in,
-        features_out,
-        kernel_size=3,
-        activation=nn.ReLU,
-        skip_connection=False,
-    ):
-        self._features_in = features_in
-        self._features_out = features_out
-        self.skip_connection = skip_connection
-
-        if activation is not None:
-            modules = [
-                nn.ConstantPad2d(1, 0.0),
-                nn.Conv2d(features_in, features_out, kernel_size),
-                nn.BatchNorm2d(features_out),
-                activation(),
-            ]
-        else:
-            modules = [
-                nn.ConstantPad2d(1, 0.0),
-                nn.Conv2d(features_in, features_out, kernel_size),
-                nn.BatchNorm2d(features_out),
-            ]
-        super().__init__(*modules)
-
-    @property
-    def features_out(self):
+    def __init__(self,
+                 channels_in,
+                 channels_out):
         """
-        The number outgoing channels of the layer.
-        """
-        if self.skip_connection:
-            return self._features_in + self._features_out
-        return self._features_out
+        Create new convolution block.
 
-    def forward(self, x):
-        """ Forward input through layer. """
-        y = nn.Sequential.forward(self, x)
-        if self.skip_connection:
-            y = torch.cat([x, y], dim=1)
-        return y
-
-
-class Block(nn.Sequential):
-    """
-    A block bundles a set of layers.
-    """
-
-    def __init__(
-        self,
-        features_in,
-        features_out,
-        depth=2,
-        batch_norm=True,
-        activation=nn.ReLU,
-        kernel_size=3,
-        skip_connection=None,
-    ):
-        """
         Args:
-            features_in(:code:`int`): The number of input features of the block
-            features_out(:code:`int`): The number of output features of the block.
-            depth(:code:`int`): The number of layers of the block
-            activation(:code:`nn.Module`): Pytorch activation layer to
-                use. :code:`nn.ReLU` by default.
-            skip_connection(:code:`str`): Whether or not to insert skip
-                connections before all layers (:code:`"all"`) or just at
-                the end (:code:`"end"`).
+            channels_in: The number of input channels.
+            channels_out: The number of output channels.
         """
-        self._features_in = features_in
-
-        if skip_connection == "all":
-            skip_connection_layer = True
-            self.skip_connection = False
-        elif skip_connection == "end":
-            skip_connection_layer = False
-            self.skip_connection = True
-        else:
-            skip_connection_layer = False
-            self.skip_connection = False
-
-        layers = []
-        nf = features_in
-        for d in range(depth):
-            layers.append(
-                Layer(
-                    nf,
-                    features_out,
-                    activation=activation,
-                    batch_norm=batch_norm,
-                    kernel_size=kernel_size,
-                    skip_connection=skip_connection_layer,
-                )
-            )
-            nf = layers[-1].features_out
-
-        self._features_out = layers[-1].features_out
-        super().__init__(*layers)
-
-    @property
-    def features_out(self):
-        """
-        The number outgoing channels of the layer.
-        """
-        if self.skip_connection:
-            return self._features_in + self._features_out
-        else:
-            return self._features_out
-
-    def forward(self, x):
-        """ Forward input through layer. """
-        y = nn.Sequential.forward(self, x)
-        if self.skip_connection:
-            y = torch.cat([x, y], dim=1)
-        return y
-
-
-class DownSampler(nn.Sequential):
-    """
-    A downsampling block reduces the input resolution by applying max-pooling.
-    """
-    def __init__(self):
-        modules = [nn.MaxPool2d(2)]
-        super().__init__(*modules)
-
-
-class UpSampler(nn.Sequential):
-    """
-    An upsampling block increases the input resolution by transposed convolution.
-    """
-    def __init__(self, features_in, features_out):
-        modules = [
-            nn.ConvTranspose2d(
-                features_in, features_out, 3, padding=1, output_padding=1, stride=2
-            )
-        ]
-        super().__init__(*modules)
-
-
-class UNet(PytorchModel, nn.Module):
-    """
-    Pytorch implementation of the UNet architecture for image segmentation.
-    """
-    def __init__(
-        self, input_features, quantiles, n_features=32, n_levels=4, skip_connection=None
-    ):
-        """
-        Args:
-            input_features(``int``): The number of channels of the input image.
-            quantiles(``np.array``): Array containing the quantiles to predict.
-            n_features: The number of channels of the first convolution block.
-            n_level: The number of down-sampling steps.
-            skip_connection: Whether or not to include skip connections in
-                each block.
-        """
-        nn.Module.__init__(self)
-        PytorchModel.__init__(self, input_features, quantiles)
-
-        # Down-sampling blocks
-        self.down_blocks = nn.ModuleList()
-        self.down_samplers = nn.ModuleList()
-        features_in = input_features
-        features_out = n_features
-        for i in range(n_levels - 1):
-            self.down_blocks.append(
-                Block(features_in, features_out, skip_connection=skip_connection)
-            )
-            self.down_samplers.append(DownSampler())
-            features_in = self.down_blocks[-1].features_out
-            features_out = features_out * 2
-
-        self.center_block = Block(
-            features_in, features_out, skip_connection=skip_connection
-        )
-
-        self.up_blocks = nn.ModuleList()
-        self.up_samplers = nn.ModuleList()
-        features_in = self.center_block.features_out
-        features_out = features_out // 2
-        for i in range(n_levels - 1):
-            self.up_samplers.append(UpSampler(features_in, features_out))
-            features_in = features_out + self.down_blocks[(-i - 1)].features_out
-            self.up_blocks.append(
-                Block(features_in, features_out, skip_connection=skip_connection)
-            )
-            features_out = features_out // 2
-            features_in = self.up_blocks[-1].features_out
-
-        self.head = nn.Sequential(
-            nn.Conv2d(features_in, features_in, 1),
-            nn.ReLU(),
-            nn.Conv2d(features_in, features_in, 1),
-            nn.ReLU(),
-            nn.Conv2d(features_in, quantiles.size, 1),
+        super().__init__()
+        self.block = nn.Sequential(
+            _conv2(channels_in, channels_out, 3),
+            nn.BatchNorm2d(channels_out),
+            nn.ReLU(inplace=True),
+            _conv2(channels_out, channels_out, 3),
+            nn.BatchNorm2d(channels_out),
+            nn.ReLU(inplace=True)
         )
 
     def forward(self, x):
-        """ Propagate input through layer. """
-        features = []
-        for (b, s) in zip(self.down_blocks, self.down_samplers):
-            x = b(x)
-            features.append(x)
-            x = s(x)
+        """Propagate input through layer."""
+        return self.block(x)
 
-        x = self.center_block(x)
 
-        for (b, u, f) in zip(self.up_blocks, self.up_samplers, features[::-1]):
-            x = u(x)
-            x = torch.cat([x, f], 1)
-            x = b(x)
+class DownsamplingBlock(nn.Module):
+    """
+    UNet downsampling block consisting of 2x2 max-pooling followed
+    by a convolution block.
+    """
+    def __init__(self,
+                 channels_in,
+                 channels_out):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.MaxPool2d(2),
+            ConvolutionBlock(channels_in, channels_out)
+        )
 
-        self.features = features
+    def forward(self, x):
+        """Propagate input through block."""
+        return self.block(x)
 
-        return self.head(x)
+
+class UpsamplingBlock(nn.Module):
+    """
+    UNet upsampling block consisting bilinear interpolation followed
+    by a 1x1 convolution to decrease the channel dimensions and followed
+    by a UNet convolution block.
+    """
+    def __init__(self, channels_in, channels_out):
+        super().__init__()
+        self.upscaling = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.reduce = _conv2(channels_in, channels_in // 2, 3)
+        self.conv = ConvolutionBlock(channels_in, channels_out)
+
+
+    def forward(self, x, x_skip):
+        """Propagate input through block."""
+        x = self.reduce(self.upscaling(x))
+        x = torch.cat([x, x_skip], dim=1)
+        return self.conv(x)
+
+
+class UNet(nn.Module):
+    """
+    PyTorch implementation of UNet, consisting of 4 downsampling
+    blocks followed by 4 upsampling blocks and skip connection between
+    down- and upsampling blocks of matching output and input size.
+
+    The core of each down and upsampling block consists of two
+    2D 3x3 convolution followed by batch norm and ReLU activation
+    functions.
+    """
+    def __init__(self,
+                 n_inputs,
+                 n_outputs):
+        """
+        Args:
+            n_input: The number of input channels.
+            n_outputs: The number of output channels.
+        """
+        super().__init__()
+        self.n_inputs = n_inputs
+        self.n_outputs = n_outputs
+
+        self.in_block = ConvolutionBlock(n_inputs, 64)
+
+        self.down_block_1 = DownsamplingBlock(64, 128)
+        self.down_block_2 = DownsamplingBlock(128, 256)
+        self.down_block_3 = DownsamplingBlock(256, 512)
+        self.down_block_4 = DownsamplingBlock(512, 1024)
+
+        self.up_block_1 = UpsamplingBlock(1024, 512)
+        self.up_block_2 = UpsamplingBlock(512, 256)
+        self.up_block_3 = UpsamplingBlock(256, 128)
+        self.up_block_4 = UpsamplingBlock(128, n_outputs)
+
+        self.out_block = _conv2(n_outputs, n_outputs, 1)
+
+
+    def forward(self, x):
+        """Propagate input through network."""
+
+        d_64 = self.in_block(x)
+        d_128 = self.down_block_1(d_64)
+        d_256 = self.down_block_2(d_128)
+        d_512 = self.down_block_3(d_256)
+        d_1024 = self.down_block_4(d_512)
+
+        u_512 = self.up_block_1(d_1024, d_512)
+        u_256 = self.up_block_2(u_512, d_256)
+        u_128 = self.up_block_3(u_256, d_128)
+        u_out = self.up_block_4(u_128, d_64)
+
+        return self.out_block(u_out)

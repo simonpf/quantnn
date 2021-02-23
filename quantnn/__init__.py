@@ -14,6 +14,8 @@ respectively.
 The modules :py:mod:`quantnn.quantiles` and :py:mod:`quantnn.density` provide generic
 (backend agnostic) functions to manipulate probabilistic predictions.
 """
+import logging
+import os
 from quantnn.neural_network_model import (set_default_backend,
                                           get_default_backend)
 from quantnn.qrnn import QRNN
@@ -26,3 +28,6 @@ from quantnn.quantiles import (cdf,
                                sample_posterior,
                                sample_posterior_gaussian,
                                quantile_loss)
+
+_LOG_LEVEL = os.environ.get('QUANTNN_LOG_LEVEL', 'WARNING').upper()
+logging.basicConfig(level=_LOG_LEVEL)

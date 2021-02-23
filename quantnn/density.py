@@ -27,11 +27,24 @@ def _check_dimensions(n_y, n_b):
             f" one more bin edge than bins values is 'y_pred'."
         )
 
+def normalize(y_pred,
+              bins,
+              bin_axis=1):
+    """
+    Converts the raw DRNN output to a PDF.
 
-def posterior_cdf(y_pred,
-                  bins,
-                  bin_axis=1):
+    Args:
+        y_pred: Tensor of predictions from a DRNN with the bin-probabilities
+            along one of its axes.
+        bins: The bin boundaries corresponding to the predictions.
+        bin_axis: The index of the tensor axis which contains the predictions
+            for each bin.
 
+    Return:
+        Tensor with the same shape as ``y_pred`` but with the values
+        transformed to represent the PDF corresponding to the predicted
+        bin probabilities in ``y_pred``.
+    """
     if len(y_pred.shape) == 1:
         bin_axis = 0
     n_y = y_pred.shape[bin_axis]
@@ -40,66 +53,134 @@ def posterior_cdf(y_pred,
     xp = get_array_module(y_pred)
     n = len(y_pred.shape)
 
-    y_cdf = cumtrapz(xp, y_pred, bins, bin_axis)
+    norm = y_pred.sum(bin_axis)
+    norm = expand_dims(xp, norm, bin_axis)
+
+    dx = bins[1:] - bins[:-1]
+    shape = [1] * n
+    shape[bin_axis] = -1
+    dx = reshape(xp, dx, shape)
+
+    return y_pred / dx
+
+def posterior_cdf(y_pdf,
+                  bins,
+                  bin_axis=1):
+    """
+    Calculate CDF from predicted probability density function.
+
+    Args:
+        y_pdf: Tensor containing the predicted PDFs.
+        bins: The bin-boundaries corresponding to the predictions.
+        bin_axis: The index of the tensor axis which contains the predictions
+            for each bin.
+
+    Return:
+        Tensor with the same shape as ``y_pdf`` but with the values
+        transformed to represent the CDF corresponding to the predicted
+        PDF in ``y_pdf``.
+    """
+    if len(y_pdf.shape) == 1:
+        bin_axis = 0
+    n_y = y_pdf.shape[bin_axis]
+    n_b = len(bins)
+    _check_dimensions(n_y, n_b)
+    xp = get_array_module(y_pdf)
+    n = len(y_pdf.shape)
+
+    y_cdf = cumtrapz(xp, y_pdf, bins, bin_axis)
 
     selection = [slice(0, None)] * n
     selection[bin_axis] = slice(-1, None)
     y_cdf = y_cdf / y_cdf[tuple(selection)]
     return y_cdf
 
-def posterior_mean(y_pred,
+def posterior_mean(y_pdf,
                    bins,
                    bin_axis=1):
-    if len(y_pred.shape) == 1:
+    """
+    Calculate posterior mean from predicted PDFs.
+
+    Args:
+        y_pdf: Tensor containing the predicted PDFs.
+        bins: The bin-boundaries corresponding to the predictions.
+        bin_axis: The index of the tensor axis which contains the predictions
+            for each bin.
+
+    Return:
+        Tensor with rank reduced by one compared to ``y_pdf`` and with
+        the values along ``bin_axis`` of ``y_pdf`` replaced with the
+        mean value of the PDF.
+    """
+    if len(y_pdf.shape) == 1:
         bin_axis = 0
-    n_y = y_pred.shape[bin_axis]
+    n_y = y_pdf.shape[bin_axis]
     n_b = len(bins)
     _check_dimensions(n_y, n_b)
-    xp = get_array_module(y_pred)
-    n = len(y_pred.shape)
+    xp = get_array_module(y_pdf)
+    n = len(y_pdf.shape)
 
     shape = [1] * n
     shape[bin_axis] = -1
     bins_r = reshape(xp, 0.5 * (bins[1:] + bins[:-1]), shape)
 
-    return trapz(xp, bins_r * y_pred, bins, bin_axis)
+    return trapz(xp, bins_r * y_pdf, bins, bin_axis)
 
-def probability_less_than(y_pred,
-                          bins,
-                          y,
-                          bin_axis=1):
-    if len(y_pred.shape) == 1:
-        bin_axis = 0
-    n_y = y_pred.shape[bin_axis]
-    n_b = len(bins)
-    _check_dimensions(n_y, n_b)
-    xp = get_array_module(y_pred)
+
+def posterior_median(y_pred,
+                     bins,
+                     bin_axis=1):
+    """
+    Calculate the posterior median from predicted PDFs.
+
+    Args:
+        y_pdf: Tensor containing the predicted PDFs.
+        bins: The bin-boundaries corresponding to the predictions.
+        bin_axis: The index of the tensor axis which contains the predictions
+            for each bin.
+
+    Return:
+        Tensor with rank reduced by one compared to ``y_pdf`` and with
+        the values along ``bin_axis`` of ``y_pdf`` replaced with the
+        median value of the PDFs.
+    """
+    quantiles = posterior_quantiles(y_pred, bins, [0.5], bin_axis=bin_axis)
     n = len(y_pred.shape)
-
-    x = 0.5 * (bins[1:] + bins[:-1])
-    mask = x < y
-    shape = [1] * n
-    shape[bin_axis] = -1
-    mask = as_type(xp, reshape(xp, mask , shape), y_pred)
-
-    return trapz(xp, mask * y_pred, bins, bin_axis)
+    selection = [slice(0, None)] * n
+    selection[bin_axis] = 0
+    return quantiles[tuple(selection)]
 
 
-def posterior_quantiles(y_pred,
+def posterior_quantiles(y_pdf,
                         bins,
                         quantiles,
                         bin_axis=1):
+    """
+    Calculate posterior quantiles from predicted PDFs.
 
-    if len(y_pred.shape) == 1:
+    Args:
+        y_pdf: Tensor containing the predicted PDFs.
+        bins: The bin-boundaries corresponding to the predictions.
+        quantiles: List containing the quantiles fractions of the quantiles
+             to compute.
+        bin_axis: The index of the tensor axis which contains the predictions
+            for each bin.
+
+    Return:
+        Tensor with same rank as ``y_pdf`` but with the values
+        the values along ``bin_axis`` replaced with the quantiles
+        of the predicted distributions.
+    """
+    if len(y_pdf.shape) == 1:
         bin_axis = 0
-    n_y = y_pred.shape[bin_axis]
+    n_y = y_pdf.shape[bin_axis]
     n_b = len(bins)
     _check_dimensions(n_y, n_b)
-    xp = get_array_module(y_pred)
+    xp = get_array_module(y_pdf)
 
-    y_cdf = posterior_cdf(y_pred, bins, bin_axis=bin_axis)
+    y_cdf = posterior_cdf(y_pdf, bins, bin_axis=bin_axis)
 
-    n = len(y_pred.shape)
+    n = len(y_pdf.shape)
     dx = bins[1:] - bins[:-1]
     x_shape = [1] * n
     x_shape[bin_axis] = numel(bins)
@@ -116,19 +197,65 @@ def posterior_quantiles(y_pred,
     y_q = concatenate(xp, y_qs, bin_axis)
     return y_q
 
-def posterior_median(y_pred,
-                     bins,
-                     bin_axis=1):
-    quantiles = posterior_quantiles(y_pred, bins, [0.5], bin_axis=bin_axis)
-    n = len(y_pred.shape)
-    selection = [slice(0, None)] * n
-    selection[bin_axis] = 0
-    return quantiles[tuple(selection)]
+def probability_less_than(y_pdf,
+                          bins,
+                          y,
+                          bin_axis=1):
+    """
+    Calculate the probability of a sample being less than a given
+    value for a tensor of predicted PDFs.
+
+    Args:
+        y_pdf: Tensor containing the predicted PDFs.
+        bins: The bin-boundaries corresponding to the predictions.
+        y: The sample value.
+        bin_axis: The index of the tensor axis which contains the predictions
+            for each bin.
+
+    Return:
+        Tensor with rank reduced by one compared to ``y_pdf`` and with
+        the values along ``bin_axis`` of ``y_pdf`` replaced with the
+        probability that a sample of the distribution is smaller than
+        the given value ``y``.
+    """
+    if len(y_pdf.shape) == 1:
+        bin_axis = 0
+    n_y = y_pdf.shape[bin_axis]
+    n_b = len(bins)
+    _check_dimensions(n_y, n_b)
+    xp = get_array_module(y_pdf)
+    n = len(y_pdf.shape)
+
+    x = 0.5 * (bins[1:] + bins[:-1])
+    mask = x < y
+    shape = [1] * n
+    shape[bin_axis] = -1
+    mask = as_type(xp, reshape(xp, mask , shape), y_pdf)
+
+    return trapz(xp, mask * y_pdf, bins, bin_axis)
+
 
 def probability_larger_than(y_pred,
                             bins,
                             quantiles,
                             bin_axis=1):
+    """
+    Calculate the probability of a sample being larger than a given
+    value for a tensor of predicted PDFs.
+
+    Args:
+        y_pdf: Tensor containing the predicted PDFs.
+        bins: The bin-boundaries corresponding to the predictions.
+        y: The sample value.
+        bin_axis: The index of the tensor axis which contains the predictions
+            for each bin.
+
+    Return:
+        Tensor with rank reduced by one compared to ``y_pdf`` and with
+        the values along ``bin_axis`` of ``y_pdf`` replaced with the
+        probability that a sample of the distribution is larger than
+        the given value ``y``.
+    """
     return 1.0 - probability_less_than(y_pred,
                                        bins,
                                        quantiles,

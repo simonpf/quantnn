@@ -1,11 +1,10 @@
 """
+============
 quantnn.qrnn
 ============
 
-This module provides the QRNN class, which implements the high-level
-functionality of quantile regression neural networks, while the neural
-network implementation is left to the model backends implemented in the
-``quantnn.models`` submodule.
+This module provides the QRNN class, which is a generic implementation of
+quantile regression neural networks (QRNN). 
 """
 import copy
 import pickle
@@ -15,6 +14,7 @@ import numpy as np
 import quantnn.quantiles as qq
 from quantnn.neural_network_model import NeuralNetworkModel
 from quantnn.common import QuantnnException, UnsupportedBackendException
+from quantnn.generic import softmax, to_array, get_array_module
 
 ################################################################################
 # Set the backend
@@ -28,43 +28,29 @@ class QRNN(NeuralNetworkModel):
     r"""
     Quantile Regression Neural Network (QRNN)
 
-    This class provides a high-level implementation of  quantile regression
-    neural networks. It can be used to estimate quantiles of the posterior
-    distribution of remote sensing retrievals.
+    This class provides a generic implementation of  quantile regression
+    neural networks, which can be used to estimate quantiles of the posterior
+    distribution of remote sensing retrievals or any other probabilistic
+    regression problem.
 
-    The :class:`QRNN`` class uses an arbitrary neural network model, that is
-    trained to minimize the quantile loss function
+    The :class:`QRNN`` class wraps around a neural network rergession model,
+    which may come from any of the supported ML backends, and adds functionality
+    to train the neural network model as well as to perform inference on input
+    data.
 
-    .. math::
-            \mathcal{L}_\tau(y_\tau, y_{true}) =
-            \begin{cases} (1 - \tau)|y_\tau - y_{true}| & \text{ if } y_\tau < y_\text{true} \\
-            \tau |y_\tau - y_\text{true}| & \text{ otherwise, }\end{cases}
+    Given a selection of quantile fractions :math:`{\tau_0},\ldots,y_{\tau_n} \in [0, 1]`,
+    the network is trained to predict the corresponding quantiles :math:`y_{\tau_i}` of
+    the posterior of the posterior distribution by training to minimize the sum of the
+    loss functions
 
-    where :math:`x_\text{true}` is the true value of the retrieval quantity
-    and and :math:`x_\tau` is the predicted quantile. The neural network
-    has one output neuron for each quantile to estimate.
+            \mathcal{L}_{\tau_i}(y_{\tau_i}, y_{true}) =
+            \begin{cases} (1 - {\tau_i})|y_{\tau_i} - y_{true}| & \text{ if } y_{\tau_i} < y_\text{true} \\
+            \tau_i |y_{\tau_i} - y_\text{true}| & \text{ otherwise, }\end{cases}
 
-    The QRNN class provides a generic QRNN implementation in the sense that it
-    does not assume a fixed neural network architecture or implementation.
-    Instead, this functionality is off-loaded to a model object, which can be
-    an arbitrary regression network such as a fully-connected or a
-    convolutional network. A range of different models are provided in the
-    quantnn.models module. The :class:`QRNN`` class just
-    implements high-level operation on the QRNN output while training and
-    prediction are delegated to the model object. For details on the respective
-    implementation refer to the documentation of the corresponding model class.
-
-    .. note::
-
-      For the QRNN implementation :math:`x` is used to denote the input
-      vector and :math:`y` to denote the output. While this is opposed
-      to inverse problem notation typically used for retrievals, it is
-      in line with machine learning notation and felt more natural for
-      the implementation. If this annoys you, I am sorry.
+    where :math:`y_\text{true}` is the true value of the retrieval quantity.
 
     Attributes:
-        backend(``str``):
-            The name of the backend used for the neural network model.
+
         quantiles (numpy.array):
             The 1D-array containing the quantiles :math:`\tau \in [0, 1]`
             that the network learns to predict.
@@ -73,13 +59,13 @@ class QRNN(NeuralNetworkModel):
     """
     def __init__(self,
                  quantiles,
-                 input_dimensions=None,
+                 n_inputs=None,
                  model=(3, 128, "relu")):
         """
         Create a QRNN model.
 
         Arguments:
-            input_dimensions(int):
+            n_inputs(int):
                 The dimension of the measurement space, i.e. the
                 number of elements in a single measurement vector y
             quantiles(np.array):
@@ -92,11 +78,11 @@ class QRNN(NeuralNetworkModel):
                 with :code:`d` hidden layers with :code:`w` neurons and
                 :code:`act` activation functions.
         """
-        self.input_dimensions = input_dimensions
-        self.output_dimensions = len(quantiles)
+        self.n_inputs = n_inputs
+        self.n_outputs = len(quantiles)
         self.quantiles = np.array(quantiles)
-        super().__init__(self.input_dimensions,
-                         self.output_dimensions,
+        super().__init__(self.n_inputs,
+                         self.n_outputs,
                          model)
 
     def train(self,
@@ -107,47 +93,36 @@ class QRNN(NeuralNetworkModel):
               scheduler=None,
               n_epochs=None,
               adversarial_training=None,
-              device='cpu'):
+              device='cpu',
+              mask=None):
         """
-        Train model on given training data.
+        Train the underlying neural network model on given training data.
 
-        The training is performed on the provided training data and an
-        optionally-provided validation set. Training can use the following
-        augmentation methods:
-            - Gaussian noise added to input
-            - Adversarial training
-        The learning rate is decreased gradually when the validation or training
-        loss did not decrease for a given number of epochs.
+        The training data can be provided as either as tuples ``(x, y)``
+        containing the raw input data as numpy arrays or as backend-specific
+        dataset objects.
+
+        .. note::
+
+           If the train method doesn't serve your needs, the QRNN class can
+           also be used with a pre-trained neural network.
 
         Args:
-            training_data: Tuple of numpy arrays of a dataset object to use to
-                train the model.
+            training_data: Tuple of numpy arrays or backend-specific dataset
+                object to use to train the model.
             validation_data: Optional validation data in the same format as the
                 training data.
             batch_size: If training data is provided as arrays, this batch size
                 will be used to for the training.
-            sigma_noise: If training data is provided as arrays, training data
-                will be augmented by adding noise with the given standard
-                deviations to each input vector before it is presented to the
-                model.
-            adversarial_training(``bool``): Whether or not to perform
-                adversarial training using the fast gradient sign method.
-            delta_at: The scaling factor to apply for adversarial training.
-            initial_learning_rate(``float``): The learning rate with which the
-                 training is started.
-            momentum(``float``): The momentum to use for training.
-            convergence_epochs(``int``): The number of epochs with
-                 non-decreasing loss before the learning rate is decreased
-            learning_rate_decay(``float``): The factor by which the learning rate
-                 is decreased.
-            learning_rate_minimum(``float``): The learning rate at which the
-                 training is aborted.
-            maximum_epochs(``int``): For how many epochs to keep training.
-            training_split(``float``): If no validation data is provided, this
-                 is the fraction of training data that is used for validation.
-            gpu(``bool``): Whether or not to try to run the training on the GPU.
+            optimizer: A backend-specific optimizer object to use for training.
+            scheduler: A backend-specific scheduler object to use for training.
+            n_epochs: The maximum number of epochs for which to train  the model.
+            device: A ``str`` or backend-specific device object identifying the
+                device to use for training.
+            mask: Optional numeric value to use to mask all values that are
+                smaller than or equal to this value.
         """
-        loss = self.backend.QuantileLoss(self.quantiles)
+        loss = self.backend.QuantileLoss(self.quantiles, mask=mask)
         return self.model.train(training_data,
                                 validation_data=validation_data,
                                 loss=loss,
@@ -160,56 +135,67 @@ class QRNN(NeuralNetworkModel):
 
     def predict(self, x):
         r"""
-        Predict quantiles of the conditional distribution P(y|x).
+        Predict quantiles of the conditional distribution :math:`p(y|x)``.
 
-        Forward propagates the inputs in `x` through the network to
-        obtain the predicted quantiles `y`.
+        Forward propagates the inputs in ``x`` through the network to
+        obtain the predicted quantiles ``y_pred``.
 
         Arguments:
 
-            x(np.array): Array of shape `(n, m)` containing `n` m-dimensional inputs
-                         for which to predict the conditional quantiles.
+            x(np.array): Rank-k tensor containing the input data with
+                the input channels (or features) for each sample located
+                 along its first dimension.
 
         Returns:
 
-             Array of shape `(n, k)` with the columns corresponding to the k
-             quantiles of the network.
-
+            Rank-k tensor ``y_pred`` containing the quantiles of each input
+            sample along its first dimension
         """
         return self.model.predict(x)
 
-    def cdf(self, x):
+    def cdf(self, x=None, y_pred=None):
         r"""
-        Approximate the posterior CDF for given inputs `x`.
+        Approximate the posterior CDF for given inputs ``x``.
 
-        Propagates the inputs in `x` forward through the network and
-        approximates the posterior CDF by a piecewise linear function.
+        Propagates the inputs in ``x`` forward through the network and
+        approximates the posterior CDF using a piecewise linear function.
 
-        The piecewise linear function is given by its values at approximate
-        quantiles :math:`x_\tau`` for :math:`\tau = \{0.0, \tau_1, \ldots,
-        \tau_k, 1.0\}` where :math:`\tau_k` are the quantiles to be estimated
-        by the network. The values for :math:`x_{0.0}` and :math:`x_{1.0}` are
-        computed using
+        The piecewise linear function is given by its at quantiles
+        :math:`y_{\tau_i}`` for :math:`\tau = \{0.0, \tau_1, \ldots,
+        \tau_k, 1.0\}` where :math:`\tau_i` are the quantile fractions to be
+        predicted by the network. The values for :math:`y_{\tau={0.0}}`
+        and :math:`x_{\tau={1.0}}` are computed using
 
         .. math::
 
-            x_{0.0} = 2.0 x_{\tau_1} - x_{\tau_2}
+            y_{\tau=0.0} = 2.0 x_{\tau_1} - x_{\tau_2}
 
-            x_{1.0} = 2.0 x_{\tau_k} - x_{\tau_{k-1}}
+            y_{\tay=1.0} = 2.0 x_{\tau_k} - x_{\tau_{k-1}}
 
         Arguments:
 
-            x(np.array): Array of shape `(n, m)` containing `n` inputs for which
-                         to predict the conditional quantiles.
+            x: Rank-k tensor containing the input data with
+                the input channels (or features) for each sample located
+                along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
 
         Returns:
 
-            Tuple (xs, fs) containing the :math:`x`-values in `xs` and corresponding
-            values of the posterior CDF :math:`F(x)` in `fs`.
+            Tuple ``(y_cdf, cdf)`` containing the abscissa-values ``y_cdf`` and
+            the ordinates values ``cdf`` of the piece-wise linear approximation
+            of the CDF :math:`F(y)`.
 
         """
-        y_pred = self.predict(x)
-        return qq.cdf(y_pred, self.quantiles, quantile_axis=1)
+        if y_pred is None:
+            if x is None:
+                raise ValueError("One of the input arguments x or y_pred must be "
+                                 " provided.")
+            y_pred = self.predict(x)
+        module = get_array_module(y_pred)
+        quantiles = to_array(module, self.quantiles, like=y_pred)
+        return qq.cdf(y_pred, quantiles, quantile_axis=1)
 
     def calibration(self, *args, **kwargs):
         """
@@ -217,7 +203,7 @@ class QRNN(NeuralNetworkModel):
         """
         return self.model.calibration(*args, *kwargs)
 
-    def pdf(self, x):
+    def pdf(self, x=None, y_pred=None):
         r"""
         Approximate the posterior probability density function (PDF) for given
         inputs ``x``.
@@ -228,8 +214,12 @@ class QRNN(NeuralNetworkModel):
 
         Arguments:
 
-            x(np.array): Array of shape `(n, m)` containing `n` inputs for which
-               to predict PDFs.
+            x: Rank-k tensor containing the input data with
+                the input channels (or features) for each sample located
+                along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
 
         Returns:
 
@@ -237,46 +227,63 @@ class QRNN(NeuralNetworkModel):
             the x and y coordinates describing the PDF for the inputs in ``x``.
 
         """
-        y_pred = self.predict(x)
-        return qq.pdf(y_pred, self.quantiles, quantile_axis=1)
+        if y_pred is None:
+            if x is None:
+                raise ValueError("One of the input arguments x or y_pred must be "
+                                 " provided.")
+            y_pred = self.predict(x)
+        module = get_array_module(y_pred)
+        quantiles = to_array(module, self.quantiles, like=y_pred)
+        return qq.pdf(y_pred, quantiles, quantile_axis=1)
 
-    def sample_posterior(self, x, n_samples=1):
+    def sample_posterior(self, x=None, y_pred=None, n_samples=1):
         r"""
-        Generates :code:`n` samples from the estimated posterior
-        distribution for the input vector :code:`x`. The sampling
-        is performed by the inverse CDF method using the estimated
-        CDF obtained from the :code:`cdf` member function.
+        Generates :code:`n` samples from the predicted posterior distribution
+        for the input vector :code:`x`. The sampling is performed by the
+        inverse CDF method using the predicted CDF obtained from the
+        :code:`cdf` member function.
 
         Arguments:
 
-            x(np.array): Array of shape `(n, m)` containing `n` inputs for which
-                         to predict the conditional quantiles.
 
-            n(int): The number of samples to generate.
+            x: Rank-k tensor containing the input data with
+                the input channels (or features) for each sample located
+                along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
+            n: The number of samples to generate.
 
         Returns:
 
-            Tuple (xs, fs) containing the :math:`x`-values in `xs` and corresponding
-            values of the posterior CDF :math: `F(x)` in `fs`.
+            Rank-k tensor containing the random samples for each input sample
+            along the first dimension.
         """
-        y_pred = self.predict(x)
+        if y_pred is None:
+            if x is None:
+                raise ValueError("One of the input arguments x or y_pred must be "
+                                 " provided.")
+            y_pred = self.predict(x)
+        module = get_array_module(y_pred)
+        quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.sample_posterior(y_pred,
-                                   self.quantiles,
+                                   quantiles,
                                    n_samples=n_samples,
                                    quantile_axis=1)
 
-    def sample_posterior_gaussian_fit(self, x, n_samples=1):
+    def sample_posterior_gaussian_fit(self, x=None, y_pred=None, n_samples=1):
         r"""
-        Generates :code:`n` samples from the estimated posterior
+        Generates :code:`n` samples from the predicted posterior
         distribution for the input vector :code:`x`. The sampling
-        is performed by the inverse CDF method using the estimated
-        CDF obtained from the :code:`cdf` member function.
+        is performed using a Gaussian fit to the predicted quantiles.
 
         Arguments:
 
-            x(np.array): Array of shape `(n, m)` containing `n` inputs for which
-                         to predict the conditional quantiles.
-
+            x: Rank-k tensor containing the input data with the input channels
+                (or features) for each sample located along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
             n(int): The number of samples to generate.
 
         Returns:
@@ -284,34 +291,48 @@ class QRNN(NeuralNetworkModel):
             Tuple (xs, fs) containing the :math:`x`-values in `xs` and corresponding
             values of the posterior CDF :math: `F(x)` in `fs`.
         """
-        y_pred = self.predict(x)
+        if y_pred is None:
+            if x is None:
+                raise ValueError("One of the input arguments x or y_pred must be "
+                                 " provided.")
+            y_pred = self.predict(x)
+        module = get_array_module(y_pred)
+        quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.sample_posterior_gaussian(y_pred,
-                                            self.quantiles,
+                                            quantiles,
                                             n_samples=n_samples,
                                             quantile_axis=1)
 
-    def posterior_mean(self, x):
+    def posterior_mean(self, x=None, y_pred=None):
         r"""
         Computes the posterior mean by computing the first moment of the
-        estimated posterior CDF.
+        predicted posterior CDF.
 
         Arguments:
 
-            x(np.array): Array of shape `(n, m)` containing `n` inputs for which
-                         to predict the posterior mean.
+            x: Rank-k tensor containing the input data with the input channels
+                (or features) for each sample located along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
         Returns:
 
-            Array containing the posterior means for the provided inputs.
+            Tensor or rank k-1 the posterior means for all provided inputs.
         """
-        y_pred = self.predict(x)
+        if y_pred is None:
+            if x is None:
+                raise ValueError("One of the input arguments x or y_pred must be "
+                                 " provided.")
+            y_pred = self.predict(x)
+        module = get_array_module(y_pred)
+        quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.posterior_mean(y_pred,
-                                 self.quantiles,
+                                 quantiles,
                                  quantile_axis=1)
 
-    def crps(y_pred, y_true, quantiles):
+    def crps(x=None, y_pred=None, y_true=None):
         r"""
-        Compute the Continuous Ranked Probability Score (CRPS) for given quantile
-        predictions.
+        Compute the Continuous Ranked Probability Score (CRPS).
 
         This function uses a piece-wise linear fit to the approximate posterior
         CDF obtained from the predicted quantiles in :code:`y_pred` to
@@ -323,55 +344,128 @@ class QRNN(NeuralNetworkModel):
 
         Arguments:
 
-            y_pred(numpy.array): Array of shape `(n, k)` containing the `k`
-                                 estimated quantiles for each of the `n`
-                                 predictions.
-
-            y_test(numpy.array): Array containing the `n` true values, i.e.
-                                 samples of the true conditional distribution
-                                 estimated by the QRNN.
+            x: Rank-k tensor containing the input data with the input channels
+                (or features) for each sample located along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
+            y_true: Array containing the `n` true values, i.e. samples of the
+                 true conditional distribution predicted by the QRNN.
 
             quantiles: 1D array containing the `k` quantile fractions :math:`\tau`
                        that correspond to the columns in `y_pred`.
 
         Returns:
 
-            `n`-element array containing the CRPS values for each of the
-            predictions in `y_pred`.
+            Tensor of rank k-1 containing the CRPS values for each of the samples.
         """
-        y_pred = self.predict(x)
+        if y_pred is None:
+            if x is None:
+                raise ValueError("One of the input arguments x or y_pred must be "
+                                 " provided.")
+            y_pred = self.predict(x)
+        if y_true is None:
+            raise ValueError("The y_true argument must be provided to calculate "
+                             "the CRPS provided.")
+        module = get_array_module(y_pred)
+        quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.crps(y_pred,
-                       self.quantiles,
+                       quantiles,
                        y_true,
                        quantile_axis=1)
 
-    def probability_larger_than(self, x, y):
+    def probability_larger_than(self, x=None, y=None, y_pred=None):
         """
-        Classify output based on posterior PDF and given numeric threshold.
+        Calculate probability of the output value being larger than a
+        given numeric threshold.
 
         Args:
-            x: The input data as :code:`np.ndarray` or backend-specific
-               dataset object.
-            threshold: The numeric threshold to apply for classification.
+            x: Rank-k tensor containing the input data with the input channels
+                (or features) for each sample located along its first dimension.
+            y: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
+            y: The threshold value.
+
+        Returns:
+
+            Tensor of rank k-1 containing the for each input sample the
+            probability of the corresponding y-value to be larger than the
+            given threshold.
         """
-        y_pred = self.predict(x)
+        if y_pred is None:
+            if x is None:
+                raise ValueError("One of the input arguments x or y_pred must be "
+                                 " provided.")
+            y_pred = self.predict(x)
+        if y is None:
+            raise ValueError("The y argument must be provided to compute the "
+                             " probability.")
+        module = get_array_module(y_pred)
+        quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.probability_larger_than(y_pred,
-                                          self.quantiles,
+                                          quantiles,
                                           y,
                                           quantile_axis=1)
 
 
-    def probability_less_than(self, x, y):
+    def probability_less_than(self, x=None, y=None, y_pred=None):
         """
-        Classify output based on posterior PDF and given numeric threshold.
+        Calculate probability of the output value being smaller than a
+        given numeric threshold.
 
         Args:
-            x: The input data as :code:`np.ndarray` or backend-specific
-               dataset object.
-            threshold: The numeric threshold to apply for classification.
+            x: Rank-k tensor containing the input data with the input channels
+                (or features) for each sample located along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
+            y: The threshold value.
+
+        Returns:
+
+            Tensor of rank k-1 containing the for each input sample the
+            probability of the corresponding y-value to be larger than the
+            given threshold.
         """
         y_pred = self.predict(x)
+        module = get_array_module(y_pred)
+        quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.probability_less_than(y_pred,
-                                        self.quantiles,
+                                        quantiles,
                                         y,
                                         quantile_axis=1)
+
+    def posterior_quantiles(self, x=None, y_pred=None, quantiles=None):
+        r"""
+        Compute the posterior quantiles.
+
+        Arguments:
+
+            x: Rank-k tensor containing the input data with the input channels
+                (or features) for each sample located along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
+            quantiles: List of quantile fraction values :math:`\tau_i \in [0, 1]`.
+        Returns:
+
+            Rank-k tensor containing the desired predicted quantiles along its
+            first dimension.
+        """
+        if y_pred is None:
+            if x is None:
+                raise ValueError("One of the keyword arguments 'x' or 'y_pred'"
+                                 " must be provided.")
+            y_pred = self.predict(x)
+
+        if quantiles is None:
+            raise ValueError("The 'quantiles' keyword argument must be provided to"
+                             "calculate the posterior quantiles.")
+
+        module = get_array_module(y_pred)
+        quantiles = to_array(module, self.quantiles, like=y_pred)
+        return qq.posterior_quantiles(y_pred,
+                                      quantiles,
+                                      quantiles,
+                                      quantile_axis=1)

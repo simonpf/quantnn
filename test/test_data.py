@@ -7,7 +7,7 @@ import os
 import numpy as np
 import pytest
 
-from quantnn.data import SFTPStream
+from quantnn.data import DataFolder
 
 
 HAS_LOGIN_INFO = ("QUANTNN_SFTP_USER" in os.environ and
@@ -65,8 +65,9 @@ def test_sftp_stream():
     Assert that streaming via SFTP yields all data in the given folder
     and that kwargs are correctly passed on to dataset class.
     """
-    stream = SFTPStream("129.16.35.202",
-                        "/mnt/array1/share/Datasets/test/",
+    host = "129.16.35.202"
+    path = "/mnt/array1/share/MLDatasets/test/"
+    stream = DataFolder("sftp://" + host + path,
                         Dataset,
                         kwargs={"batch_size": 2},
                         n_workers=2)

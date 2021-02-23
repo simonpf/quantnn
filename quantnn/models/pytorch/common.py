@@ -19,6 +19,7 @@ from torch.utils.data import Dataset
 
 from quantnn.common import ModelNotSupported
 from quantnn.logging import TrainingLogger
+from quantnn.generic import to_array
 
 activations = {
     "elu": nn.ELU,
@@ -156,16 +157,47 @@ class BatchedDataset(Dataset):
 ################################################################################
 
 class CrossEntropyLoss(nn.CrossEntropyLoss):
+    """
+    Cross entropy loss with optional masking.
 
-    def __init__(self):
-        super().__init__()
+    This loss function class calculates the mean cross entropy loss
+    over the given inputs but applies an optional masking to the
+    inputs, in order to allow the handling of missing values.
+    """
+    def __init__(self, mask=None):
+        """
+        Args:
+            mask: All values that are smaller than or equal to this value will
+                 be excluded from the calculation of the loss.
+        """
+        self.mask = mask
+        if mask is None:
+            reduction = "mean"
+        else:
+            reduction = "none"
+        super().__init__(reduction=reduction)
 
-    def __call__(self, y_pred, y):
-        return nn.CrossEntropyLoss.__call__(
-            self,
-            y_pred,
-            y.flatten()
-        )
+    def __call__(self, y_pred, y_true):
+        """Evaluate the loss."""
+        if len(y_true.shape) == len(y_pred.shape):
+            y_true = y_true.squeeze(1)
+
+        if self.mask is None:
+            return nn.CrossEntropyLoss.__call__(
+                self,
+                y_pred,
+                y_true
+            )
+        else:
+            loss = nn.CrossEntropyLoss.__call__(
+                self,
+                y_pred,
+                torch.maximum(y_true, torch.zeros_like(y_true))
+            )
+            mask = y_true > self.mask
+            return (loss * mask).sum() / mask.sum()
+
+
 
 class QuantileLoss:
     r"""
@@ -190,7 +222,10 @@ class QuantileLoss:
     computed by taking the mean over all samples in the batch.
     """
 
-    def __init__(self, quantiles, mask=None):
+    def __init__(self,
+                 quantiles,
+                 mask=None,
+                 quantile_axis=1):
         """
         Create an instance of the quantile loss function with the given quantiles.
 
@@ -202,6 +237,7 @@ class QuantileLoss:
         self.mask = mask
         if self.mask:
             self.mask = np.float32(mask)
+        self.quantile_axis = quantile_axis
 
     def to(self, device):
         self.quantiles = self.quantiles.to(device)
@@ -221,10 +257,14 @@ class QuantileLoss:
         """
         dy = y_pred - y_true
         n = self.quantiles.size()[0]
-        qs = self.quantiles.reshape((n,) + (1,) * max(len(dy.size()) - 2, 0))
+
+        shape = [1,] * len(dy.size())
+        shape[self.quantile_axis] = self.n_quantiles
+        qs = self.quantiles.reshape(shape)
         l = torch.where(dy >= 0.0, (1.0 - qs) * dy, (-qs) * dy)
         if self.mask:
-            l = torch.where(y_true == self.mask, torch.zeros_like(l), l)
+            mask = y_true > self.mask
+            return (l * mask).sum() / (mask.sum() * self.n_quantiles)
         return l.mean()
 
 ################################################################################
@@ -479,19 +519,12 @@ class PytorchModel:
             The model prediction converted to numpy array.
         """
         # Determine device to use
-        if torch.cuda.is_available() and device in ["gpu", "cuda"]:
-            device = torch.device("cuda")
-        elif device == "cpu":
-            device = torch.device("cpu")
-        else:
-            device = torch.device(device)
-        if torch.cuda.is_available() and device in ["cuda", "gpu"]:
-            device = torch.device("cuda")
-        else:
-            device = torch.device("cpu")
-        x = handle_input(x, device)
-        self.to(device)
-        return self(x.detach()).detach().numpy()
+        with torch.no_grad():
+            w = next(iter(self.parameters())).data
+            x_torch = to_array(torch, x, like=w)
+            self.to(x_torch.device)
+            y = self(x_torch)
+            return y
 
     def calibration(self, data, gpu=False):
         """
