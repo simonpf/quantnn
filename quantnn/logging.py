@@ -51,7 +51,7 @@ class TrainingLogger:
         if (self.i_train_batch == 0):
             self.epoch_start_time = datetime.now()
             self.train_loss = 0.0
-            self.tran_samples = 0
+            self.train_samples = 0
 
         if (self.i_train_batch % self.log_rate) == self.log_rate - 1:
 
