@@ -20,6 +20,7 @@ from keras.losses import SparseCategoricalCrossentropy
 import keras.backend as K
 
 from quantnn.common import QuantnnException, ModelNotSupported
+from quantnn.logging import TrainingLogger
 
 def save_model(f, model):
     """
@@ -251,7 +252,6 @@ class AdversarialTrainingGenerator:
         self.eps = eps
 
     def __iter__(self):
-        LOGGER.info("iter...")
         return self
 
     def __len__(self):
@@ -289,18 +289,21 @@ class ValidationGenerator:
                  component.
     """
 
-    def __init__(self, validation_data, sigma_noise):
+    def __init__(self, validation_data, sigma_noise=None):
         self.validation_data = validation_data
         self.sigma_noise = sigma_noise
 
     def __iter__(self):
         return self
 
+    def __len__(self):
+        return len(self.validation_data)
+
     def __next__(self):
         x_val, y_val = next(self.validation_data)
         if not self.sigma_noise is None:
             x_val += np.random.randn(*self.x_val.shape) * self.sigma_noise
-        return (x_val, self.y_val)
+        return (x_val, y_val)
 
 
 ################################################################################
@@ -355,6 +358,46 @@ class LRDecay(keras.callbacks.Callback):
                 self.model.stop_training = True
 
         self.min_loss = min(self.min_loss, self.losses[-1])
+
+
+class LogCallback(keras.callbacks.Callback):
+    """
+    Adapter class to use generic quantnn logging interface with Keras model.
+    """
+    def __init__(self, n_epochs, training_data, validation_data):
+        """
+        Create log callback.
+
+        Args:
+             training_data: The training data generator.
+             validation_data: The validation data generator.
+        """
+        self.log = TrainingLogger(n_epochs)
+        super().__init__()
+
+        # Number of training samples
+        if hasattr(training_data, "__len__"):
+            self.n_training_samples = len(training_data)
+        else:
+            self.n_training_samples = None
+
+        # Number of validation samples
+        if hasattr(validation_data, "__len__"):
+            self.n_validation_samples = len(training_data)
+        else:
+            self.n_validation_samples = None
+
+    def on_train_batch_end(self, batch, logs=None):
+        """Log training batch end."""
+        self.log.training_step(logs["loss"], 1, of=self.n_training_samples)
+
+    def on_test_batch_end(self, batch, logs=None):
+        """Log validation batch end."""
+        self.log.validation_step(logs["loss"], 1, of=self.n_validation_samples)
+
+    def on_epoch_end(self, epoch, logs=None):
+        """Log epoch end."""
+        self.log.epoch(K.eval(self.model.optimizer.lr))
 
 ################################################################################
 # Default scheduler and optimizer
@@ -477,15 +520,17 @@ class KerasModel:
         if validation_data is None:
             validation_generator = None
         else:
-            validation_generator = ValidationGenerator(validation_data, sigma_noise)
+            validation_generator = ValidationGenerator(validation_data)
 
+        log = LogCallback(n_epochs, training_generator, validation_generator)
         self.fit(
             training_generator,
             steps_per_epoch=len(training_generator),
             epochs=n_epochs,
             validation_data=validation_generator,
             validation_steps=1,
-            callbacks=[scheduler])
+            callbacks=[scheduler, log],
+            verbose=False)
 
 
 Model = KerasModel
