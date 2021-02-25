@@ -10,10 +10,11 @@ architecture.
 for biomedical image segmentation", Proc. Int. Conf. Med. Image Comput.
 Comput.-Assist. Intervent. (MICCAI), pp. 234-241, 2015.
 """
-import keras
-from keras import layers
-from keras import activations
-from keras import Input
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras import activations
+from tensorflow.keras import Input
 
 class Padding(layers.Layer):
     def __init__(self, amount):
