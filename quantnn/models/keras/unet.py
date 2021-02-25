@@ -15,6 +15,16 @@ from keras import layers
 from keras import activations
 from keras import Input
 
+class Padding(layers.Layer):
+    def __init__(self, amount):
+        self.paddings = tf.constant([[0, 0],
+                                     [amount, amount],
+                                     [amount, amount],
+                                     [0, 0]])
+
+    def call(self, input):
+        return tf.pad(input, self.paddings, "SYMMETRIC")
+
 class ConvolutionBlock(layers.Layer):
     """
     A convolution block consisting of a pair of 2x2
@@ -36,14 +46,17 @@ class ConvolutionBlock(layers.Layer):
         input_shape = (None, None, channels_in)
         self.block = keras.Sequential()
         if downsample:
-            self.block.add(layers.SeparableConv2D(channels_out, 3, padding="same",
+            self.block.add(Padding(1))
+            self.block.add(layers.SeparableConv2D(channels_out, 3, padding="valid",
                                                   strides=(2, 2), input_shape=input_shape))
         else:
-            self.block.add(layers.SeparableConv2D(channels_out, 3, padding="same",
+            self.block.add(Padding(1))
+            self.block.add(layers.SeparableConv2D(channels_out, 3, padding="valid",
                                                   input_shape=input_shape))
         self.block.add(layers.BatchNormalization())
         self.block.add(layers.ReLU())
-        self.block.add(layers.SeparableConv2D(channels_out, 3, padding="same"))
+        self.block.add(Padding(1))
+        self.block.add(layers.SeparableConv2D(channels_out, 3, padding="valid"))
         self.block.add(layers.BatchNormalization())
         self.block.add(layers.ReLU())
 
