@@ -16,16 +16,7 @@ from tensorflow.keras import layers
 from tensorflow.keras import activations
 from tensorflow.keras import Input
 
-class Padding(layers.Layer):
-    def __init__(self, amount):
-        super().__init__()
-        self.paddings = tf.constant([[0, 0],
-                                     [amount, amount],
-                                     [amount, amount],
-                                     [0, 0]])
-
-    def call(self, input):
-        return tf.pad(input, self.paddings, "SYMMETRIC")
+from quantnn.models.keras.padding import SymmetricPadding
 
 class ConvolutionBlock(layers.Layer):
     """
@@ -48,16 +39,16 @@ class ConvolutionBlock(layers.Layer):
         input_shape = (None, None, channels_in)
         self.block = keras.Sequential()
         if downsample:
-            self.block.add(Padding(1))
+            self.block.add(SymmetricPadding(1))
             self.block.add(layers.SeparableConv2D(channels_out, 3, padding="valid",
                                                   strides=(2, 2), input_shape=input_shape))
         else:
-            self.block.add(Padding(1))
+            self.block.add(SymmetricPadding(1))
             self.block.add(layers.SeparableConv2D(channels_out, 3, padding="valid",
                                                   input_shape=input_shape))
         self.block.add(layers.BatchNormalization())
         self.block.add(layers.ReLU())
-        self.block.add(Padding(1))
+        self.block.add(SymmetricPadding(1))
         self.block.add(layers.SeparableConv2D(channels_out, 3, padding="valid"))
         self.block.add(layers.BatchNormalization())
         self.block.add(layers.ReLU())
@@ -147,12 +138,12 @@ class UNet(keras.Model):
         self.in_block = ConvolutionBlock(n_inputs, 128)
 
         self.down_block_1 = DownsamplingBlock(128, 256)
-        self.down_block_2 = DownsamplingBlock(256, 512)
-        self.down_block_3 = DownsamplingBlock(512, 1024)
-        self.down_block_4 = DownsamplingBlock(1024, 2048)
-        self.up_block_1 = UpsamplingBlock(2048, 1024)
-        self.up_block_2 = UpsamplingBlock(1024, 512)
-        self.up_block_3 = UpsamplingBlock(512, 256)
+        #self.down_block_2 = DownsamplingBlock(256, 512)
+        #self.down_block_3 = DownsamplingBlock(512, 1024)
+        #self.down_block_4 = DownsamplingBlock(1024, 2048)
+        #self.up_block_1 = UpsamplingBlock(2048, 1024)
+        #self.up_block_2 = UpsamplingBlock(1024, 512)
+        #self.up_block_3 = UpsamplingBlock(512, 256)
         self.up_block_4 = UpsamplingBlock(256, 128)
 
         self.out_block = layers.SeparableConv2D(n_outputs, 1, padding="same", input_shape=(None, None, 128))
@@ -163,13 +154,13 @@ class UNet(keras.Model):
         d_32 = self.in_block(inputs)
 
         d_64 = self.down_block_1(d_32)
-        d_128 = self.down_block_2(d_64)
-        d_256 = self.down_block_3(d_128)
-        d_512 = self.down_block_4(d_256)
+        #d_128 = self.down_block_2(d_64)
+        #d_256 = self.down_block_3(d_128)
+        #d_512 = self.down_block_4(d_256)
 
-        u_256 = self.up_block_1([d_512, d_256])
-        u_128 = self.up_block_2([u_256, d_128])
-        u_64 = self.up_block_3([u_128, d_64])
-        u_32 = self.up_block_4([u_64, d_32])
+        #u_256 = self.up_block_1([d_512, d_256])
+        #u_128 = self.up_block_2([u_256, d_128])
+        #u_64 = self.up_block_3([u_128, d_64])
+        u_32 = self.up_block_4([d_64, d_32])
 
         return self.out_block(u_32)

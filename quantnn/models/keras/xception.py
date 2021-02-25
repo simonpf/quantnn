@@ -15,6 +15,8 @@ from keras import layers
 from keras import activations
 from keras import Input
 
+from quantnn.models.keras.padding import SymmetricPadding
+
 class XceptionBlock(layers.Layer):
     """
     A convolution block consisting of a pair of 2x2
@@ -37,23 +39,26 @@ class XceptionBlock(layers.Layer):
 
         self.block = keras.Sequential()
         if downsample:
-            self.block.add(layers.SeparableConv2D(channels_out, 3, padding="same",
+            self.block.add(SymmetricPadding(1))
+            self.block.add(layers.SeparableConv2D(channels_out, 3, padding="valid",
                                                   strides=(2, 2), input_shape=input_shape))
         else:
-            self.block.add(layers.SeparableConv2D(channels_out, 3, padding="same",
+            self.block.add(SymmetricPadding(1))
+            self.block.add(layers.SeparableConv2D(channels_out, 3, padding="valid",
                                                   input_shape=input_shape))
         self.block.add(layers.BatchNormalization())
         self.block.add(layers.ReLU())
-        self.block.add(layers.SeparableConv2D(channels_out, 3, padding="same",
+        self.block.add(SymmetricPadding(1))
+        self.block.add(layers.SeparableConv2D(channels_out, 3, padding="valid",
                                               input_shape=input_shape))
         self.block.add(layers.BatchNormalization())
         self.block.add(layers.ReLU())
 
         if downsample:
-            self.projection = layers.Conv2D(channels_out, 1, padding="same",
+            self.projection = layers.Conv2D(channels_out, 1, padding="valid",
                                             input_shape=input_shape, strides=(2, 2))
         else:
-            self.projection = layers.Conv2D(channels_out, 1, padding="same",
+            self.projection = layers.Conv2D(channels_out, 1, padding="valid",
                                             input_shape=input_shape)
 
     def call(self, inputs):
@@ -107,7 +112,7 @@ class UpsamplingBlock(layers.Layer):
         super().__init__()
         self.upsample = layers.UpSampling2D(size=(2, 2), interpolation="bilinear")
         input_shape = (None, None, channels_in)
-        self.reduce = layers.Conv2D(channels_in // 2, 1, padding="same", input_shape=input_shape)
+        self.reduce = layers.Conv2D(channels_in // 2, 1, padding="valid", input_shape=input_shape)
         self.concat = layers.Concatenate()
 
         self.blocks = keras.Sequential()
@@ -136,7 +141,8 @@ class XceptionNet(keras.Model):
         super().__init__()
 
         self.in_block = keras.Sequential([
-            layers.Conv2D(128, 5, input_shape=(None, None, n_inputs), padding="same"),
+            self.block.add(SymmetricPadding(2))
+            layers.Conv2D(128, 5, input_shape=(None, None, n_inputs), padding="valid"),
             layers.BatchNormalization(),
             layers.ReLU()
         ])
@@ -152,10 +158,10 @@ class XceptionNet(keras.Model):
 
         self.concat = layers.Concatenate()
         self.out_block = keras.Sequential([
-            layers.Conv2D(n_outputs, 1, padding="same", input_shape=(None, None, 128 + n_inputs)),
+            layers.Conv2D(n_outputs, 1, padding="valid", input_shape=(None, None, 128 + n_inputs)),
             layers.BatchNormalization(),
             layers.ReLU(),
-            layers.Conv2D(n_outputs, 1, padding="same")
+            layers.Conv2D(n_outputs, 1, padding="valid")
             ])
 
 
