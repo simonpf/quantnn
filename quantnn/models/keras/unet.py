@@ -18,7 +18,7 @@ from tensorflow.keras import Input
 
 class Padding(layers.Layer):
     def __init__(self, amount):
-        super.__init__()
+        super().__init__()
         self.paddings = tf.constant([[0, 0],
                                      [amount, amount],
                                      [amount, amount],
