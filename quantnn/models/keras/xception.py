@@ -38,7 +38,7 @@ class XceptionBlock(layers.Layer):
         self.block = keras.Sequential()
         if downsample:
             self.block.add(layers.SeparableConv2D(channels_out, 3, padding="same",
-                                                  input_shape=input_shape))
+                                                  strides=(2, 2), input_shape=input_shape))
         else:
             self.block.add(layers.SeparableConv2D(channels_out, 3, padding="same",
                                                   input_shape=input_shape))
