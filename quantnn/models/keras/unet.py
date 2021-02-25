@@ -15,7 +15,7 @@ from keras import layers
 from keras import activations
 from keras import Input
 
-class ConvolutionBlock(keras.Sequential):
+class ConvolutionBlock(layers.Layer):
     """
     A convolution block consisting of a pair of 2x2
     convolutions followed by a batch normalization layer and
@@ -33,13 +33,28 @@ class ConvolutionBlock(keras.Sequential):
         """
         super().__init__()
         input_shape = (None, None, channels_in)
-        self.add(layers.SeparableConv2D(channels_out, 3, padding="same",
-                                        input_shape=input_shape))
-        self.add(layers.BatchNormalization())
-        self.add(layers.ReLU())
-        self.add(layers.SeparableConv2D(channels_out, 3, padding="same"))
-        self.add(layers.BatchNormalization())
-        self.add(layers.ReLU())
+        self.block = keras.Sequential()
+        self.block.add(layers.SeparableConv2D(channels_out, 3, padding="same",
+                                              input_shape=input_shape))
+        self.block.add(layers.BatchNormalization())
+        self.block.add(layers.ReLU())
+        self.block.add(layers.SeparableConv2D(channels_out, 3, padding="same"))
+        self.block.add(layers.BatchNormalization())
+        self.block.add(layers.ReLU())
+
+        if channels_in != channels_out:
+            self.projection = layers.Conv2D(channels_out, 1, padding="same",
+                                            input_shape=input_shape)
+        else:
+            self.projection = None
+
+    def call(self, input):
+        x = input
+        if self.projection is not None:
+            x_proj = self.projection(x)
+        else:
+            x_proj = x
+        return x_proj + self.block(x)
 
 class DownsamplingBlock(keras.Sequential):
     """
