@@ -151,7 +151,7 @@ class XceptionNet(keras.Model):
         self.up_block_4 = UpsamplingBlock(256, 128, 2)
 
         self.concat = layers.Concatenate()
-        self.out_block = layers.Sequential([
+        self.out_block = keras.Sequential([
             layers.Conv2D(n_outputs, 1, padding="same", input_shape=(None, None, 128)),
             layers.BatchNormalization(),
             layers.ReLU(),
