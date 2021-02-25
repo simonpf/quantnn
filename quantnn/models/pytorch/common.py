@@ -18,6 +18,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import Dataset
 
 from quantnn.common import ModelNotSupported
+from quantnn.logging import TrainingLogger
 from quantnn.generic import to_array
 
 activations = {
@@ -367,6 +368,8 @@ class PytorchModel:
         if type(training_data) == bool:
             return nn.Module.train(self, training_data)
 
+        log = TrainingLogger(n_epochs)
+
         # Determine device to use
         if torch.cuda.is_available() and device in ["gpu", "cuda"]:
             device = torch.device("cuda")
@@ -379,6 +382,12 @@ class PytorchModel:
         try:
             x, y = handle_input(training_data, device)
             training_data = BatchedDataset((x, y), batch_size=batch_size)
+        except:
+            pass
+
+        try:
+            x, y = handle_input(validation_data, device)
+            validation_data = BatchedDataset((x, y), batch_size=batch_size)
         except:
             pass
 
@@ -427,17 +436,15 @@ class PytorchModel:
                     c.backward()
                     self.optimizer.step()
 
-                if j % 100:
-                    try:
-                        print(
-                            "Epoch {} / {}: Batch {} / {}, Training error: {:.3f}".format(
-                                i, n_epochs, j, len(training_data), error / n
-                            ),
-                            end="\r",
-                        )
-                    except TypeError:
-                        pass
-
+                #
+                # Log training step.
+                #
+                if hasattr(training_data, "__len__"):
+                    of = len(training_data)
+                else:
+                    of = None
+                n_samples = torch.numel(x) / x.size()[1]
+                log.training_step(c.item(), n_samples, of=of)
 
             # Save training error
             training_errors.append(error / n)
@@ -448,7 +455,7 @@ class PytorchModel:
             if not validation_data is None:
                 n = 0
                 self.eval()
-                for x, y in validation_data:
+                for j, (x, y) in enumerate(validation_data):
                     x = x.to(device).detach()
                     y = y.to(device).detach()
 
@@ -461,15 +468,19 @@ class PytorchModel:
 
                     validation_error += c.item() * x.size()[0]
                     n += x.size()[0]
+
+                    #
+                    # Log validation step.
+                    #
+                    if hasattr(validation_data, "__len__"):
+                        of = len(validation_data)
+                    else:
+                        of = None
+                    n_samples = torch.numel(x) / x.size()[1]
+                    log.validation_step(c.item(), n_samples, of=of)
+
                 validation_errors.append(validation_error / n)
                 nn.Module.train(self, True)
-
-                print(
-                    f"Epoch {i} / {n_epochs}: "
-                    f"Training error: {training_errors[-1]:.4f}, "
-                    f"Validation error: {validation_errors[-1]:.4f}, "
-                    f"Learning rate: {lr:.5f}"
-                )
 
                 if scheduler:
                     if len(scheduler_sig.parameters) == 1:
@@ -486,11 +497,7 @@ class PytorchModel:
                         if validation_data:
                             scheduler.step(training_errors[-1])
 
-                print(
-                    f"Epoch {i} / {n_epochs}: "
-                    f"Training error: {training_errors[-1]:.4f}, "
-                    f"Learning rate: {lr:.5f}"
-                )
+            log.epoch(learning_rate=lr)
 
         self.training_errors += training_errors
         self.validation_errors += validation_errors

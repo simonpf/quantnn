@@ -76,8 +76,8 @@ class ResidualBlock(nn.Module):
                 _conv2(bottleneck, bottleneck, 3),
                 nn.BatchNorm2d(bottleneck),
                 nn.ReLU(inplace=True),
-                (_conv2_down(bottleneck, channels_out, 3) if downsample
-                 else _conv2(bottleneck, channels_out, 3)),
+                (_conv2_down(bottleneck, channels_out, 1) if downsample
+                 else _conv2(bottleneck, channels_out, 1)),
                 nn.BatchNorm2d(channels_out)
             )
         self.activation = nn.ReLU(inplace=True)

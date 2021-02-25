@@ -1,3 +1,11 @@
+"""
+=======================
+quantnn.gprof_simple.py
+=======================
+
+This module provides download functions and dataset classes for the simple
+GPROF retrieval example.
+"""
 from pathlib import Path
 from urllib.request import urlretrieve
 
@@ -6,9 +14,6 @@ import netCDF4
 import torch
 
 from quantnn.normalizer import Normalizer
-"""
-This module implements helper function for the GPROF rain rate retrieval.
-"""
 
 class GPROFDataset:
     """

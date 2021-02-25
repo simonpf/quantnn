@@ -12,14 +12,15 @@ import shutil
 import os
 
 import numpy as np
-import keras
-from keras.models import Sequential
-from keras.layers import Dense, Activation, deserialize
-from keras.optimizers import SGD
-from keras.losses import SparseCategoricalCrossentropy
-import keras.backend as K
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Activation, deserialize
+from tensorflow.keras.optimizers import SGD
+from tensorflow.keras.losses import SparseCategoricalCrossentropy
 
 from quantnn.common import QuantnnException, ModelNotSupported
+from quantnn.logging import TrainingLogger
 
 def save_model(f, model):
     """
@@ -86,29 +87,6 @@ class CrossEntropyLoss(SparseCategoricalCrossentropy):
         return "CrossEntropyLoss(" + repr(self.quantiles) + ")"
 
 
-def skewed_absolute_error(y_true, y_pred, tau):
-    """
-    The quantile loss function for a given quantile tau:
-
-    L(y_true, y_pred) = (tau - I(y_pred < y_true)) * (y_pred - y_true)
-
-    Where I is the indicator function.
-    """
-    dy = y_pred - y_true
-    return K.mean((1.0 - tau) * K.relu(dy) + tau * K.relu(-dy), axis=-1)
-
-
-def quantile_loss(y_true, y_pred, taus):
-    """
-    The quantiles loss for a list of quantiles. Sums up the error contribution
-    from the each of the quantile loss functions.
-    """
-    e = skewed_absolute_error(K.flatten(y_true), K.flatten(y_pred[:, 0]), taus[0])
-    for i, tau in enumerate(taus[1:]):
-        e += skewed_absolute_error(K.flatten(y_true), K.flatten(y_pred[:, i + 1]), tau)
-    return e
-
-
 class QuantileLoss:
     """
     Wrapper class for the quantile error loss function. A class is used here
@@ -122,13 +100,30 @@ class QuantileLoss:
 
     """
 
-    def __init__(self, quantiles, mask=None):
+    def __init__(self, quantiles, mask=None, quantile_axis=-1):
         self.__name__ = "QuantileLoss"
         self.quantiles = quantiles
-        self.maks = None
+        self.mask = mask
+        self.quantile_axis = quantile_axis
 
     def __call__(self, y_true, y_pred):
-        return quantile_loss(y_true, y_pred, self.quantiles)
+        n_quantiles = len(self.quantiles)
+
+        quantile_shape = [1] * len(y_pred.shape)
+        quantile_shape[self.quantile_axis] = -1
+        quantiles = self.quantiles.reshape(quantile_shape)
+
+        if len(y_true.shape) < len(y_pred.shape):
+            y_true = tf.expand_dims(y_true, self.quantile_axis)
+
+        dy = y_pred - y_true
+        l = tf.where(dy > 0, (1.0 - quantiles) * dy, -quantiles * dy)
+
+        if self.mask is not None:
+            mask = tf.cast(y_true > self.mask, tf.float32)
+            return tf.math.reduce_sum(mask * l) / (tf.math.reduce_sum(mask) * n_quantiles)
+
+        return tf.math.reduce_mean(l)
 
     def __repr__(self):
         return "QuantileLoss(" + repr(self.quantiles) + ")"
@@ -140,7 +135,7 @@ class QuantileLoss:
 
 class BatchedDataset:
     """
-    Keras data loader that batches a given dataset of numpy arryas.
+    Keras data loader that batches a given dataset of numpy arrays.
     """
 
     def __init__(self, training_data, batch_size=None):
@@ -159,7 +154,7 @@ class BatchedDataset:
         if batch_size:
             self.bs = batch_size
         else:
-            self.bs = 256
+            self.bs = 8
 
         self.indices = np.random.permutation(x.shape[0])
         self.i = 0
@@ -175,7 +170,7 @@ class BatchedDataset:
         inds = self.indices[
             np.arange(self.i * self.bs, (self.i + 1) * self.bs) % self.indices.size
         ]
-        x_batch = np.copy(self.x[inds, :])
+        x_batch = np.copy(self.x[inds])
         y_batch = self.y[inds]
         self.i = self.i + 1
         # Shuffle training set after each epoch.
@@ -251,7 +246,6 @@ class AdversarialTrainingGenerator:
         self.eps = eps
 
     def __iter__(self):
-        LOGGER.info("iter...")
         return self
 
     def __len__(self):
@@ -269,6 +263,7 @@ class AdversarialTrainingGenerator:
             x_batch += self.eps * np.sign(grads)
 
         self.i = self.i + 1
+        print(x_batch.shape)
         return x_batch, y_batch
 
 
@@ -289,18 +284,21 @@ class ValidationGenerator:
                  component.
     """
 
-    def __init__(self, validation_data, sigma_noise):
+    def __init__(self, validation_data, sigma_noise=None):
         self.validation_data = validation_data
         self.sigma_noise = sigma_noise
 
     def __iter__(self):
         return self
 
+    def __len__(self):
+        return len(self.validation_data)
+
     def __next__(self):
         x_val, y_val = next(self.validation_data)
         if not self.sigma_noise is None:
             x_val += np.random.randn(*self.x_val.shape) * self.sigma_noise
-        return (x_val, self.y_val)
+        return (x_val, y_val)
 
 
 ################################################################################
@@ -356,6 +354,47 @@ class LRDecay(keras.callbacks.Callback):
 
         self.min_loss = min(self.min_loss, self.losses[-1])
 
+
+class LogCallback(keras.callbacks.Callback):
+    """
+    Adapter class to use generic quantnn logging interface with Keras model.
+    """
+    def __init__(self, n_epochs, training_data, validation_data):
+        """
+        Create log callback.
+
+        Args:
+             training_data: The training data generator.
+             validation_data: The validation data generator.
+        """
+        self.log = TrainingLogger(n_epochs)
+        super().__init__()
+
+        # Number of training samples
+        if hasattr(training_data, "__len__"):
+            self.n_training_samples = len(training_data)
+        else:
+            self.n_training_samples = None
+
+        # Number of validation samples
+        if hasattr(validation_data, "__len__"):
+            self.n_validation_samples = len(training_data)
+        else:
+            self.n_validation_samples = None
+
+    def on_train_batch_end(self, batch, logs=None):
+        """Log training batch end."""
+        self.log.training_step(logs["loss"], 1, of=self.n_training_samples)
+
+    def on_test_batch_end(self, batch, logs=None):
+        """Log validation batch end."""
+        self.log.validation_step(logs["loss"], 1, of=self.n_validation_samples)
+
+    def on_epoch_end(self, epoch, logs=None):
+        """Log epoch end."""
+        lr = self.model.optimizer._decayed_lr('float32').numpy()
+        self.log.epoch(lr)
+
 ################################################################################
 # Default scheduler and optimizer
 ################################################################################
@@ -408,7 +447,7 @@ class KerasModel:
         """
         Forwards call to super to support multiple inheritance.
         """
-        super().__init__(args, kwargs)
+        super().__init__()
 
     @staticmethod
     def create(model):
@@ -416,12 +455,9 @@ class KerasModel:
             raise ModelNotSupported(
                 f"The provided model ({model}) is not supported by the Keras"
                 "backend")
-
-        if isinstance(model, KerasModel):
-            return model
-        new_model = KerasModel(input_dimension, quantiles)
-        new_model.__bases__ = (model,)
-        return new_model
+        if not isinstance(model, KerasModel):
+            model.__class__ = type("__QuantnnMixin__", (KerasModel, type(model)), {})
+        return model
 
     def reset(self):
         """
@@ -467,8 +503,8 @@ class KerasModel:
         training_generator = TrainingGenerator(training_data)
         if adversarial_training:
             inputs = [self.input, self.targets[0], self.sample_weights[0]]
-            input_gradients = K.function(
-                inputs, K.gradients(self.total_loss, self.input)
+            input_gradients = tf.function(
+                inputs, tf.gradients(self.total_loss, self.input)
             )
             training_generator = AdversarialTrainingGenerator(
                 training_generator, input_gradients, adversarial_training
@@ -477,15 +513,20 @@ class KerasModel:
         if validation_data is None:
             validation_generator = None
         else:
-            validation_generator = ValidationGenerator(validation_data, sigma_noise)
+            validation_generator = ValidationGenerator(validation_data)
 
+        log = LogCallback(n_epochs, training_generator, validation_generator)
         self.fit(
             training_generator,
             steps_per_epoch=len(training_generator),
             epochs=n_epochs,
             validation_data=validation_generator,
             validation_steps=1,
-            callbacks=[scheduler])
+            callbacks=[scheduler, log],
+            verbose=False)
+
+    def call(self, *args, **kwargs):
+        return super().call(*args, **kwargs)
 
 
 Model = KerasModel
@@ -527,10 +568,10 @@ class FullyConnected(KerasModel, Sequential):
         n_in = n_inputs
         n_out = width
 
-        layers = []
-        for i in range(n_layers - 1):
-            layers.append(Dense(n_out, activation=activation, input_shape=(n_in,)))
-            n_in = n_out
+        super().__init__()
 
-        layers.append(Dense(n_outputs, input_shape=(n_in,)))
-        super().__init__(*layers)
+        for i in range(n_layers - 1):
+            self.add(Dense(n_out, activation=activation, input_shape=(n_in,)))
+            n_in = n_out
+        self.add(Dense(n_outputs, input_shape=(n_in,)))
+
