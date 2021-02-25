@@ -23,7 +23,8 @@ class ConvolutionBlock(layers.Layer):
     """
     def __init__(self,
                  channels_in,
-                 channels_out):
+                 channels_out,
+                 downsample=False):
         """
         Create new convolution block.
 
@@ -34,17 +35,25 @@ class ConvolutionBlock(layers.Layer):
         super().__init__()
         input_shape = (None, None, channels_in)
         self.block = keras.Sequential()
-        self.block.add(layers.SeparableConv2D(channels_out, 3, padding="same",
-                                              input_shape=input_shape))
+        if downsample:
+            self.block.add(layers.SeparableConv2D(channels_out, 3, padding="same",
+                                                  strides=(2, 2), input_shape=input_shape))
+        else:
+            self.block.add(layers.SeparableConv2D(channels_out, 3, padding="same",
+                                                  input_shape=input_shape))
         self.block.add(layers.BatchNormalization())
         self.block.add(layers.ReLU())
         self.block.add(layers.SeparableConv2D(channels_out, 3, padding="same"))
         self.block.add(layers.BatchNormalization())
         self.block.add(layers.ReLU())
 
-        if channels_in != channels_out:
-            self.projection = layers.Conv2D(channels_out, 1, padding="same",
-                                            input_shape=input_shape)
+        if downsample or (channels_in != channels_out):
+            if downsample:
+                self.projection = layers.Conv2D(channels_out, 1, padding="same",
+                                                strides=(2, 2), input_shape=input_shape)
+            else:
+                self.projection = layers.Conv2D(channels_out, 1, padding="same",
+                                                input_shape=input_shape)
         else:
             self.projection = None
 
@@ -73,8 +82,8 @@ class DownsamplingBlock(keras.Sequential):
         """
         super().__init__()
         input_shape = (None, None, channels_in)
-        self.add(layers.MaxPooling2D(strides=(2, 2)))
-        self.add(ConvolutionBlock(channels_in, channels_out))
+        #self.add(layers.MaxPooling2D(strides=(2, 2)))
+        self.add(ConvolutionBlock(channels_in, channels_out, downsample=True))
 
 class UpsamplingBlock(layers.Layer):
     """
