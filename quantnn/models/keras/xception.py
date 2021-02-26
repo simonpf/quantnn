@@ -141,14 +141,15 @@ class XceptionNet(keras.Model):
                  n_base_features=64):
         super().__init__()
 
+        nf = n_base_features
+
         self.in_block = keras.Sequential([
             SymmetricPadding(2),
-            layers.Conv2D(n_features, 5, input_shape=(None, None, n_inputs), padding="valid"),
+            layers.Conv2D(nf, 5, input_shape=(None, None, n_inputs), padding="valid"),
             layers.BatchNormalization(),
             layers.ReLU()
         ])
 
-        nf = n_base_features
 
         self.down_block_1 = DownsamplingBlock(nf, 2 * nf, 2)
         self.down_block_2 = DownsamplingBlock(2 * nf, 4 * nf, 2)
