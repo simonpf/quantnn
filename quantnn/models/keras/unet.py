@@ -20,14 +20,12 @@ from quantnn.models.keras.padding import SymmetricPadding
 
 class ConvolutionBlock(layers.Layer):
     """
-    A convolution block consisting of a pair of 2x2
-    convolutions followed by a batch normalization layer and
-    ReLU activations.
+    A convolution block consisting of a pair of 3x3 convolutions followed by
+    batch normalization and ReLU activations.
     """
     def __init__(self,
                  channels_in,
-                 channels_out,
-                 downsample=False):
+                 channels_out):
         """
         Create new convolution block.
 
@@ -38,38 +36,19 @@ class ConvolutionBlock(layers.Layer):
         super().__init__()
         input_shape = (None, None, channels_in)
         self.block = keras.Sequential()
-        if downsample:
-            self.block.add(SymmetricPadding(1))
-            self.block.add(layers.SeparableConv2D(channels_out, 3, padding="valid",
-                                                  strides=(2, 2), input_shape=input_shape))
-        else:
-            self.block.add(SymmetricPadding(1))
-            self.block.add(layers.SeparableConv2D(channels_out, 3, padding="valid",
-                                                  input_shape=input_shape))
+        self.block.add(SymmetricPadding(1))
+        self.block.add(layers.Conv2D(channels_out, 3, padding="valid",
+                                                input_shape=input_shape))
         self.block.add(layers.BatchNormalization())
         self.block.add(layers.ReLU())
         self.block.add(SymmetricPadding(1))
-        self.block.add(layers.SeparableConv2D(channels_out, 3, padding="valid"))
+        self.block.add(layers.Conv2D(channels_out, 3, padding="valid"))
         self.block.add(layers.BatchNormalization())
         self.block.add(layers.ReLU())
 
-        if downsample or (channels_in != channels_out):
-            if downsample:
-                self.projection = layers.Conv2D(channels_out, 1, padding="same",
-                                                strides=(2, 2), input_shape=input_shape)
-            else:
-                self.projection = layers.Conv2D(channels_out, 1, padding="same",
-                                                input_shape=input_shape)
-        else:
-            self.projection = None
-
     def call(self, input):
         x = input
-        if self.projection is not None:
-            x_proj = self.projection(x)
-        else:
-            x_proj = x
-        return x_proj + self.block(x)
+        return self.block(x)
 
 class DownsamplingBlock(keras.Sequential):
     """
@@ -88,8 +67,8 @@ class DownsamplingBlock(keras.Sequential):
         """
         super().__init__()
         input_shape = (None, None, channels_in)
-        #self.add(layers.MaxPooling2D(strides=(2, 2)))
-        self.add(ConvolutionBlock(channels_in, channels_out, downsample=True))
+        self.add(layers.MaxPooling2D(strides=(2, 2)))
+        self.add(ConvolutionBlock(channels_in, channels_out))
 
 class UpsamplingBlock(layers.Layer):
     """
@@ -112,7 +91,7 @@ class UpsamplingBlock(layers.Layer):
         super().__init__()
         self.upsample = layers.UpSampling2D(size=(2, 2), interpolation="bilinear")
         input_shape = (None, None, channels_in)
-        self.reduce = layers.SeparableConv2D(channels_in // 2, 1, padding="same", input_shape=input_shape)
+        self.reduce = layers.Conv2D(channels_in // 2, 1, padding="same", input_shape=input_shape)
         self.concat = layers.Concatenate()
         self.conv_block = ConvolutionBlock(channels_in, channels_out)
 
@@ -135,32 +114,43 @@ class UNet(keras.Model):
                  n_inputs,
                  n_outputs):
         super().__init__()
-        self.in_block = ConvolutionBlock(n_inputs, 128)
 
-        self.down_block_1 = DownsamplingBlock(128, 256)
-        #self.down_block_2 = DownsamplingBlock(256, 512)
-        #self.down_block_3 = DownsamplingBlock(512, 1024)
-        #self.down_block_4 = DownsamplingBlock(1024, 2048)
-        #self.up_block_1 = UpsamplingBlock(2048, 1024)
-        #self.up_block_2 = UpsamplingBlock(1024, 512)
-        #self.up_block_3 = UpsamplingBlock(512, 256)
-        self.up_block_4 = UpsamplingBlock(256, 128)
+        self.in_block = keras.Sequential([
+            SymmetricPadding(1),
+            layers.Conv2D(64, 3, padding="valid", input_shape=(None, None, 128)),
+            layers.BatchNormalization(),
+            layers.ReLU(),
+            SymmetricPadding(1),
+            layers.Conv2D(64, 3, padding="valid"),
+            layers.BatchNormalization(),
+            layers.ReLU(),
+        ])
 
-        self.out_block = layers.SeparableConv2D(n_outputs, 1, padding="same", input_shape=(None, None, 128))
+        self.down_block_1 = DownsamplingBlock(64, 128)
+        self.down_block_2 = DownsamplingBlock(128, 256)
+        self.down_block_3 = DownsamplingBlock(256, 512)
+        self.down_block_4 = DownsamplingBlock(512, 1024)
+
+        self.up_block_1 = UpsamplingBlock(1024, 512)
+        self.up_block_2 = UpsamplingBlock(512, 256)
+        self.up_block_3 = UpsamplingBlock(256, 128)
+        self.up_block_4 = UpsamplingBlock(128, 64)
+
+        self.out_block = layers.Conv2D(n_outputs, 1, padding="same", input_shape=(None, None, 64))
 
 
     def call(self, inputs):
 
-        d_32 = self.in_block(inputs)
+        d_64 = self.in_block(inputs)
 
-        d_64 = self.down_block_1(d_32)
-        #d_128 = self.down_block_2(d_64)
-        #d_256 = self.down_block_3(d_128)
-        #d_512 = self.down_block_4(d_256)
+        d_128 = self.down_block_1(d_64)
+        d_256 = self.down_block_2(d_128)
+        d_512 = self.down_block_3(d_256)
+        d_1024 = self.down_block_4(d_512)
 
-        #u_256 = self.up_block_1([d_512, d_256])
-        #u_128 = self.up_block_2([u_256, d_128])
-        #u_64 = self.up_block_3([u_128, d_64])
-        u_32 = self.up_block_4([d_64, d_32])
+        u_512 = self.up_block_1([d_1024, d_512])
+        u_256 = self.up_block_2([u_512, d_256])
+        u_128 = self.up_block_3([u_256, d_128])
+        u_64 = self.up_block_4([u_128, d_64])
 
-        return self.out_block(u_32)
+        return self.out_block(u_64)

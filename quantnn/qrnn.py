@@ -16,11 +16,6 @@ from quantnn.neural_network_model import NeuralNetworkModel
 from quantnn.common import QuantnnException, UnsupportedBackendException
 from quantnn.generic import softmax, to_array, get_array_module
 
-################################################################################
-# Set the backend
-################################################################################
-
-
 ###############################################################################
 # QRNN class
 ###############################################################################
@@ -84,6 +79,7 @@ class QRNN(NeuralNetworkModel):
         super().__init__(self.n_inputs,
                          self.n_outputs,
                          model)
+        self.quantile_axis = self.model.channel_axis
 
     def train(self,
               training_data,
@@ -195,7 +191,7 @@ class QRNN(NeuralNetworkModel):
             y_pred = self.predict(x)
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
-        return qq.cdf(y_pred, quantiles, quantile_axis=1)
+        return qq.cdf(y_pred, quantiles, quantile_axis=self.quantile_axis)
 
     def calibration(self, *args, **kwargs):
         """
@@ -234,7 +230,7 @@ class QRNN(NeuralNetworkModel):
             y_pred = self.predict(x)
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
-        return qq.pdf(y_pred, quantiles, quantile_axis=1)
+        return qq.pdf(y_pred, quantiles, quantile_axis=self.quantile_axis)
 
     def sample_posterior(self, x=None, y_pred=None, n_samples=1):
         r"""
@@ -269,7 +265,7 @@ class QRNN(NeuralNetworkModel):
         return qq.sample_posterior(y_pred,
                                    quantiles,
                                    n_samples=n_samples,
-                                   quantile_axis=1)
+                                   quantile_axis=self.quantile_axis)
 
     def sample_posterior_gaussian_fit(self, x=None, y_pred=None, n_samples=1):
         r"""
@@ -301,7 +297,7 @@ class QRNN(NeuralNetworkModel):
         return qq.sample_posterior_gaussian(y_pred,
                                             quantiles,
                                             n_samples=n_samples,
-                                            quantile_axis=1)
+                                            quantile_axis=self.quantile_axis)
 
     def posterior_mean(self, x=None, y_pred=None):
         r"""
@@ -328,7 +324,7 @@ class QRNN(NeuralNetworkModel):
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.posterior_mean(y_pred,
                                  quantiles,
-                                 quantile_axis=1)
+                                 quantile_axis=self.quantile_axis)
 
     def crps(x=None, y_pred=None, y_true=None):
         r"""
@@ -372,7 +368,7 @@ class QRNN(NeuralNetworkModel):
         return qq.crps(y_pred,
                        quantiles,
                        y_true,
-                       quantile_axis=1)
+                       quantile_axis=self.quantile_axis)
 
     def probability_larger_than(self, x=None, y=None, y_pred=None):
         """
@@ -406,7 +402,7 @@ class QRNN(NeuralNetworkModel):
         return qq.probability_larger_than(y_pred,
                                           quantiles,
                                           y,
-                                          quantile_axis=1)
+                                          quantile_axis=self.quantile_axis)
 
 
     def probability_less_than(self, x=None, y=None, y_pred=None):
@@ -434,7 +430,7 @@ class QRNN(NeuralNetworkModel):
         return qq.probability_less_than(y_pred,
                                         quantiles,
                                         y,
-                                        quantile_axis=1)
+                                        quantile_axis=self.quantile_axis)
 
     def posterior_quantiles(self, x=None, y_pred=None, quantiles=None):
         r"""
@@ -468,4 +464,4 @@ class QRNN(NeuralNetworkModel):
         return qq.posterior_quantiles(y_pred,
                                       quantiles,
                                       quantiles,
-                                      quantile_axis=1)
+                                      quantile_axis=self.quantile_axis)

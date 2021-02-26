@@ -45,13 +45,13 @@ class TrainingLogger:
             n_samples: The number of samples in the batch.
             of: If available the number of batches in the epoch.
         """
-        self.train_loss += n_samples * loss
-        self.train_samples += n_samples
-
         if (self.i_train_batch == 0):
             self.epoch_start_time = datetime.now()
             self.train_loss = 0.0
             self.train_samples = 0
+
+        self.train_loss += n_samples * loss
+        self.train_samples += n_samples
 
         if (self.i_train_batch % self.log_rate) == self.log_rate - 1:
 

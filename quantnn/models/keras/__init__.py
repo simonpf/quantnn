@@ -5,6 +5,7 @@ quantnn.models.keras
 This module provides Keras neural network models that can be used as backend
 models with the :py:class:`quantnn.QRNN` class.
 """
+from copy import copy
 import logging
 import tempfile
 import tarfile
@@ -15,6 +16,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.models import Sequential
+from tensorflow.keras import layers
 from tensorflow.keras.layers import Dense, Activation, deserialize
 from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.losses import SparseCategoricalCrossentropy
@@ -80,8 +82,17 @@ class CrossEntropyLoss(SparseCategoricalCrossentropy):
         super().__init__()
         self.mask = None
 
-    def __call__(self, *args, **kwargs):
-        SparseCategoricalCrossentropy.__call__(self, *args, **kwargs)
+    def __call__(self, y_true, y_pred):
+        if self.mask is None:
+            return SparseCategoricalCrossentropy.__call__(self,
+                                                          y_true,
+                                                          y_pred, from_logits=True,
+                                                          reduction="mean")
+        l = SparseCategoricalCrossentropy.__call__(self,
+                                                   y_true,
+                                                   y_pred, from_logits=True, reduction="none")
+        mask = tf.cast(y_true > self.mask, tf.float32)
+        return tf.math.reduce_sum(mask * l) / tf.math.reduce_sum(mask)
 
     def __repr__(self):
         return "CrossEntropyLoss(" + repr(self.quantiles) + ")"
@@ -459,6 +470,17 @@ class KerasModel:
             model.__class__ = type("__QuantnnMixin__", (KerasModel, type(model)), {})
         return model
 
+    @property
+    def channel_axis(self):
+        """
+        The index of the axis that contains the channel information in a batch
+        of input data.
+        """
+        format = keras.backend.image_data_format()
+        if format.lower() == "channels_first":
+            return 1
+        return -1
+
     def reset(self):
         """
         Reinitialize the state of the model.
@@ -516,18 +538,15 @@ class KerasModel:
             validation_generator = ValidationGenerator(validation_data)
 
         log = LogCallback(n_epochs, training_generator, validation_generator)
-        self.fit(
-            training_generator,
-            steps_per_epoch=len(training_generator),
-            epochs=n_epochs,
-            validation_data=validation_generator,
-            validation_steps=1,
-            callbacks=[scheduler, log],
-            verbose=False)
-
-    def call(self, *args, **kwargs):
-        return super().call(*args, **kwargs)
-
+        with tf.device(device):
+            self.fit(
+                training_generator,
+                steps_per_epoch=len(training_generator),
+                epochs=n_epochs,
+                validation_data=validation_generator,
+                validation_steps=1,
+                callbacks=[scheduler, log],
+                verbose=False)
 
 Model = KerasModel
 
@@ -538,27 +557,29 @@ Model = KerasModel
 
 class FullyConnected(KerasModel, Sequential):
     """
-    Keras implementation of fully-connected networks.
+    A fully-connected network with a given depth and width.
     """
-
     def __init__(self,
                  n_inputs=None,
                  n_outputs=None,
                  n_layers=None,
                  width=None,
                  activation=None,
+                 convolutional=False,
                  **kwargs):
         """
         Create a fully-connected neural network.
 
         Args:
-            input_dimension(:code:`int`): Number of input features
-            quantiles(:code:`array`): The quantiles to predict given
-                as fractions within [0, 1].
-            n_layers: The number of hidden layers in the network.
-            width: The number of neurons in the hidden layers.
-            activation: The activation function to use after each linear
-                 layers.
+            n_inputs: The number of input features
+            n_outputs: The number of output values
+            n_layers: The number of layers in the network
+            width: The number of neurons in each hidden layer.
+            activation: The activation function to use for the hidden layers
+                 given as name of a function in keras.activations or a Keras
+                 Layer object.
+            convolutional: If ``True``, the fully-connected network will be
+                 constructed as a fully-connected network.
         """
         inputs = [n_inputs, n_outputs, n_layers, width, activation]
         if all([x is None for x in inputs]):
@@ -570,8 +591,28 @@ class FullyConnected(KerasModel, Sequential):
 
         super().__init__()
 
-        for i in range(n_layers - 1):
-            self.add(Dense(n_out, activation=activation, input_shape=(n_in,)))
-            n_in = n_out
-        self.add(Dense(n_outputs, input_shape=(n_in,)))
+        if isinstance(activation, str):
+            activation = layers.Activation(getattr(keras.activations,
+                                                   activation))
+
+        if convolutional:
+            for i in range(n_layers - 1):
+                self.add(layers.Conv2D(width, 1,
+                                       input_shape=(None, None, n_in)))
+                self.add(layers.BatchNormalization())
+                self.add(activation)
+                n_in = n_out
+            self.add(layers.Conv2D(n_outputs, 1))
+        else:
+            for i in range(n_layers - 1):
+                self.add(Dense(n_out, input_shape=(n_in,)))
+                self.add(activation)
+                n_in = n_out
+            self.add(Dense(n_outputs, input_shape=(n_in,)))
+
+        def __repr__(self):
+            return Sequential.__repr__(self)
+
+        def __str__(self):
+            return Sequential.__str__(self)
 
