@@ -137,24 +137,30 @@ class XceptionNet(keras.Model):
     """
     def __init__(self,
                  n_inputs,
-                 n_outputs):
+                 n_outputs,
+                 n_base_features=64):
         super().__init__()
 
         self.in_block = keras.Sequential([
             SymmetricPadding(2),
-            layers.Conv2D(128, 5, input_shape=(None, None, n_inputs), padding="valid"),
+            layers.Conv2D(n_features, 5, input_shape=(None, None, n_inputs), padding="valid"),
             layers.BatchNormalization(),
             layers.ReLU()
         ])
 
-        self.down_block_1 = DownsamplingBlock(128, 256, 2)
-        self.down_block_2 = DownsamplingBlock(256, 512, 2)
-        self.down_block_3 = DownsamplingBlock(512, 1024, 2)
-        self.down_block_4 = DownsamplingBlock(1024, 2048, 2)
-        self.up_block_1 = UpsamplingBlock(2048, 1024, 2)
-        self.up_block_2 = UpsamplingBlock(1024, 512, 2)
-        self.up_block_3 = UpsamplingBlock(512, 256, 2)
-        self.up_block_4 = UpsamplingBlock(256, 128, 2)
+        nf = n_base_features
+
+        self.down_block_1 = DownsamplingBlock(nf, 2 * nf, 2)
+        self.down_block_2 = DownsamplingBlock(2 * nf, 4 * nf, 2)
+        self.down_block_3 = DownsamplingBlock(4 * nf, 8 * nf, 2)
+        self.down_block_4 = DownsamplingBlock(8 * nf, 16 * nf, 2)
+        self.down_block_5 = DownsamplingBlock(16 * nf, 32 * nf, 2)
+
+        self.up_block_1 = UpsamplingBlock(32 * nf, 16 * nf, 2)
+        self.up_block_2 = UpsamplingBlock(16 * nf, 8 * nf, 2)
+        self.up_block_3 = UpsamplingBlock(8 * nf, 4 * nf, 2)
+        self.up_block_4 = UpsamplingBlock(4 * nf, 2 * nf, 2)
+        self.up_block_5 = UpsamplingBlock(2 * nf, nf, 2)
 
         self.concat = layers.Concatenate()
         self.out_block = keras.Sequential([
@@ -174,8 +180,10 @@ class XceptionNet(keras.Model):
         d_128 = self.down_block_2(d_64)
         d_256 = self.down_block_3(d_128)
         d_512 = self.down_block_4(d_256)
+        d_1024 = self.down_block_4(d_512)
 
-        u_256 = self.up_block_1([d_512, d_256])
+        u_512 = self.up_block_1([d_1024, d_512])
+        u_256 = self.up_block_1([u_512, d_256])
         u_128 = self.up_block_2([u_256, d_128])
         u_64 = self.up_block_3([u_128, d_64])
         u_32 = self.up_block_4([u_64, d_32])
