@@ -10,10 +10,10 @@ architecture.
 for biomedical image segmentation", Proc. Int. Conf. Med. Image Comput.
 Comput.-Assist. Intervent. (MICCAI), pp. 234-241, 2015.
 """
-import keras
-from keras import layers
-from keras import activations
-from keras import Input
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras import activations
+from tensorflow.keras import Input
 
 from quantnn.models.keras.padding import SymmetricPadding
 

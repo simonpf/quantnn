@@ -210,16 +210,19 @@ class TrainingGenerator:
         """
         self.training_data = training_data
         self.sigma_noise = sigma_noise
+        self.iterator = iter(training_data)
 
     def __iter__(self):
         LOGGER.info("iter...")
         return self
 
-    def __len__(self):
-        return len(self.training_data)
+    #def __len__(self):
+    #    if hasattr(self.training_data, "__len__"):
+    #        return len(self.training_data)
+    #    return 1
 
     def __next__(self):
-        x_batch, y_batch = next(self.training_data)
+        x_batch, y_batch = next(self.iterator)
         if not self.sigma_noise is None:
             x_batch += np.random.randn(*x_batch.shape) * self.sigma_noise
         return (x_batch, y_batch)
@@ -294,15 +297,18 @@ class ValidationGenerator:
     def __init__(self, validation_data, sigma_noise=None):
         self.validation_data = validation_data
         self.sigma_noise = sigma_noise
+        self.iterator = iter(self.validation_data)
 
     def __iter__(self):
         return self
 
-    def __len__(self):
-        return len(self.validation_data)
+    #def __len__(self):
+    #    if hasattr(self.validation_data, "__len__"):
+    #        return len(self.validation_data)
+    #    return 1
 
     def __next__(self):
-        x_val, y_val = next(self.validation_data)
+        x_val, y_val = next(self.iterator)
         if not self.sigma_noise is None:
             x_val += np.random.randn(*self.x_val.shape) * self.sigma_noise
         return (x_val, y_val)
@@ -565,7 +571,7 @@ class KerasModel:
         with tf.device(device):
             self.fit(
                 training_generator,
-                steps_per_epoch=len(training_generator),
+                #steps_per_epoch=len(training_generator),
                 epochs=n_epochs,
                 validation_data=validation_generator,
                 validation_steps=1,
