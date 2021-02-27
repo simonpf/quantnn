@@ -261,13 +261,19 @@ class MinMaxNormalizer(NormalizerBase):
     def _normalize(self, x_slice, stats):
         x_min, x_max = stats
         d_x = x_max - x_min
+
+        l = -1.0
+        if self.replace_nan:
+            l = -0.9
+        r = 1.0
+
         if np.isclose(d_x, 0.0):
-            x_normed = -1.0 * np.ones_like(x_slice)
+            x_normed = l * np.ones_like(x_slice)
         else:
-            x_normed = (-1.0 + 2.0 * (x_slice - x_min) / d_x)
+            x_normed = (l + (r - l) * (x_slice - x_min) / d_x)
 
         if self.replace_nan:
-            x_normed[np.isnan(x_normed)] = -2.0
+            x_normed[np.isnan(x_normed)] = -1.0
 
         return x_normed
 
@@ -275,12 +281,16 @@ class MinMaxNormalizer(NormalizerBase):
         x_min, x_max = stats
         d_x = x_max - x_min
 
-        indices = x_slice < -1.5
+        l = -1.0
+        if self.replace_nan:
+            l = -0.9
+        r = 1.0
+        indices = x_slice <= -0.99
 
         if np.isclose(d_x, 0.0):
             x_inverted = x_min * np.ones_like(x_slice)
         else:
-            x_inverted = ((0.5 * (x_slice + 1.0) * d_x) + x_min)
+            x_inverted = (((x_slice - l) / (r - l) * d_x) + x_min)
 
         if self.replace_nan:
             x_inverted[indices] = np.nan

@@ -34,10 +34,10 @@ def save_model(f, model):
         model(:code:`keras.models.Models`): The Keras model to save
     """
     path = tempfile.mkdtemp()
-    filename = os.path.join(path, "keras_model.h5")
+    filename = os.path.join(path, "keras_model")
     keras.models.save_model(model, filename)
     archive = tarfile.TarFile(fileobj=f, mode="w")
-    archive.add(filename, arcname="keras_model.h5")
+    archive.add(filename, arcname="keras_model")
     archive.close()
     shutil.rmtree(path)
 
@@ -54,8 +54,8 @@ def load_model(file):
     """
     path = tempfile.mkdtemp()
     tar_file = tarfile.TarFile(fileobj=file, mode="r")
-    tar_file.extract("keras_model.h5", path=path)
-    filename = os.path.join(path, "keras_model.h5")
+    tar_file.extractall(path=path)
+    filename = os.path.join(path, "keras_model")
 
     custom_objects = {
         "FullyConnected": FullyConnected,
@@ -167,13 +167,15 @@ class BatchedDataset:
         self.i = 0
 
     def __iter__(self):
-        LOGGER.info("iter...")
         return self
 
     def __len__(self):
         return self.x.shape[0] // self.bs
 
     def __next__(self):
+        if self.i > len(self):
+            raise StopIteration()
+
         inds = self.indices[
             np.arange(self.i * self.bs, (self.i + 1) * self.bs) % self.indices.size
         ]
@@ -216,13 +218,12 @@ class TrainingGenerator:
         LOGGER.info("iter...")
         return self
 
-    #def __len__(self):
-    #    if hasattr(self.training_data, "__len__"):
-    #        return len(self.training_data)
-    #    return 1
-
     def __next__(self):
-        x_batch, y_batch = next(self.iterator)
+        try:
+            x_batch, y_batch = next(self.iterator)
+        except StopIteration:
+            self.iterator = iter(self.training_data)
+            raise StopIteration()
         if not self.sigma_noise is None:
             x_batch += np.random.randn(*x_batch.shape) * self.sigma_noise
         return (x_batch, y_batch)
@@ -308,10 +309,17 @@ class ValidationGenerator:
     #    return 1
 
     def __next__(self):
-        x_val, y_val = next(self.iterator)
+        try:
+            x_val, y_val = next(self.iterator)
+        except StopIteration:
+            self.iterator = iter(self.validation_data)
+            print("fuck you")
+            raise StopIteration()
+
         if not self.sigma_noise is None:
             x_val += np.random.randn(*self.x_val.shape) * self.sigma_noise
         return (x_val, y_val)
+
 
 
 ################################################################################
