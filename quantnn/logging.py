@@ -75,8 +75,13 @@ class TrainingLogger:
             n_samples: The number of samples in the batch.
             of: If available the number of batches in the epoch.
         """
+        if (self.i_val_batch == 0):
+            self.val_loss = 0.0
+            self.val_samples = 0
+
         self.val_loss += n_samples * loss
         self.val_samples += n_samples
+        self.i_val_batch += 1
 
     def epoch(self, learning_rate=None):
         """

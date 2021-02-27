@@ -79,23 +79,19 @@ class CrossEntropyLoss(SparseCategoricalCrossentropy):
     masking of input values.
     """
     def __init__(self, mask=None):
-        super().__init__()
         self.mask = None
+        super().__init__(reduction="none", from_logits=True)
+
 
     def __call__(self, y_true, y_pred):
+        l = SparseCategoricalCrossentropy.__call__(self, y_true, y_pred)
         if self.mask is None:
-            return SparseCategoricalCrossentropy.__call__(self,
-                                                          y_true,
-                                                          y_pred, from_logits=True,
-                                                          reduction="mean")
-        l = SparseCategoricalCrossentropy.__call__(self,
-                                                   y_true,
-                                                   y_pred, from_logits=True, reduction="none")
+            return tf.math.reduce_mean(l)
         mask = tf.cast(y_true > self.mask, tf.float32)
         return tf.math.reduce_sum(mask * l) / tf.math.reduce_sum(mask)
 
     def __repr__(self):
-        return "CrossEntropyLoss(" + repr(self.quantiles) + ")"
+        return f"CrossEntropyLoss(mask={self.mask})"
 
 
 class QuantileLoss:
@@ -113,7 +109,7 @@ class QuantileLoss:
 
     def __init__(self, quantiles, mask=None, quantile_axis=-1):
         self.__name__ = "QuantileLoss"
-        self.quantiles = quantiles
+        self.quantiles = tf.convert_to_tensor(quantiles, dtype=tf.float32)
         self.mask = mask
         self.quantile_axis = quantile_axis
 
@@ -122,7 +118,7 @@ class QuantileLoss:
 
         quantile_shape = [1] * len(y_pred.shape)
         quantile_shape[self.quantile_axis] = -1
-        quantiles = self.quantiles.reshape(quantile_shape)
+        quantiles = tf.reshape(self.quantiles, quantile_shape)
 
         if len(y_true.shape) < len(y_pred.shape):
             y_true = tf.expand_dims(y_true, self.quantile_axis)
@@ -366,6 +362,34 @@ class LRDecay(keras.callbacks.Callback):
         self.min_loss = min(self.min_loss, self.losses[-1])
 
 
+class CosineAnnealing(keras.callbacks.Callback):
+    """
+    Cosine annealing learning rate schedule.
+    """
+    def __init__(self, eta_max, eta_min, t_tot):
+        """
+        Args:
+            eta_max: The maximum learning rate to use at t = 0
+            eta_min: The minimum learning rate
+            t_tot: The number of steps to go from eta_max to eta_min.
+        """
+        self.eta_max = eta_max
+        self.eta_min = eta_min
+        self.t_tot = t_tot
+        self.t = 0
+
+    def on_train_begin(self, logs={}):
+        self.t = 0
+
+    def on_epoch_end(self, epoch, logs={}):
+        lr = (self.eta_min + 0.5 * (self.eta_max - self.eta_min)
+              * np.cos(self.t / self.t_tot * np.pi))
+        keras.backend.set_value(self.model.optimizer.lr, lr)
+        if lr < self.eta_min:
+            self.model.stop_training = True
+        self.t += 1
+
+
 class LogCallback(keras.callbacks.Callback):
     """
     Adapter class to use generic quantnn logging interface with Keras model.
@@ -547,6 +571,9 @@ class KerasModel:
                 validation_steps=1,
                 callbacks=[scheduler, log],
                 verbose=False)
+
+        def predict(self, *args, device="cpu", **kwargs):
+            return keras.Model.predict(self, *args, **kwargs)
 
 Model = KerasModel
 
