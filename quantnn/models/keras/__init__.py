@@ -383,7 +383,7 @@ class CosineAnnealing(keras.callbacks.Callback):
 
     def on_epoch_end(self, epoch, logs={}):
         lr = (self.eta_min + 0.5 * (self.eta_max - self.eta_min)
-              * np.cos(self.t / self.t_tot * np.pi))
+              * (1.0 + np.cos(self.t / self.t_tot * np.pi)))
         keras.backend.set_value(self.model.optimizer.lr, lr)
         if lr < self.eta_min:
             self.model.stop_training = True

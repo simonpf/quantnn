@@ -238,11 +238,11 @@ class XceptionFpn(keras.Model):
 
         self.in_block = layers.Conv2D(nf, 1, input_shape=(None, None, n_inputs))
 
-        self.down_block_2 = DownsamplingBlock(nf, nf, 1)
-        self.down_block_4 = DownsamplingBlock(nf, nf, 1)
-        self.down_block_8 = DownsamplingBlock(nf, nf, 1)
-        self.down_block_16 = DownsamplingBlock(nf, nf, 1)
-        self.down_block_32 = DownsamplingBlock(nf, nf, 1)
+        self.down_block_2 = DownsamplingBlock(nf, nf, 2)
+        self.down_block_4 = DownsamplingBlock(nf, nf, 2)
+        self.down_block_8 = DownsamplingBlock(nf, nf, 2)
+        self.down_block_16 = DownsamplingBlock(nf, nf, 2)
+        self.down_block_32 = DownsamplingBlock(nf, nf, 2)
 
         self.up_block_32 = FpnUpsamplingBlock(nf, 5)
         self.up_block_16 = FpnUpsamplingBlock(nf, 4)
