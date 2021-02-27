@@ -40,8 +40,10 @@ class XceptionBlock(layers.Layer):
         self.block = keras.Sequential()
         if downsample:
             self.block.add(SymmetricPadding(1))
+            self.block.add(layers.MaxPooling2D(pool_size=(3, 3), strides=(2, 2)))
+            self.block.add(SymmetricPadding(1))
             self.block.add(layers.SeparableConv2D(channels_out, 3, padding="valid",
-                                                  strides=(2, 2), input_shape=input_shape))
+                                                  input_shape=input_shape))
         else:
             self.block.add(SymmetricPadding(1))
             self.block.add(layers.SeparableConv2D(channels_out, 3, padding="valid",
@@ -137,28 +139,35 @@ class XceptionNet(keras.Model):
     """
     def __init__(self,
                  n_inputs,
-                 n_outputs):
+                 n_outputs,
+                 n_base_features=64):
         super().__init__()
+
+        nf = n_base_features
 
         self.in_block = keras.Sequential([
             SymmetricPadding(2),
-            layers.Conv2D(128, 5, input_shape=(None, None, n_inputs), padding="valid"),
+            layers.Conv2D(nf, 5, input_shape=(None, None, n_inputs), padding="valid"),
             layers.BatchNormalization(),
             layers.ReLU()
         ])
 
-        self.down_block_1 = DownsamplingBlock(128, 256, 2)
-        self.down_block_2 = DownsamplingBlock(256, 512, 2)
-        self.down_block_3 = DownsamplingBlock(512, 1024, 2)
-        self.down_block_4 = DownsamplingBlock(1024, 2048, 2)
-        self.up_block_1 = UpsamplingBlock(2048, 1024, 2)
-        self.up_block_2 = UpsamplingBlock(1024, 512, 2)
-        self.up_block_3 = UpsamplingBlock(512, 256, 2)
-        self.up_block_4 = UpsamplingBlock(256, 128, 2)
+
+        self.down_block_1 = DownsamplingBlock(nf, 2 * nf, 2)
+        self.down_block_2 = DownsamplingBlock(2 * nf, 4 * nf, 2)
+        self.down_block_3 = DownsamplingBlock(4 * nf, 8 * nf, 2)
+        self.down_block_4 = DownsamplingBlock(8 * nf, 16 * nf, 2)
+        self.down_block_5 = DownsamplingBlock(16 * nf, 32 * nf, 2)
+
+        self.up_block_1 = UpsamplingBlock(32 * nf, 16 * nf, 2)
+        self.up_block_2 = UpsamplingBlock(16 * nf, 8 * nf, 2)
+        self.up_block_3 = UpsamplingBlock(8 * nf, 4 * nf, 2)
+        self.up_block_4 = UpsamplingBlock(4 * nf, 2 * nf, 2)
+        self.up_block_5 = UpsamplingBlock(2 * nf, nf, 2)
 
         self.concat = layers.Concatenate()
         self.out_block = keras.Sequential([
-            layers.Conv2D(n_outputs, 1, padding="valid", input_shape=(None, None, 128 + n_inputs)),
+            layers.Conv2D(n_outputs, 1, padding="valid", input_shape=(None, None, nf + n_inputs)),
             layers.BatchNormalization(),
             layers.ReLU(),
             layers.Conv2D(n_outputs, 1, padding="valid")
@@ -174,11 +183,104 @@ class XceptionNet(keras.Model):
         d_128 = self.down_block_2(d_64)
         d_256 = self.down_block_3(d_128)
         d_512 = self.down_block_4(d_256)
+        d_1024 = self.down_block_5(d_512)
 
-        u_256 = self.up_block_1([d_512, d_256])
-        u_128 = self.up_block_2([u_256, d_128])
-        u_64 = self.up_block_3([u_128, d_64])
-        u_32 = self.up_block_4([u_64, d_32])
+        u_512 = self.up_block_1([d_1024, d_512])
+        u_256 = self.up_block_2([u_512, d_256])
+        u_128 = self.up_block_3([u_256, d_128])
+        u_64 = self.up_block_4([u_128, d_64])
+        u_32 = self.up_block_5([u_64, d_32])
 
         x_out = self.concat([u_32, inputs])
         return self.out_block(x_out)
+
+class FpnUpsamplingBlock(layers.Layer):
+    """
+    An upsampling block which which uses bilinear interpolation
+    to increase the input size. This is followed by a 1x1 convolution to
+    reduce the number of channels, concatenation of the skip inputs
+    from the corresponding downsampling layer and a convolution block.
+
+    """
+    def __init__(self,
+                 channels,
+                 n):
+        """
+        Create new convolution block.
+
+        Args:
+            channels_in: The number of input channels.
+            channels_out: The number of output channels.
+        """
+        super().__init__()
+        self.upsampler = layers.UpSampling2D(size=(2, 2), interpolation="bilinear")
+
+        self.concat = layers.Concatenate()
+
+        self.block = keras.Sequential()
+        self.block.add(SymmetricPadding(1))
+        self.block.add(layers.SeparableConv2D(channels, 3, input_shape=(None, None, 2 * channels)))
+        self.block.add(layers.BatchNormalization())
+        self.block.add(layers.ReLU())
+
+    def call(self, x_coarse, x_fine):
+        x_up = self.upsampler(x_coarse)
+        return self.block(self.concat([x_up, x_fine]))
+
+class XceptionFpn(keras.Model):
+    def __init__(self,
+                 n_inputs,
+                 n_outputs,
+                 n_base_features=64,
+                 blocks=2):
+        super().__init__()
+
+        nf = n_base_features
+
+        self.in_block = layers.Conv2D(nf, 1, input_shape=(None, None, n_inputs))
+
+        if isinstance(blocks, int):
+            blocks = [blocks] * 5
+
+        self.down_block_2 = DownsamplingBlock(nf, nf, blocks[0])
+        self.down_block_4 = DownsamplingBlock(nf, nf, blocks[1])
+        self.down_block_8 = DownsamplingBlock(nf, nf, blocks[2])
+        self.down_block_16 = DownsamplingBlock(nf, nf, blocks[3])
+        self.down_block_32 = DownsamplingBlock(nf, nf, blocks[4])
+
+        self.up_block_32 = FpnUpsamplingBlock(nf, 5)
+        self.up_block_16 = FpnUpsamplingBlock(nf, 4)
+        self.up_block_8 = FpnUpsamplingBlock(nf, 3)
+        self.up_block_4 = FpnUpsamplingBlock(nf, 2)
+        self.up_block_2 = FpnUpsamplingBlock(nf, 1)
+
+        self.concat = layers.Concatenate()
+        self.out_block = keras.Sequential([
+            layers.Conv2D(nf, 1, padding="valid", input_shape=(None, None, nf + n_inputs)),
+            layers.BatchNormalization(),
+            layers.ReLU(),
+            layers.Conv2D(nf, 1, padding="valid", input_shape=(None, None, nf)),
+            layers.BatchNormalization(),
+            layers.ReLU(),
+            layers.Conv2D(n_outputs, 1, padding="valid")
+            ])
+
+
+
+    def call(self, inputs):
+
+        x_p = self.in_block(inputs)
+
+        x_2 = self.down_block_2(x_p)
+        x_4 = self.down_block_4(x_2)
+        x_8 = self.down_block_8(x_4)
+        x_16 = self.down_block_16(x_8)
+        x_32 = self.down_block_32(x_16)
+
+        x_16_u = self.up_block_32(x_32, x_16)
+        x_8_u = self.up_block_16(x_16_u, x_8)
+        x_4_u = self.up_block_8(x_8_u, x_4)
+        x_2_u = self.up_block_4(x_4_u, x_2)
+        x_u = self.up_block_2(x_2_u, x_p)
+
+        return self.out_block(self.concat([x_u, inputs]))

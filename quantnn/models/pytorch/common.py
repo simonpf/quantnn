@@ -279,14 +279,34 @@ def _get_default_optimizer(model):
     return optimizer
 
 def _get_default_scheduler(optimizer):
+    """
+    The default scheduler which reduces lr when training loss reaches a
+    plateau.
+    """
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
                                                      factor=0.1,
                                                      patience=5)
     return scheduler
 
+def _has_channels_last_tensor(parameters):
+    """
+    Determine whether any of the tensors in the models parameters is
+    in channels last format.
+    """
+    for p in parameters:
+        if isinstance(p.data, torch.Tensor):
+            t = p.data
+            if t.is_contiguous(memory_format=torch.channels_last) and not t.is_contiguous():
+                return True
+            elif isinstance(t, list) or isinstance(t, tuple):
+                if _has_channels_last_tensor(list(t)):
+                    return True
+    return False
+
 ################################################################################
 # QRNN
 ################################################################################
+
 
 class PytorchModel:
     """
@@ -307,6 +327,16 @@ class PytorchModel:
         model.__class__ = type("__QuantnnMixin__", (PytorchModel, type(model)), {})
         PytorchModel.__init__(model)
         return model
+
+    @property
+    def channel_axis(self):
+        """
+        The index of the axis that contains the channel information in a batch
+        of input data.
+        """
+        if _has_channels_last_tensor(self.parameters()):
+            return -1
+        return 1
 
     def __init__(self):
         """

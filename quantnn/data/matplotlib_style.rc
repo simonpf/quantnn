@@ -200,11 +200,9 @@ mathtext.sf  : sans
 mathtext.fontset : dejavusans ## Should be 'dejavusans' (default),
                                ## 'dejavuserif', 'cm' (Computer Modern), 'stix',
                                ## 'stixsans' or 'custom'
-mathtext.fallback : cm  ## When True, use symbols from the Computer Modern
-                        ## fonts when a symbol can not be found in one of
-                        ## the custom math fonts.
-                        ## fonts when a symbol can not be found in one of
-                        ## the custom math fonts.
+mathtext.fallback_to_cm : True  ## When True, use symbols from the Computer Modern
+          ## fonts when a symbol can not be found in one of
+          ## the custom math fonts.
 mathtext.default : it ## The default font to use for math.
                        ## Can be any of the LaTeX font names, including
                        ## the special name "regular" for the same font
@@ -222,9 +220,9 @@ axes.grid.axis      : both    ## which axis the grid should apply to
 axes.grid.which     : major   ## gridlines at major, minor or both ticks
 axes.titlesize      : large   ## fontsize of the axes title
 axes.titleweight    : normal  ## font weight of title
-axes.titlepad       : 12.0     ## pad between axes and title in points
+axes.titlepad       : 16.0     ## pad between axes and title in points
 axes.labelsize      : medium  ## fontsize of the x any y labels
-axes.labelpad       : 4.0     ## space between label and axis
+axes.labelpad       : 5.0     ## space between label and axis
 axes.labelweight    : normal  ## weight of the x and y labels
 axes.labelcolor     : black
 axes.axisbelow      : line    ## draw axis gridlines and ticks below
