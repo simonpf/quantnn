@@ -231,18 +231,22 @@ class XceptionFpn(keras.Model):
     def __init__(self,
                  n_inputs,
                  n_outputs,
-                 n_base_features=64):
+                 n_base_features=64,
+                 blocks=2):
         super().__init__()
 
         nf = n_base_features
 
         self.in_block = layers.Conv2D(nf, 1, input_shape=(None, None, n_inputs))
 
-        self.down_block_2 = DownsamplingBlock(nf, nf, 2)
-        self.down_block_4 = DownsamplingBlock(nf, nf, 2)
-        self.down_block_8 = DownsamplingBlock(nf, nf, 2)
-        self.down_block_16 = DownsamplingBlock(nf, nf, 2)
-        self.down_block_32 = DownsamplingBlock(nf, nf, 2)
+        if isinstance(blocks, int):
+            blocks = [blocks] * 5
+
+        self.down_block_2 = DownsamplingBlock(nf, nf, blocks[0])
+        self.down_block_4 = DownsamplingBlock(nf, nf, blocks[1])
+        self.down_block_8 = DownsamplingBlock(nf, nf, blocks[2])
+        self.down_block_16 = DownsamplingBlock(nf, nf, blocks[3])
+        self.down_block_32 = DownsamplingBlock(nf, nf, blocks[4])
 
         self.up_block_32 = FpnUpsamplingBlock(nf, 5)
         self.up_block_16 = FpnUpsamplingBlock(nf, 4)
