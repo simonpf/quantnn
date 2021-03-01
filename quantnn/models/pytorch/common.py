@@ -117,6 +117,7 @@ class BatchedDataset(Dataset):
     """
     def __init__(self, training_data, batch_size=None):
         x, y = training_data
+        self.n_samples = x.shape[0]
 
         # x
         if isinstance(x, torch.Tensor):
@@ -138,16 +139,16 @@ class BatchedDataset(Dataset):
         else:
             self.batch_size = 256
 
-        self.indices = np.random.permutation(self.x.shape)
+        self.indices = np.random.permutation(self.n_samples)
 
     def __len__(self):
         # This is required because x and y are tensors and don't throw these
         # errors themselves.
-        return self.x.shape[0] // self.batch_size
+        return self.n_samples // self.batch_size
 
     def __getitem__(self, i):
         if (i == 0):
-            self.indices = np.random.permutation(self.x.shape)
+            self.indices = np.random.permutation(self.n_samples)
 
         if i >= len(self):
             raise IndexError()
