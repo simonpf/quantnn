@@ -97,17 +97,18 @@ def handle_input(data, device=None):
 
         x = torch.tensor(x, dtype=torch.float)
         y = torch.tensor(y, dtype=dtype_y)
-        if not device is None:
+        if device is not None:
             x = x.to(device)
             y = y.to(device)
         return x, y
+
     if type(data) == np.ndarray:
         x = torch.tensor(data, dtype=torch.float)
-        if not device is None:
+        if device is not None:
             x = x.to(device)
         return x
-    else:
-        return data
+
+    return data
 
 
 class BatchedDataset(Dataset):
@@ -137,18 +138,24 @@ class BatchedDataset(Dataset):
         else:
             self.batch_size = 256
 
+        self.indices = np.random.permutation(self.x.shape)
+
     def __len__(self):
         # This is required because x and y are tensors and don't throw these
         # errors themselves.
         return self.x.shape[0] // self.batch_size
 
     def __getitem__(self, i):
+        if (i == 0):
+            self.indices = np.random.permutation(self.x.shape)
+
         if i >= len(self):
             raise IndexError()
         i_start = i * self.batch_size
         i_end = (i + 1) * self.batch_size
-        x = self.x[i_start:i_end]
-        y = self.y[i_start:i_end]
+        indices = self.indices[i_start:i_end]
+        x = self.x[indices]
+        y = self.y[indices]
         return (x, y)
 
 
@@ -196,7 +203,6 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
             )
             mask = y_true > self.mask
             return (loss * mask).sum() / mask.sum()
-
 
 
 class QuantileLoss:
@@ -323,7 +329,6 @@ class PytorchModel:
                 "backend")
         if isinstance(model, PytorchModel):
             return model
-        new_model = PytorchModel()
         model.__class__ = type("__QuantnnMixin__", (PytorchModel, type(model)), {})
         PytorchModel.__init__(model)
         return model
