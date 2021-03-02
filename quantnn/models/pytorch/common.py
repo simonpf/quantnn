@@ -97,17 +97,18 @@ def handle_input(data, device=None):
 
         x = torch.tensor(x, dtype=torch.float)
         y = torch.tensor(y, dtype=dtype_y)
-        if not device is None:
+        if device is not None:
             x = x.to(device)
             y = y.to(device)
         return x, y
+
     if type(data) == np.ndarray:
         x = torch.tensor(data, dtype=torch.float)
-        if not device is None:
+        if device is not None:
             x = x.to(device)
         return x
-    else:
-        return data
+
+    return data
 
 
 class BatchedDataset(Dataset):
@@ -116,6 +117,7 @@ class BatchedDataset(Dataset):
     """
     def __init__(self, training_data, batch_size=None):
         x, y = training_data
+        self.n_samples = x.shape[0]
 
         # x
         if isinstance(x, torch.Tensor):
@@ -137,18 +139,24 @@ class BatchedDataset(Dataset):
         else:
             self.batch_size = 256
 
+        self.indices = np.random.permutation(self.n_samples)
+
     def __len__(self):
         # This is required because x and y are tensors and don't throw these
         # errors themselves.
-        return self.x.shape[0] // self.batch_size
+        return self.n_samples // self.batch_size
 
     def __getitem__(self, i):
+        if (i == 0):
+            self.indices = np.random.permutation(self.n_samples)
+
         if i >= len(self):
             raise IndexError()
         i_start = i * self.batch_size
         i_end = (i + 1) * self.batch_size
-        x = self.x[i_start:i_end]
-        y = self.y[i_start:i_end]
+        indices = self.indices[i_start:i_end]
+        x = self.x[indices]
+        y = self.y[indices]
         return (x, y)
 
 
@@ -196,7 +204,6 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
             )
             mask = y_true > self.mask
             return (loss * mask).sum() / mask.sum()
-
 
 
 class QuantileLoss:
@@ -279,14 +286,34 @@ def _get_default_optimizer(model):
     return optimizer
 
 def _get_default_scheduler(optimizer):
+    """
+    The default scheduler which reduces lr when training loss reaches a
+    plateau.
+    """
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
                                                      factor=0.1,
                                                      patience=5)
     return scheduler
 
+def _has_channels_last_tensor(parameters):
+    """
+    Determine whether any of the tensors in the models parameters is
+    in channels last format.
+    """
+    for p in parameters:
+        if isinstance(p.data, torch.Tensor):
+            t = p.data
+            if t.is_contiguous(memory_format=torch.channels_last) and not t.is_contiguous():
+                return True
+            elif isinstance(t, list) or isinstance(t, tuple):
+                if _has_channels_last_tensor(list(t)):
+                    return True
+    return False
+
 ################################################################################
 # QRNN
 ################################################################################
+
 
 class PytorchModel:
     """
@@ -303,10 +330,19 @@ class PytorchModel:
                 "backend")
         if isinstance(model, PytorchModel):
             return model
-        new_model = PytorchModel()
         model.__class__ = type("__QuantnnMixin__", (PytorchModel, type(model)), {})
         PytorchModel.__init__(model)
         return model
+
+    @property
+    def channel_axis(self):
+        """
+        The index of the axis that contains the channel information in a batch
+        of input data.
+        """
+        if _has_channels_last_tensor(self.parameters()):
+            return -1
+        return 1
 
     def __init__(self):
         """

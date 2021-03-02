@@ -65,7 +65,7 @@ class DRNN(NeuralNetworkModel):
                 y_val = _to_categorical(y_val, self.bins[:-1])
                 validation_data = x_val, y_val
 
-        loss = self.backend.CrossEntropyLoss(mask=None)
+        loss = self.backend.CrossEntropyLoss(mask=mask)
         return self.model.train(training_data,
                                 validation_data=validation_data,
                                 loss=loss,

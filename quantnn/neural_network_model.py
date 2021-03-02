@@ -221,11 +221,8 @@ class NeuralNetworkModel:
         with open(path, "wb") as file:
             pickle.dump(self, file)
 
-            print(self.model.__class__.__name__)
-
             old_class = self.model.__class__
             if self.model.__class__.__name__ == "__QuantnnMixin__":
-                print("setting class")
                 self.model.__class__ = self.model.__class__.__bases__[1]
             self.backend.save_model(file, self.model)
             self.model.__class__ = old_class
