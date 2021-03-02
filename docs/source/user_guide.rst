@@ -6,16 +6,17 @@ This section describes the basic usage of the **quantnn** package.
 Overview
 --------
 
-The main functionality of **quantnn** is implemented in two model classes. The
-:py:class:`quantnn.qrnn.QRNN` class and the :py:class:`quantnn.drnn.DRNN` classes,
-which implement quantiles regression neural networks (QRNNs) and density
-regression neural networks (DRNNs), respectively.
+The main functionality of quantnn is implemented by two model classes:
+:py:class:`quantnn.qrnn.QRNN` and :py:class:`quantnn.drnn.DRNN`. The
+:py:class:`~quantnn.qrnn.QRNN` class provides an implementation of quantile
+regression neural networks (QRNNs), whereas the :py:class:`~quantnn.drnn.DRNN`
+implements density regression neural networks (DRNNs).
 
 Basic workflow
 --------------
 
-The basic usage is similar for both model classes :py:mod:`~quantnn.QRNN` and
-:py:mod:`~quantnn.DRNN` and consists of the following steps:
+The basic usage of both the  :py:mod:`~quantnn.QRNN` and :py:mod:`~quantnn.DRNN`
+classes is similar and follows the generic machine learning workflow:
 
 1. **Defining the model**: A model is defined by instantiating the
    corresponding model class. For this, you need to define the architecture of
@@ -39,6 +40,11 @@ The basic usage is similar for both model classes :py:mod:`~quantnn.QRNN` and
    and load it using the corresponding class methods of the
    :py:class:`~quantnn.qrnn.QRNN` :py:class:`~quantnn.qrnn.DRNN` classes.
 
+.. note ::
+
+    Care has been taken to design the interfaces of the :py:class:`~quantnn.qrnn.QRNN`
+    and :py:class:`~quantnn.drnn.DRNN` classes as consistently as possible so that
+    both classes can be used interchangeably to the largest extent possible.
 
 Content
 -------

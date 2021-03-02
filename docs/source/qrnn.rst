@@ -2,12 +2,20 @@
 Quantile regression neural networks (QRNNs)
 ===========================================
 
-Given an input vector :math:`\mathbf{x}` with input features :math:`x_1, \ldots,
-x_n`, a QRNN learns to predict a sequence of quantiles :math:`y_\tau` of the
-distribution :math:`P(y | \mathbf{x})`. Since these quantiles correspond to the inverse
-:math:`F^{-1}` of the cumulative distribution function :math:`F(x) = P(X \leq x
-| Y = y)`, the QRNN output can be interpreted as a piece-wise linear
-approximation of the CDF of :math:`P(y|x)`.
+Consider first the case of a simple, one-dimensional input vector :math:`x` with
+input features :math:`x_1, \ldots, x_n` and a corresponding scalar output value
+:math:`y`. If the problem of mapping :math:`x` to :math:`y` does not admit a unique
+solution a more suitable approach than predicting a single value for :math:`y`
+is to instead predict its conditional distribution :math:`P(y|x)` for given
+input :math:`x`.
+
+QRNNs do this by learning to predict a sequence of quantiles :math:`y_\tau` of
+the distribution :math:`P(y | \mathbf{x})`. The quantile :math:`y_\tau` for
+:math:`\tau \in [0, 1]` is defined as the value for which :math:`P(y \leq y_\tau
+| x) = \tau`. Since the quantiles :math:`y_{\tau_0}, y_{\tau_1}, \ldots`
+correspond to the values of the inverse :math:`F^{-1}` of the cumulative
+distribution function :math:`F(x) = P(X \leq x | Y = y)`, the QRNN output can be
+interpreted as a piece-wise linear approximation of the CDF of :math:`P(y|x)`.
 
 .. figure:: qrnn.svg
   :width: 600
@@ -20,9 +28,10 @@ How it works
 ------------
 
 QRNNs make use of quantile regression to learn to predict the quantiles of the
-distribution :math:`P(y|x)`. This works because the quantiles :math:`y_\tau` for
-given quantile fractions :math:`\tau \in [0, 1]` correspond to minima of the
-expected value :math:`\mathbf{E}_y {\mathcal{L}_\tau(y, y_\tau)}` of the quantile loss function
+distribution :math:`P(y|x)`. This works because the quantile :math:`y_\tau` for
+a given quantile fraction :math:`\tau \in [0, 1]` corresponds to a minimum of the
+expected value :math:`\mathbf{E}_y {\mathcal{L}_\tau(y, y_\tau)}` of the quantile
+loss function
 
 .. math::
 
@@ -36,7 +45,7 @@ A proof of this can be found on `wikipedia <https://en.wikipedia.org/wiki/Quanti
 
 Because of this property, training a neural network using the quantile loss
 function :math:`\mathcal{L}_\tau` will teach the network to predict the
-corresponding quantiles :math:`y_\tau`. QRNNs extend this principle to a
+corresponding quantile :math:`y_\tau`. QRNNs extend this principle to a
 sequence of quantiles corresponding to an arbitrary selection of quantile
 fractions :math:`\tau_1, \tau_2, \ldots` which are optimized simultaneously.
 

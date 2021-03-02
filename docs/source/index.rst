@@ -6,12 +6,14 @@
 quantnn
 =======
 
-**quantnn** is a package for probabilistic modeling using (deterministic) deep
-neural networks. It currently provides implementations of two distinct methods to
-predict the conditional distribution :math:`P(y|x)` of the output :math:`y`
-given the input :math:`x`:
+**quantnn** is a Python package for solving probabilistic regression problems using
+(deterministic) deep neural networks, i.e. to predict a conditional distribution
+:math:`P(y|x)` for given input :math:`x`.
 
-1. **Quantile regression neural networks (QRNNs)** predict the quantiles
+It currently provides implementations of two neural-network based methods to solve
+these type of problems:
+
+1. **Quantile regression neural networks (QRNNs)**: QRNNs learn to predict the quantiles
    of the conditional distribution :math:`P(y|x)`, which can be used to estimate its
    cumulative distribution function (CDF).
 
@@ -22,7 +24,7 @@ given the input :math:`x`:
     Example of a QRNN applied to predict the quantiles of a function with
     heteroscedastic noise.
 
-2. **Density regression neural networks (DRNNs)**  predict a binned
+2. **Density regression neural networks (DRNNs)**: DRNNs learn  predict a binned
    version of the probability density function (PDF) of :math:`P(y|x)`.
 
    .. figure:: pdf_drnn.png
@@ -37,7 +39,7 @@ given the input :math:`x`:
 Features
 --------
 
-- A flexible, high-level implementation of QRNN and DRNNs supporting both PyTorch and Keras (Tensorflow)
+- A flexible, high-level implementation of QRNN and DRNNs supporting both PyTorch and Keras
   as backends.
 - Generic functions to manipulate and process QRNN and DRNN predictions such as computing the
   posterior mean or classifying inputs.

@@ -133,9 +133,9 @@ class QuantileLoss:
     def __repr__(self):
         return "QuantileLoss(" + repr(self.quantiles) + ")"
 
-################################################################################
+###############################################################################
 # Keras data generators
-################################################################################
+###############################################################################
 
 
 class BatchedDataset:
@@ -298,14 +298,13 @@ class ValidationGenerator:
 
     def __next__(self):
         x_val, y_val = next(self.validation_data)
-        if not self.sigma_noise is None:
+        if self.sigma_noise is not None:
             x_val += np.random.randn(*self.x_val.shape) * self.sigma_noise
         return (x_val, self.y_val)
 
-
-################################################################################
+###############################################################################
 # LRDecay
-################################################################################
+###############################################################################
 
 
 class LRDecay(keras.callbacks.Callback):
@@ -360,11 +359,13 @@ class LRDecay(keras.callbacks.Callback):
 # Default scheduler and optimizer
 ################################################################################
 
+
 def _get_default_optimizer(schedule):
     """
     The default optimizer. Currently set to Adam optimizer.
     """
     return keras.optimizers.RMSprop()
+
 
 def _get_default_scheduler(model):
     """
