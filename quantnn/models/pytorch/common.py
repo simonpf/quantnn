@@ -442,6 +442,10 @@ class PytorchModel:
         training_errors = []
         validation_errors = []
 
+        state = {}
+        for m in self.modules():
+            state[m] = m.training
+
         # Training loop
         for i in range(n_epochs):
             error = 0.0
@@ -516,7 +520,8 @@ class PytorchModel:
                     log.validation_step(c.item(), n_samples, of=of)
 
                 validation_errors.append(validation_error / n)
-                nn.Module.train(self, True)
+                for m in self.modules():
+                    m.training = state[m]
 
                 if scheduler:
                     if len(scheduler_sig.parameters) == 1:
