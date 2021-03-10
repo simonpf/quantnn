@@ -443,7 +443,7 @@ class QRNN(NeuralNetworkModel):
             y_pred: Optional pre-computed quantile predictions, which, when
                  provided, will be used to avoid repeated propagation of the
                  the inputs through the network.
-            quantiles: List of quantile fraction values :math:`\tau_i \in [0, 1]`.
+            new_quantiles: List of quantile fraction values :math:`\tau_i \in [0, 1]`.
         Returns:
 
             Rank-k tensor containing the desired predicted quantiles along its
@@ -460,8 +460,9 @@ class QRNN(NeuralNetworkModel):
                              "calculate the posterior quantiles.")
 
         module = get_array_module(y_pred)
-        quantiles = to_array(module, self.quantiles, like=y_pred)
+        new_quantiles = to_array(module, quantiles, like=y_pred)
+        current_quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.posterior_quantiles(y_pred,
-                                      quantiles,
-                                      quantiles,
+                                      quantiles=current_quantiles,
+                                      new_quantiles=new_quantiles,
                                       quantile_axis=self.quantile_axis)
