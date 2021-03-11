@@ -17,7 +17,9 @@ from quantnn.generic import (get_array_module,
                              cumsum,
                              reshape,
                              pad_zeros_left,
-                             as_type)
+                             as_type,
+                             zeros,
+                             sample_uniform)
 
 def _check_dimensions(n_y, n_b):
     if n_y != n_b - 1:
@@ -260,3 +262,65 @@ def probability_larger_than(y_pred,
                                        bins,
                                        quantiles,
                                        bin_axis=bin_axis)
+
+def sample_posterior(y_pred,
+                     bins,
+                     n_samples=1,
+                     bin_axis=1):
+    """
+    Sample the posterior distribution described by the predicted PDF.
+
+    The sampling is performed by interpolating the inverse of the cumulative
+    distribution function to value sampled from a uniform distribution.
+
+    Args:
+        y_pred: A rank-k tensor containing the predicted bin-probabilities
+            along the axis specified by ``quantile_axis``.
+        bins: The bin bounrdaries corresponding to the predicted
+            bin probabilities.
+        n_samples: How many samples to generate for each prediction.
+        bin_axis: The axis in y_pred along which the predicted bin
+             probabilities are located.
+
+    Returns:
+        A rank-k tensor with the values along ``bin_axis`` replaced by
+        samples of the posterior distribution.
+    """
+    if len(y_pred.shape) == 1:
+        bin_axis = 0
+    xp = get_array_module(y_pred)
+    n_dims = len(y_pred.shape)
+    y_cdf = posterior_cdf(y_pred, bins, bin_axis=bin_axis)
+
+    n_bins = len(bins)
+
+
+    output_shape = list(y_cdf.shape)
+    output_shape[bin_axis] = n_samples
+    results = zeros(xp, output_shape, like=y_pred)
+
+    y_index = [slice(0, None)] * n_dims
+    y_index[bin_axis] = slice(0, 1) 
+    y_l = y_cdf[tuple(y_index)]
+    b_l = bins[0]
+
+    samples = as_type(xp, sample_uniform(xp, tuple(output_shape)), y_cdf)
+
+    for i in range(1, n_bins):
+        y_index = [slice(0, None)] * n_dims
+        y_index[bin_axis] = slice(i, i+1)
+        y_r = y_cdf[tuple(y_index)]
+        b_r = bins[i]
+
+        mask = as_type(xp, (y_l < samples) * (y_r >= samples), y_l)
+        results += b_l * (y_r - samples) * mask
+        results += b_r * (samples - y_l) * mask
+        results /= (mask * (y_r - y_l) + (1.0 - mask))
+
+        b_l = b_r
+        y_l = y_r
+
+
+    mask = as_type(xp, y_r < samples, y_r)
+    results += mask * b_r
+    return results

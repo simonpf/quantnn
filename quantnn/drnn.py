@@ -41,10 +41,11 @@ class DRNN(NeuralNetworkModel):
     """
     def __init__(self,
                  bins,
-                 input_dimensions=None,
+                 n_inputs=None,
                  model=(3, 128, "relu")):
         self.bins = bins
-        super().__init__(input_dimensions, bins.size - 1, model)
+        super().__init__(n_inputs, bins.size - 1, model)
+        self.bin_axis = self.model.channel_axis
 
 
     def train(self,
@@ -81,7 +82,7 @@ class DRNN(NeuralNetworkModel):
         module = get_array_module(y_pred)
         y_pred = softmax(module, y_pred, axis=1)
         bins = to_array(module, self.bins, like=y_pred)
-        y_pred = qd.normalize(y_pred, bins, bin_axis=1)
+        y_pred = qd.normalize(y_pred, bins, bin_axis=self.bin_axis)
         return y_pred
 
     def posterior_mean(self, x=None, y_pred=None):
@@ -110,7 +111,7 @@ class DRNN(NeuralNetworkModel):
         bins = to_array(module, self.bins, like=y_pred)
         return qd.posterior_mean(y_pred,
                                  bins,
-                                 bin_axis=1)
+                                 bin_axis=self.bin_axis)
 
     def posterior_quantiles(self, x=None, y_pred=None, quantiles=None):
         r"""
@@ -144,7 +145,7 @@ class DRNN(NeuralNetworkModel):
         return qd.posterior_quantiles(y_pred,
                                       bins,
                                       quantiles,
-                                      bin_axis=1)
+                                      bin_axis=self.bin_axis)
 
     def probability_larger_than(self, x=None, y=None, y_pred=None):
         """
@@ -178,4 +179,38 @@ class DRNN(NeuralNetworkModel):
         return qd.probability_larger_than(y_pred,
                                           bins,
                                           y,
-                                          bin_axis=1)
+                                          bin_axis=self.bin_axis)
+
+    def sample_posterior(self, x=None, y_pred=None, n_samples=1):
+        r"""
+        Generates :code:`n` samples from the predicted posterior distribution
+        for the input vector :code:`x`. The sampling is performed by the
+        inverse CDF method using the predicted CDF obtained from the
+        :code:`cdf` member function.
+
+        Arguments:
+
+            x: Rank-k tensor containing the input data with
+                the input channels (or features) for each sample located
+                along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
+            n: The number of samples to generate.
+
+        Returns:
+
+            Rank-k tensor containing the random samples for each input sample
+            along the first dimension.
+        """
+        if y_pred is None:
+            if x is None:
+                raise ValueError("One of the input arguments x or y_pred must be "
+                                 " provided.")
+            y_pred = self.predict(x)
+        module = get_array_module(y_pred)
+        bins = to_array(module, self.bins, like=y_pred)
+        return qd.sample_posterior(y_pred,
+                                   bins,
+                                   n_samples=n_samples,
+                                   bin_axis=self.bin_axis)

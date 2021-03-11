@@ -10,7 +10,8 @@ from quantnn.density import (posterior_quantiles,
                              posterior_cdf,
                              posterior_mean,
                              probability_larger_than,
-                             probability_less_than)
+                             probability_less_than,
+                             sample_posterior)
 
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_posterior_cdf(xp):
@@ -256,3 +257,53 @@ def test_probability_less_and_larger_than(xp):
 
     p = probability_larger_than(y_pred, bins, 6.0, bin_axis=0)
     assert np.all(np.isclose(p, 0.5))
+
+@pytest.mark.parametrize("xp", pytest.backends)
+def test_sample_posterior(xp):
+    """
+    Tests the calculation of the pdf for different shapes of input
+    arrays.
+    """
+
+    #
+    # 1D predictions
+    #
+
+    bins = arange(xp, 1.0, 11.1, 0.1)
+    y_pred = 0.1 * xp.ones(100)
+
+    samples = sample_posterior(y_pred, bins, n_samples=100000)
+    assert samples[0] >= 1.0
+    assert samples[0] <= 11.0
+    assert np.isclose(samples.mean(), 6.0, rtol=1e-1)
+
+    #
+    # 2D predictions
+    #
+
+    y_pred = 0.1 * xp.ones(100)
+    y_pred = eo.repeat(y_pred, 'q -> w q', w=10)
+
+    samples = sample_posterior(y_pred, bins, n_samples=10000)
+    assert np.isclose(samples.mean(), 6.0, rtol=1e-1)
+
+    #
+    # 3D predictions, bins along second dimension
+    #
+
+    y_pred = 0.1 * xp.ones(100)
+    y_pred = eo.repeat(y_pred, 'q -> w q h', w=10, h=10)
+
+    samples = sample_posterior(y_pred, bins, n_samples=1000)
+    assert np.isclose(samples.mean(), 6.0, rtol=1e-1)
+
+
+    #
+    # 3D predictions, bins along last dimension
+    #
+
+    y_pred = 0.1 * xp.ones(100)
+    y_pred = eo.repeat(y_pred, 'q -> w h q', w=10, h=10)
+
+    samples = sample_posterior(y_pred, bins, n_samples=1000, bin_axis=-1)
+    assert np.isclose(samples.mean(), 6.0, rtol=1e-1)
