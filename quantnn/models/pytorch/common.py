@@ -560,12 +560,20 @@ class PytorchModel:
             The model prediction converted to numpy array.
         """
         # Determine device to use
-        with torch.no_grad():
-            w = next(iter(self.parameters())).data
+        w = next(iter(self.parameters())).data
+        if isinstance(x, torch.Tensor):
+            x_torch = x
+        else:
             x_torch = to_array(torch, x, like=w)
-            self.to(x_torch.device)
+        self.to(x_torch.device)
+
+        if x_torch.requires_grad:
             y = self(x_torch)
-            return y
+        else:
+            with torch.no_grad():
+                y = self(x_torch)
+
+        return y
 
     def calibration(self, data, gpu=False):
         """

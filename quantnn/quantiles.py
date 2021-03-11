@@ -607,7 +607,7 @@ def sample_posterior(y_pred,
     output_shape = list(y_pred.shape)
     output_shape[quantile_axis] = n_samples
 
-    samples = sample_uniform(xp, tuple(output_shape))
+    samples = as_type(xp, sample_uniform(xp, tuple(output_shape)), y_cdf)
     results = zeros(xp, samples.shape, like=y_pred)
 
     y_l = y_cdf[0]

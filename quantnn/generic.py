@@ -115,7 +115,10 @@ def to_array(module, array, like=None):
             return module.asarray(array)
     elif module == torch:
         if like is not None:
-            return module.tensor(array, dtype=like.dtype, device=like.device)
+            return module.tensor(array,
+                                 dtype=like.dtype,
+                                 device=like.device,
+                                 requires_grad=like.requires_grad)
         else:
             return module.tensor(array)
     elif module == jnp:
@@ -125,7 +128,7 @@ def to_array(module, array, like=None):
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
 
 
-def sample_uniform(module, shape):
+def sample_uniform(module, shape, like=None):
     """
     Create a tensor with random values sampled from a uniform distribution.
 
@@ -326,7 +329,7 @@ def as_type(module, x, y):
     elif module == tf:
         return tf.cast(x, y.dtype)
     elif module == torch:
-        return x.to(y.dtype)
+        return x.to(dtype=y.dtype, device=y.device)
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
 
 
