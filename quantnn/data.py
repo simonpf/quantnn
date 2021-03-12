@@ -1,3 +1,11 @@
+r"""
+============
+quantnn.data
+============
+
+This module provides generic classes to simplify the handling of training
+data.
+"""
 from collections import OrderedDict
 from collections.abc import Iterable, Mapping
 from concurrent.futures import ProcessPoolExecutor
@@ -198,3 +206,59 @@ class DataFolder:
         for _ in self.files:
             dataset = self.get_next_dataset()
             yield from iterate_dataset(dataset)
+
+class BatchedDataset:
+    """
+    A generic batched dataset, that takes two numpy array and generates a sequence
+    dataset providing tensors of
+
+    """
+    def __init__(self,
+                 x,
+                 y,
+                 batch_size=64,
+                 discard_last=False,
+                 tensor_backend=None,
+                 shuffle=True):
+        self.x = x
+        self.y = y
+        self.n_samples = x.shape[0]
+        self.batch_size = 64
+        self.discard_last = False,
+        self.tensor_backend = tensor_backend
+        self.shuffle = shuffle
+
+    def __len__(self):
+        n_batches = self.n_samples // self.batch_size
+        if (not self.discard_last and (n_samples % self.batch_size > 0)):
+            n_batches += 1
+        return n_batches
+
+    def __getitem__(self, i):
+
+        if i > len(self):
+            raise StopIteration()
+
+        if (i == 0) and self.shuffle:
+            indices = np.random.permutation(self.n_samples)
+            self.x = self.x[indices]
+            self.y = self.y[indices]
+
+        i_start = self.batch_size * i
+        i_end = i_start + self.batch_size
+
+        x_batch = self.x[i_start:i_end]
+        y_batch = self.y[i_start:i_end]
+
+        if self.tensor_backend is not None:
+            x_batch = self.tensor_backend.to_tensor(x_batch)
+            y_batch = self.tensor_backend.to_tensor(y_batch)
+
+        return x_batch, y_batch
+
+
+
+
+
+
+

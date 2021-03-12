@@ -12,6 +12,10 @@ class QuantnnException(Exception):
 class UnknownArrayTypeException(QuantnnException):
     """Thrown when a function is called with an unsupported array type."""
 
+class UnsupportedTensorType(QuantnnException):
+    """
+    Thrown when quantnn is asked to handle a tensor type it doesn't support.
+    """
 
 class UnknownModuleException(QuantnnException):
     """
@@ -22,7 +26,6 @@ class UnknownModuleException(QuantnnException):
 class UnsupportedBackendException(QuantnnException):
     """
     Thrown when quantnn is requested to load a backend that is not supported.
-
     """
 
 class MissingBackendException(QuantnnException):

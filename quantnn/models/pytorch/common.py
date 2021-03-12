@@ -19,7 +19,8 @@ from torch.utils.data import Dataset
 
 from quantnn.common import ModelNotSupported
 from quantnn.logging import TrainingLogger
-from quantnn.generic import to_array
+from quantnn.data import BatchedDataset
+from quantnn.backends.pytorch import Pytorch
 
 activations = {
     "elu": nn.ELU,
@@ -111,53 +112,54 @@ def handle_input(data, device=None):
     return data
 
 
-class BatchedDataset(Dataset):
+class BatchedDataset(BatchedDataset):
     """
     Batches an un-batched dataset.
     """
-    def __init__(self, training_data, batch_size=None):
+    def __init__(self, training_data, batch_size=64):
         x, y = training_data
-        self.n_samples = x.shape[0]
-
-        # x
-        if isinstance(x, torch.Tensor):
-            self.x = x.clone().detach().float()
-        else:
-            self.x = torch.tensor(x, dtype=torch.float)
-
-        # y
-        dtype_y = torch.float
-        if "int" in str(y.dtype):
-            dtype_y = torch.long
-        if isinstance(y, torch.Tensor):
-            self.y = y.clone().detach().to(dtype=dtype_y)
-        else:
-            self.y = torch.tensor(y, dtype=dtype_y)
-
-        if batch_size:
-            self.batch_size = batch_size
-        else:
-            self.batch_size = 256
-
-        self.indices = np.random.permutation(self.n_samples)
-
-    def __len__(self):
-        # This is required because x and y are tensors and don't throw these
-        # errors themselves.
-        return self.n_samples // self.batch_size
-
-    def __getitem__(self, i):
-        if (i == 0):
-            self.indices = np.random.permutation(self.n_samples)
-
-        if i >= len(self):
-            raise IndexError()
-        i_start = i * self.batch_size
-        i_end = (i + 1) * self.batch_size
-        indices = self.indices[i_start:i_end]
-        x = self.x[indices]
-        y = self.y[indices]
-        return (x, y)
+        super().__init__(x, y, batch_size, False, Pytorch)
+#        self.n_samples = x.shape[0]
+#
+#        # x
+#        if isinstance(x, torch.Tensor):
+#            self.x = x.clone().detach().float()
+#        else:
+#            self.x = torch.tensor(x, dtype=torch.float)
+#
+#        # y
+#        dtype_y = torch.float
+#        if "int" in str(y.dtype):
+#            dtype_y = torch.long
+#        if isinstance(y, torch.Tensor):
+#            self.y = y.clone().detach().to(dtype=dtype_y)
+#        else:
+#            self.y = torch.tensor(y, dtype=dtype_y)
+#
+#        if batch_size:
+#            self.batch_size = batch_size
+#        else:
+#            self.batch_size = 256
+#
+#        self.indices = np.random.permutation(self.n_samples)
+#
+#    def __len__(self):
+#        # This is required because x and y are tensors and don't throw these
+#        # errors themselves.
+#        return self.n_samples // self.batch_size
+#
+#    def __getitem__(self, i):
+#        if (i == 0):
+#            self.indices = np.random.permutation(self.n_samples)
+#
+#        if i >= len(self):
+#            raise IndexError()
+#        i_start = i * self.batch_size
+#        i_end = (i + 1) * self.batch_size
+#        indices = self.indices[i_start:i_end]
+#        x = self.x[indices]
+#        y = self.y[indices]
+#        return (x, y)
 
 
 ################################################################################
@@ -187,6 +189,7 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
 
     def __call__(self, y_pred, y_true):
         """Evaluate the loss."""
+        y_true = y_true.long()
         if len(y_true.shape) == len(y_pred.shape):
             y_true = y_true.squeeze(1)
 
@@ -448,7 +451,7 @@ class PytorchModel:
             n = 0
             for j, (x, y) in enumerate(training_data):
 
-                x = x.to(device)
+                x = x.float().to(device)
                 y = y.to(device)
 
                 shape = x.size()
@@ -557,7 +560,7 @@ class PytorchModel:
         # Determine device to use
         with torch.no_grad():
             w = next(iter(self.parameters())).data
-            x_torch = to_array(torch, x, like=w)
+            x_torch = Pytorch.to_tensor(x, like=w)
             self.to(x_torch.device)
             y = self(x_torch)
             return y

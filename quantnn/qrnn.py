@@ -1,11 +1,46 @@
-"""
+r"""
 ============
 quantnn.qrnn
 ============
 
 This module provides the QRNN class, which is a generic implementation of
-quantile regression neural networks (QRNN). 
+quantile regression neural networks (QRNN).
+
+In essence, the QRNN class combines a backbone neural network with a set
+of quantiles given by the corresponding quantile fractions
+:math:`\{\tau_0, \ldots \tau_{n - 1}\}` with :math:`\tau_i \in [0, 1]` that
+the network should learn to predict.
+
+Example usage
+-------------
+
+.. code-block ::
+
+    import numpy as np
+    from quantnn.qrnn import QRNN
+    from quantnn.models.pytorch import FullyConnected
+
+    quantiles = np.linspace(0.01, 0.99, 99)
+    # A fully-connected neural network with 10 inputs and one output for
+    # each quantile.
+    model = FullyConnected(n_inputs=10, n_outputs=99, n_layers=3, width=128)
+    qrnn = QRNN(quantiles=quantiles, model=model)
+
+    # Train the model
+    x = np.random.rand(10, 10)
+    y = np.random.rand(10, 1)
+    qrnn.train(training_data=(x, y), n_epochs=1)
+
+    # Perform inference.
+    y_pred = qrnn.predict(x)
+
+    # Save the model
+    qrnn.save("qrnn.pckl")
+
+    # Load the model
+    QRNN.load("qrnn.pckl")
 """
+
 import copy
 import pickle
 import importlib
@@ -37,6 +72,8 @@ class QRNN(NeuralNetworkModel):
     the network is trained to predict the corresponding quantiles :math:`y_{\tau_i}` of
     the posterior of the posterior distribution by training to minimize the sum of the
     loss functions
+
+    .. math::
 
             \mathcal{L}_{\tau_i}(y_{\tau_i}, y_{true}) =
             \begin{cases} (1 - {\tau_i})|y_{\tau_i} - y_{true}| & \text{ if } y_{\tau_i} < y_\text{true} \\
@@ -140,7 +177,7 @@ class QRNN(NeuralNetworkModel):
 
             x(np.array): Rank-k tensor containing the input data with
                 the input channels (or features) for each sample located
-                 along its first dimension.
+                along its first dimension.
 
         Returns:
 
@@ -166,7 +203,7 @@ class QRNN(NeuralNetworkModel):
 
             y_{\tau=0.0} = 2.0 x_{\tau_1} - x_{\tau_2}
 
-            y_{\tay=1.0} = 2.0 x_{\tau_k} - x_{\tau_{k-1}}
+            y_{\tau=1.0} = 2.0 x_{\tau_k} - x_{\tau_{k-1}}
 
         Arguments:
 
@@ -285,7 +322,7 @@ class QRNN(NeuralNetworkModel):
         Returns:
 
             Tuple (xs, fs) containing the :math:`x`-values in `xs` and corresponding
-            values of the posterior CDF :math: `F(x)` in `fs`.
+            values of the posterior CDF :math:`F(x)` in `fs`.
         """
         if y_pred is None:
             if x is None:
@@ -335,7 +372,7 @@ class QRNN(NeuralNetworkModel):
         approximate the continuous ranked probability score (CRPS):
 
         .. math::
-            CRPS(\mathbf{y}, x) = \int_{-\infty}^\infty (F_{x | \mathbf{y}}(x')
+            \text{CRPS}(\mathbf{y}, x) = \int_{-\infty}^\infty (F_{x | \mathbf{y}}(x')
             - \mathrm{1}_{x < x'})^2 \: dx'
 
         Arguments:

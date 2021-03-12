@@ -9,3 +9,4 @@ components of the package.
    :maxdepth: 2
 
    api/quantnn
+   api/data
