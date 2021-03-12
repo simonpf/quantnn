@@ -378,19 +378,27 @@ def posterior_quantiles(y_pred, quantiles, new_quantiles, quantile_axis=1):
     y_qs = []
 
     for q in new_quantiles:
-        mask = (quantiles[1:] > q) * (quantiles[:-1] <= q)
-        index = indices[:-1][mask]
-        if len(index) == 0:
-            if quantiles[0] < q:
-                selection[quantile_axis] = 0
-                selection_l = tuple(selection)
-                return y_pred[selection_l]
-            else:
-                selection[quantile_axis] = -1
-                selection_r = tuple(selection)
-                return y_pred[selection_r]
+        mask_l = quantiles <= q
+        mask_r = quantiles > q
 
-        index = int(index[0])
+        index_l = indices[mask_l]
+        if len(index_l) == 0:
+            selection[quantile_axis] = 0
+            selection_l = tuple(selection)
+            y_q = expand_dims(xp, y_pred[selection_l], quantile_axis)
+            y_qs.append(y_q)
+            continue
+
+        index_r = indices[mask_r]
+        if len(index_r) == 0:
+            selection[quantile_axis] = -1
+            selection_r = tuple(selection)
+            y_q = expand_dims(xp, y_pred[selection_r], quantile_axis)
+            y_qs.append(y_q)
+            continue
+
+        index = int(index_l[-1])
+
         d = quantiles[index + 1] - quantiles[index]
         w_l = (quantiles[index + 1] - q) / d
         w_r = (q - quantiles[index]) / d
@@ -599,7 +607,7 @@ def sample_posterior(y_pred,
     output_shape = list(y_pred.shape)
     output_shape[quantile_axis] = n_samples
 
-    samples = sample_uniform(xp, tuple(output_shape))
+    samples = as_type(xp, sample_uniform(xp, tuple(output_shape)), y_cdf)
     results = zeros(xp, samples.shape, like=y_pred)
 
     y_l = y_cdf[0]

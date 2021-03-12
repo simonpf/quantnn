@@ -10,7 +10,8 @@ from quantnn.quantiles import (cdf, pdf, pdf_binned, posterior_mean, crps,
                                probability_larger_than,
                                sample_posterior,
                                sample_posterior_gaussian,
-                               quantile_loss)
+                               quantile_loss,
+                               posterior_quantiles)
 
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_cdf(xp):
@@ -533,3 +534,110 @@ def test_quantile_loss(xp):
     y_true = eo.repeat(to_array(xp, [5.0]), 'q -> h q w', h=10, w=10)
     loss = quantile_loss(y_pred, quantiles, y_true, quantile_axis=1)
     assert np.isclose(loss.mean(), to_array(xp, [0.444444]))
+
+@pytest.mark.parametrize("xp", pytest.backends)
+def test_posterior_quantiles(xp):
+    """
+    Test interpolation of posterior quantiles.
+    """
+
+    #
+    # 1D predictions
+    #
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    new_quantiles = quantiles[:-1] + 0.05
+    y_pred = arange(xp, 1.0, 9.1, 1.0)
+
+    y_q = posterior_quantiles(y_pred, quantiles, quantiles)
+    assert np.all(np.isclose(y_pred, y_q))
+
+    y_q = posterior_quantiles(y_pred, quantiles, new_quantiles)
+    y_pred_i = 0.5 * (y_pred[1:] + y_pred[:-1])
+    assert np.all(np.isclose(y_pred_i, y_q))
+
+    new_quantiles = to_array(xp, [0.0])
+    y_q = posterior_quantiles(y_pred, quantiles, new_quantiles)
+    assert np.all(np.isclose(y_pred[0], y_q))
+
+    new_quantiles = to_array(xp, [10.0])
+    y_q = posterior_quantiles(y_pred, quantiles, new_quantiles)
+    assert np.all(np.isclose(y_pred[-1], y_q))
+
+
+    #
+    # 2D predictions
+    #
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    new_quantiles = quantiles[:-1] + 0.05
+    y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> w q', w=10)
+
+    y_q = posterior_quantiles(y_pred, quantiles, quantiles)
+    assert np.all(np.isclose(y_pred, y_q))
+
+    y_q = posterior_quantiles(y_pred, quantiles, new_quantiles)
+    y_pred_i = 0.5 * (y_pred[:, 1:] + y_pred[:, :-1])
+    assert np.all(np.isclose(y_pred_i, y_q))
+
+    new_quantiles = to_array(xp, [0.0])
+    y_q = posterior_quantiles(y_pred, quantiles, new_quantiles)
+    assert np.all(np.isclose(y_pred[:, 0], y_q))
+
+    new_quantiles = to_array(xp, [10.0])
+    y_q = posterior_quantiles(y_pred, quantiles, new_quantiles)
+    assert np.all(np.isclose(y_pred[:, -1], y_q))
+
+    #
+    # 3D predictions, quantiles along last axis
+    #
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    new_quantiles = quantiles[:-1] + 0.05
+    y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> h w q', h=10, w=10)
+
+    y_q = posterior_quantiles(y_pred, quantiles, quantiles,
+                              quantile_axis=2)
+    assert np.all(np.isclose(y_pred, y_q))
+
+    y_q = posterior_quantiles(y_pred, quantiles, new_quantiles,
+                              quantile_axis=2)
+    y_pred_i = 0.5 * (y_pred[:, :, 1:] + y_pred[:, :, :-1])
+    assert np.all(np.isclose(y_pred_i, y_q))
+
+    new_quantiles = to_array(xp, [0.0])
+    y_q = posterior_quantiles(y_pred, quantiles, new_quantiles,
+                              quantile_axis=2)
+    assert np.all(np.isclose(y_pred[:, :, 0], y_q))
+
+    new_quantiles = to_array(xp, [10.0])
+    y_q = posterior_quantiles(y_pred, quantiles, new_quantiles,
+                              quantile_axis=2)
+    assert np.all(np.isclose(y_pred[:, :, -1], y_q))
+
+    #
+    # 3D predictions, quantiles along first axis
+    #
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    new_quantiles = quantiles[:-1] + 0.05
+    y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> h q w', h=10, w=10)
+
+    y_q = posterior_quantiles(y_pred, quantiles, quantiles,
+                              quantile_axis=1)
+    assert np.all(np.isclose(y_pred, y_q))
+
+    y_q = posterior_quantiles(y_pred, quantiles, new_quantiles,
+                              quantile_axis=1)
+    y_pred_i = 0.5 * (y_pred[:, 1:, :] + y_pred[:, :-1, :])
+    assert np.all(np.isclose(y_pred_i, y_q))
+
+    new_quantiles = to_array(xp, [0.0])
+    y_q = posterior_quantiles(y_pred, quantiles, new_quantiles,
+                              quantile_axis=1)
+    assert np.all(np.isclose(y_pred[:, 0, :], y_q))
+
+    new_quantiles = to_array(xp, [10.0])
+    y_q = posterior_quantiles(y_pred, quantiles, new_quantiles,
+                              quantile_axis=1)
+    assert np.all(np.isclose(y_pred[:, -1, :], y_q))

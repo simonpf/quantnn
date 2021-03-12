@@ -445,6 +445,10 @@ class PytorchModel:
         training_errors = []
         validation_errors = []
 
+        state = {}
+        for m in self.modules():
+            state[m] = m.training
+
         # Training loop
         for i in range(n_epochs):
             error = 0.0
@@ -519,7 +523,8 @@ class PytorchModel:
                     log.validation_step(c.item(), n_samples, of=of)
 
                 validation_errors.append(validation_error / n)
-                nn.Module.train(self, True)
+                for m in self.modules():
+                    m.training = state[m]
 
                 if scheduler:
                     if len(scheduler_sig.parameters) == 1:
@@ -558,12 +563,20 @@ class PytorchModel:
             The model prediction converted to numpy array.
         """
         # Determine device to use
-        with torch.no_grad():
-            w = next(iter(self.parameters())).data
-            x_torch = Pytorch.to_tensor(x, like=w)
-            self.to(x_torch.device)
+        w = next(iter(self.parameters())).data
+        if isinstance(x, torch.Tensor):
+            x_torch = x
+        else:
+            x_torch = to_array(torch, x, like=w)
+        self.to(x_torch.device)
+
+        if x_torch.requires_grad:
             y = self(x_torch)
-            return y
+        else:
+            with torch.no_grad():
+                y = self(x_torch)
+
+        return y
 
     def calibration(self, data, gpu=False):
         """

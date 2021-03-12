@@ -39,7 +39,7 @@ def get_login_info():
     password = os.environ.get("QUANTNN_SFTP_PASSWORD")
     if user_name is None or password is None:
         raise MissingAuthenticationInfo(
-            "SFTPStream dataset requires the 'QUANTNN_SFTP' and "
+            "SFTPStream dataset requires the 'QUANTNN_SFTP_USER' and "
             "'QUANTNN_SFTP_PASSWORD' to be set."
         )
     return user_name, password
