@@ -47,11 +47,11 @@ def test_min_max_normalizer_2d():
 
     # Included indices should have zero mean and std. dev. 1.0.
     assert np.all(np.isclose(x_normed[:, :10:2].min(axis=0),
-                             -1.0))
+                             -0.9))
     assert np.all(np.isclose(x_normed[:, :10:2].max(axis=0),
                              1.0))
     # nan values should be set to -2.0.
-    assert np.all(np.isclose(x_normed[:, -1], -2.0))
+    assert np.all(np.isclose(x_normed[:, -1], -1.0))
 
     # Channels without variation should be set to -1.0
     x = np.zeros((100, 10))

@@ -20,7 +20,8 @@ from torch.utils.data import Dataset
 from quantnn.common import ModelNotSupported
 from quantnn.logging import TrainingLogger
 from quantnn.data import BatchedDataset
-from quantnn.backends.pytorch import Pytorch
+from quantnn.backends.pytorch import PyTorch
+from quantnn.generic import to_array
 
 activations = {
     "elu": nn.ELU,
@@ -35,6 +36,11 @@ activations = {
     "softmin": nn.Softmin,
 }
 
+
+_ZERO_GRAD_ARGS = {}
+major, minor, *_ = torch.__version__.split(".")
+if int(major) >= 1 and int(minor) > 7:
+    _ZERO_GRAD_ARGS = {"set_to_none": True}
 
 def save_model(f, model):
     """
@@ -118,7 +124,7 @@ class BatchedDataset(BatchedDataset):
     """
     def __init__(self, training_data, batch_size=64):
         x, y = training_data
-        super().__init__(x, y, batch_size, False, Pytorch)
+        super().__init__(x, y, batch_size, False, PyTorch)
 #        self.n_samples = x.shape[0]
 #
 #        # x
@@ -357,7 +363,7 @@ class PytorchModel:
         self.validation_errors = []
 
     def _make_adversarial_samples(self, x, y, eps):
-        self.zero_grad()
+        self.zero_grad(**_ZERO_GRAD_ARGS)
         x.requires_grad = True
         y_pred = self(x)
         c = self.criterion(y_pred, y)
@@ -403,7 +409,7 @@ class PytorchModel:
             adversarial_training: whether or not to use adversarial training
             eps_adv: The scaling factor to use for adversarial training.
         """
-        # Avoid nameclash with Pytorch train method.
+        # Avoid nameclash with PyTorch train method.
         if type(training_data) == bool:
             return nn.Module.train(self, training_data)
 
@@ -462,7 +468,7 @@ class PytorchModel:
                 shape = (shape[0], 1) + shape[2:]
                 y = y.reshape(shape)
 
-                self.optimizer.zero_grad()
+                self.optimizer.zero_grad(**_ZERO_GRAD_ARGS)
                 y_pred = self(x)
                 c = loss(y_pred, y)
                 c.backward()
@@ -472,7 +478,7 @@ class PytorchModel:
                 n += x.size()[0]
 
                 if adversarial_training:
-                    self.optimizer.zero_grad()
+                    self.optimizer.zero_grad(set_to_none=True)
                     x_adv = self._make_adversarial_samples(x, y, adversarial_training)
                     y_pred = self(x_adv)
                     c = loss(y_pred, y)
@@ -495,43 +501,44 @@ class PytorchModel:
             lr = [group["lr"] for group in self.optimizer.param_groups][0]
 
             validation_error = 0.0
-            if not validation_data is None:
+            if validation_data is not None:
                 n = 0
                 self.eval()
-                for j, (x, y) in enumerate(validation_data):
-                    x = x.to(device).detach()
-                    y = y.to(device).detach()
+                with torch.no_grad():
+                    for j, (x, y) in enumerate(validation_data):
+                        x = x.to(device).detach()
+                        y = y.to(device).detach()
 
-                    shape = x.size()
-                    shape = (shape[0], 1) + shape[2:]
-                    y = y.reshape(shape)
+                        shape = x.size()
+                        shape = (shape[0], 1) + shape[2:]
+                        y = y.reshape(shape)
 
-                    y_pred = self(x)
-                    c = loss(y_pred, y)
+                        y_pred = self(x)
+                        c = loss(y_pred, y)
 
-                    validation_error += c.item() * x.size()[0]
-                    n += x.size()[0]
+                        validation_error += c.item() * x.size()[0]
+                        n += x.size()[0]
 
-                    #
-                    # Log validation step.
-                    #
-                    if hasattr(validation_data, "__len__"):
-                        of = len(validation_data)
-                    else:
-                        of = None
-                    n_samples = torch.numel(x) / x.size()[1]
-                    log.validation_step(c.item(), n_samples, of=of)
+                        #
+                        # Log validation step.
+                        #
+                        if hasattr(validation_data, "__len__"):
+                            of = len(validation_data)
+                        else:
+                            of = None
+                        n_samples = torch.numel(x) / x.size()[1]
+                        log.validation_step(c.item(), n_samples, of=of)
 
-                validation_errors.append(validation_error / n)
-                for m in self.modules():
-                    m.training = state[m]
+                    validation_errors.append(validation_error / n)
+                    for m in self.modules():
+                        m.training = state[m]
 
-                if scheduler:
-                    if len(scheduler_sig.parameters) == 1:
-                        scheduler.step()
-                    else:
-                        if validation_data:
-                            scheduler.step(validation_errors[-1])
+                    if scheduler:
+                        if len(scheduler_sig.parameters) == 1:
+                            scheduler.step()
+                        else:
+                            if validation_data:
+                                scheduler.step(validation_errors[-1])
 
             else:
                 if scheduler:

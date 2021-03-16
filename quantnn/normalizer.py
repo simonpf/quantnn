@@ -268,7 +268,7 @@ class MinMaxNormalizer(NormalizerBase):
         r = 1.0
 
         if np.isclose(d_x, 0.0):
-            x_normed = l * np.ones_like(x_slice)
+            x_normed = -1.0 * np.ones_like(x_slice)
         else:
             x_normed = (l + (r - l) * (x_slice - x_min) / d_x)
 
@@ -296,93 +296,3 @@ class MinMaxNormalizer(NormalizerBase):
             x_inverted[indices] = np.nan
 
         return x_inverted
-
-    # def __call__(self, x):
-    #     """
-    #     Applies normalizer to input data.
-
-    #     Args:
-    #         x: The input tensor to normalize.
-
-    #     Returns:
-    #         The input tensor x normalized using the normalization data
-    #         of this normalizer object.
-    #     """
-    #     normalized = []
-    #     n = x.shape[self.feature_axis]
-    #     selection = [slice(0, None)] * len(x.shape)
-
-    #     dtype = x.dtype
-
-    #     for i in range(n):
-    #         selection[self.feature_axis] = i
-    #         if i in self.means:
-    #             x_slice = x[tuple(selection)].astype(np.float64)
-    #             if np.isclose(self.std_devs[i], 0.0):
-    #                 x_normed = -1.0 * np.ones_like(x_slice)
-    #             else:
-    #                 x_normed = ((x_slice - self.means[i]) / self.std_devs[i])
-    #         else:
-    #             x_normed = x[tuple(selection)]
-    #         x_normed = np.expand_dims(x_normed, self.feature_axis)
-    #         normalized.append(x_normed.astype(np.float32))
-
-    #     return np.concatenate(normalized, self.feature_axis).astype(dtype)
-
-    # def invert(self, x):
-    #     """
-    #     Reverses application of normalizer to given data.
-
-    #     Args:
-    #         x: The input tensor to denormalize.
-
-    #     Returns:
-    #         The input tensor x denormalized using the normalization data
-    #         of this normalizer object.
-    #     """
-    #     inverted = []
-    #     n = x.shape[self.feature_axis]
-    #     selection = [slice(0, None)] * len(x.shape)
-
-    #     dtype = x.dtype
-
-    #     for i in range(n):
-    #         selection[self.feature_axis] = i
-    #         if i in self.means:
-    #             x_slice = x[tuple(selection)].astype(np.float64)
-    #             if np.isclose(self.std_devs[i], 0.0):
-    #                 x_inverted = self.means[i] * np.ones_like(x_slice)
-    #             else:
-    #                 x_inverted = ((x_slice * self.std_devs[i]) + self.means[i])
-    #         else:
-    #             x_inverted = x[tuple(selection)]
-    #         x_inverted = np.expand_dims(x_inverted, self.feature_axis)
-    #         inverted.append(x_inverted.astype(np.float32))
-
-    #     return np.concatenate(inverted, self.feature_axis).astype(dtype)
-
-    # @staticmethod
-    # def load(filename):
-    #     """
-    #     Load normalizer from file.
-
-    #     Args:
-    #         filename: The path to the file containing the normalizer.
-
-    #     Returns:
-    #         The loaded Normalizer object
-    #     """
-    #     with read_file(filename, "rb") as file:
-    #         return pickle.load(file)
-
-    # def save(self, filename):
-    #     """
-    #     Store normalizer to file.
-
-    #     Saves normalizer to a file using pickle.
-
-    #     Args:
-    #         filename: The file to which to store the normalizer.
-    #     """
-    #     with open(filename, "wb") as file:
-    #         pickle.dump(self, file)
