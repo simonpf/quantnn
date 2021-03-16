@@ -456,7 +456,8 @@ def crps(y_pred, quantiles, y_true, quantile_axis=1):
     y_true = to_array(xp, y_true)
     y_true = reshape(xp, y_true, y_true_shape)
 
-    ind = ones(xp, x_cdf.shape, like=y_pred) * (x_cdf > y_true)
+    mask = as_type(xp, x_cdf > y_true, y_pred)
+    ind = ones(xp, x_cdf.shape, like=y_pred) * mask
 
     output_shape = list(x_cdf.shape)
     del output_shape[quantile_axis]
@@ -674,7 +675,7 @@ def fit_gaussian_to_quantiles(y_pred, quantiles, quantile_axis=1):
     d2e_inv_10 = -d2e_det_inv * d2e_10
     d2e_inv_11 = d2e_det_inv * d2e_00
 
-    x = reshape(xp, x, x_shape)
+    x = as_type(xp, reshape(xp, x, x_shape), y_pred)
     de_0 = reshape(xp, -(y_pred - x).sum(axis=quantile_axis), output_shape)
     de_1 = reshape(xp, -(x * (y_pred - x)).sum(axis=quantile_axis), output_shape)
 

@@ -49,9 +49,6 @@ def test_cross_entropy_loss():
     y[5:, :, :] = -1.0
     y[:, :, 5:] = -1.0
     ref = -y_pred[:5, 5, :5] + torch.log(torch.exp(y_pred[:5, :, :5]).sum(1))
-    print(ref)
-    print(loss(y_pred, y))
-    print(ref.mean())
     assert np.all(np.isclose(loss(y_pred, y).detach().numpy(),
                              ref.mean().detach().numpy()))
 

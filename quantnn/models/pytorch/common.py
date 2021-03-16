@@ -209,9 +209,9 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
             loss = nn.CrossEntropyLoss.__call__(
                 self,
                 y_pred,
-                torch.maximum(y_true, torch.zeros_like(y_true))
+                torch.relu(y_true)
             )
-            mask = y_true > self.mask
+            mask = (y_true > self.mask).to(dtype=y_pred.dtype)
             return (loss * mask).sum() / mask.sum()
 
 
@@ -271,6 +271,7 @@ class QuantileLoss:
         Returns:
             The mean quantile loss.
         """
+        y_true = y_true.to(y_pred.dtype)
         dy = y_pred - y_true
         n = self.quantiles.size()[0]
 
@@ -279,7 +280,7 @@ class QuantileLoss:
         qs = self.quantiles.reshape(shape)
         l = torch.where(dy >= 0.0, (1.0 - qs) * dy, (-qs) * dy)
         if self.mask:
-            mask = y_true > self.mask
+            mask = (y_true > self.mask).to(y_true.dtype)
             return (l * mask).sum() / (mask.sum() * self.n_quantiles)
         return l.mean()
 
