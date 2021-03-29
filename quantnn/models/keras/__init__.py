@@ -21,7 +21,9 @@ from tensorflow.keras.layers import Dense, Activation, deserialize
 from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.losses import SparseCategoricalCrossentropy
 
-from quantnn.common import QuantnnException, ModelNotSupported
+from quantnn.common import (QuantnnException,
+                            ModelNotSupported,
+                            InputDataError)
 from quantnn.logging import TrainingLogger
 
 def save_model(f, model):
@@ -67,24 +69,28 @@ def load_model(file):
     return model
 
 
-################################################################################
+###############################################################################
 # Quantile loss
-################################################################################
+###############################################################################
 
 LOGGER = logging.getLogger(__name__)
 
 class CrossEntropyLoss(SparseCategoricalCrossentropy):
     """
-    Wrapper class around Keras' SparseCategoricalCrossEntropy class to support
+    Wrapper class around Keras' SparseCategoricalCrossEntropy class to support 
     masking of input values.
     """
     def __init__(self, mask=None):
+        self.__name__ = "CrossEntropyLoss"
         self.mask = None
         super().__init__(reduction="none", from_logits=True)
 
 
-    def __call__(self, y_true, y_pred):
-        l = SparseCategoricalCrossentropy.__call__(self, y_true, y_pred)
+    def __call__(self, y_true, y_pred, sample_weight=None):
+        l = SparseCategoricalCrossentropy.__call__(self,
+                                                   y_true,
+                                                   y_pred,
+                                                   sample_weight=sample_weight)
         if self.mask is None:
             return tf.math.reduce_mean(l)
         mask = tf.cast(y_true > self.mask, tf.float32)
@@ -164,9 +170,9 @@ class BatchedDataset:
             self.bs = 8
 
         self.indices = np.random.permutation(x.shape[0])
-        self.i = 0
 
     def __iter__(self):
+        self.i = 0
         return self
 
     def __len__(self):
@@ -177,7 +183,8 @@ class BatchedDataset:
             raise StopIteration()
 
         inds = self.indices[
-            np.arange(self.i * self.bs, (self.i + 1) * self.bs) % self.indices.size
+            np.arange(self.i * self.bs, (self.i + 1) * self.bs)
+            % self.indices.size
         ]
         x_batch = np.copy(self.x[inds])
         y_batch = self.y[inds]
@@ -202,6 +209,7 @@ class TrainingGenerator:
 
     def __init__(self,
                  training_data,
+                 keys=None,
                  sigma_noise=None):
         """
         Args:
@@ -211,20 +219,40 @@ class TrainingGenerator:
                 the standard deviation of the noise.
         """
         self.training_data = training_data
+        self.keys = keys
         self.sigma_noise = sigma_noise
         self.iterator = iter(training_data)
 
     def __iter__(self):
-        LOGGER.info("iter...")
         return self
+
+    def __len__(self):
+        if hasattr(self.training_data, "__len__"):
+            return len(self.training_data)
+        else:
+            return 1024
 
     def __next__(self):
         try:
-            x_batch, y_batch = next(self.iterator)
+            data = next(self.iterator)
+            if isinstance(data, tuple):
+                x_batch, y_batch = data
+            elif isinstance(data, dict):
+                if (not isinstance(self.keys, tuple)) or len(self.keys) != 0:
+                    InputDataError(
+                        "If batches in dataset are dictionaries, the "
+                        "``keys`` kwarg must be provided."
+                    )
+                x_batch = data[self.keys[0]]
+                y_batch = data[self.keys[1]]
+            else:
+                InputDataError(
+                    "Batches in dataset should be tuples or dictionaries."
+                )
         except StopIteration:
             self.iterator = iter(self.training_data)
-            raise StopIteration()
-        if not self.sigma_noise is None:
+            return next(self)
+        if self.sigma_noise is not None:
             x_batch += np.random.randn(*x_batch.shape) * self.sigma_noise
         return (x_batch, y_batch)
 
@@ -274,7 +302,6 @@ class AdversarialTrainingGenerator:
             x_batch += self.eps * np.sign(grads)
 
         self.i = self.i + 1
-        print(x_batch.shape)
         return x_batch, y_batch
 
 
@@ -406,7 +433,7 @@ class LogCallback(keras.callbacks.Callback):
     """
     Adapter class to use generic quantnn logging interface with Keras model.
     """
-    def __init__(self, n_epochs, training_data, validation_data):
+    def __init__(self, logger, training_data, validation_data):
         """
         Create log callback.
 
@@ -414,7 +441,7 @@ class LogCallback(keras.callbacks.Callback):
              training_data: The training data generator.
              validation_data: The validation data generator.
         """
-        self.log = TrainingLogger(n_epochs)
+        self.logger = logger
         super().__init__()
 
         # Number of training samples
@@ -431,16 +458,22 @@ class LogCallback(keras.callbacks.Callback):
 
     def on_train_batch_end(self, batch, logs=None):
         """Log training batch end."""
-        self.log.training_step(logs["loss"], 1, of=self.n_training_samples)
+        self.logger.training_step(logs["loss"], 1,
+                                  of=self.n_training_samples)
 
     def on_test_batch_end(self, batch, logs=None):
         """Log validation batch end."""
-        self.log.validation_step(logs["loss"], 1, of=self.n_validation_samples)
+        self.logger.validation_step(logs["loss"], 1,
+                                    of=self.n_validation_samples)
+
+    def on_epoch_begin(self, epoch, logs=None):
+        """Log epoch beginning."""
+        self.logger.epoch_begin(self.model)
 
     def on_epoch_end(self, epoch, logs=None):
         """Log epoch end."""
         lr = self.model.optimizer._decayed_lr('float32').numpy()
-        self.log.epoch(lr)
+        self.logger.epoch(lr)
 
 ################################################################################
 # Default scheduler and optimizer
@@ -534,7 +567,9 @@ class KerasModel:
               n_epochs=None,
               adversarial_training=None,
               batch_size=None,
-              device='cpu'):
+              device='cpu',
+              logger=None,
+              keys=None):
 
         # Input data.
         if type(training_data) == tuple:
@@ -560,7 +595,7 @@ class KerasModel:
         #
         # Setup training generator
         #
-        training_generator = TrainingGenerator(training_data)
+        training_generator = TrainingGenerator(training_data, keys=keys)
         if adversarial_training:
             inputs = [self.input, self.targets[0], self.sample_weights[0]]
             input_gradients = tf.function(
@@ -575,11 +610,13 @@ class KerasModel:
         else:
             validation_generator = ValidationGenerator(validation_data)
 
-        log = LogCallback(n_epochs, training_generator, validation_generator)
+        if logger is None:
+            logger = TrainingLogger(n_epochs)
+        log = LogCallback(logger, training_generator, validation_generator)
         with tf.device(device):
             self.fit(
                 training_generator,
-                #steps_per_epoch=len(training_generator),
+                steps_per_epoch=len(training_generator),
                 epochs=n_epochs,
                 validation_data=validation_generator,
                 validation_steps=1,

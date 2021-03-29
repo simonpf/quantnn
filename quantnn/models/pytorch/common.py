@@ -17,7 +17,7 @@ from torch import optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import Dataset
 
-from quantnn.common import ModelNotSupported
+from quantnn.common import ModelNotSupported, InputDataError
 from quantnn.logging import TrainingLogger
 from quantnn.data import BatchedDataset
 from quantnn.backends.pytorch import PyTorch
@@ -125,48 +125,6 @@ class BatchedDataset(BatchedDataset):
     def __init__(self, training_data, batch_size=64):
         x, y = training_data
         super().__init__(x, y, batch_size, False, PyTorch)
-#        self.n_samples = x.shape[0]
-#
-#        # x
-#        if isinstance(x, torch.Tensor):
-#            self.x = x.clone().detach().float()
-#        else:
-#            self.x = torch.tensor(x, dtype=torch.float)
-#
-#        # y
-#        dtype_y = torch.float
-#        if "int" in str(y.dtype):
-#            dtype_y = torch.long
-#        if isinstance(y, torch.Tensor):
-#            self.y = y.clone().detach().to(dtype=dtype_y)
-#        else:
-#            self.y = torch.tensor(y, dtype=dtype_y)
-#
-#        if batch_size:
-#            self.batch_size = batch_size
-#        else:
-#            self.batch_size = 256
-#
-#        self.indices = np.random.permutation(self.n_samples)
-#
-#    def __len__(self):
-#        # This is required because x and y are tensors and don't throw these
-#        # errors themselves.
-#        return self.n_samples // self.batch_size
-#
-#    def __getitem__(self, i):
-#        if (i == 0):
-#            self.indices = np.random.permutation(self.n_samples)
-#
-#        if i >= len(self):
-#            raise IndexError()
-#        i_start = i * self.batch_size
-#        i_end = (i + 1) * self.batch_size
-#        indices = self.indices[i_start:i_end]
-#        x = self.x[indices]
-#        y = self.y[indices]
-#        return (x, y)
-
 
 ################################################################################
 # Quantile loss
@@ -292,7 +250,7 @@ def _get_default_optimizer(model):
     """
     The default optimizer. Currently set to Adam optimizer.
     """
-    optimizer = optim.Adam(model.parameters())
+    optimizer = optim.Adam(model.parameters(), lr=0.01)
     return optimizer
 
 def _get_default_scheduler(optimizer):
@@ -313,16 +271,17 @@ def _has_channels_last_tensor(parameters):
     for p in parameters:
         if isinstance(p.data, torch.Tensor):
             t = p.data
-            if t.is_contiguous(memory_format=torch.channels_last) and not t.is_contiguous():
+            if (t.is_contiguous(memory_format=torch.channels_last)
+                and not t.is_contiguous()):
                 return True
             elif isinstance(t, list) or isinstance(t, tuple):
                 if _has_channels_last_tensor(list(t)):
                     return True
     return False
 
-################################################################################
+###############################################################################
 # QRNN
-################################################################################
+###############################################################################
 
 
 class PytorchModel:
@@ -392,7 +351,9 @@ class PytorchModel:
               n_epochs=None,
               adversarial_training=None,
               batch_size=None,
-              device='cpu'):
+              device='cpu',
+              logger=None,
+              keys=None):
         """
         Train the network.
 
@@ -414,7 +375,8 @@ class PytorchModel:
         if type(training_data) == bool:
             return nn.Module.train(self, training_data)
 
-        log = TrainingLogger(n_epochs)
+        if logger is None:
+            logger = TrainingLogger(n_epochs)
 
         # Determine device to use
         if torch.cuda.is_available() and device in ["gpu", "cuda"]:
@@ -460,7 +422,26 @@ class PytorchModel:
         for i in range(n_epochs):
             error = 0.0
             n = 0
-            for j, (x, y) in enumerate(training_data):
+
+            logger.epoch_begin(self)
+
+            for j, data in enumerate(training_data):
+
+                if isinstance(data, tuple):
+                    x, y = data
+                elif isinstance(data, dict):
+                    if (not isinstance(keys, tuple)) or len(keys) != 0:
+                        InputDataError(
+                            "If batches in dataset are dictionaries, the "
+                            "``keys`` kwarg must be provided."
+                        )
+                    x = data[keys[0]]
+                    y = data[keys[1]]
+                else:
+                    InputDataError(
+                        "Batches in dataset should be tuples or dictionaries."
+                    )
+
 
                 x = x.float().to(device)
                 y = y.to(device)
@@ -494,7 +475,7 @@ class PytorchModel:
                 else:
                     of = None
                 n_samples = torch.numel(x) / x.size()[1]
-                log.training_step(c.item(), n_samples, of=of)
+                logger.training_step(c.item(), n_samples, of=of)
 
             # Save training error
             training_errors.append(error / n)
@@ -507,6 +488,21 @@ class PytorchModel:
                 self.eval()
                 with torch.no_grad():
                     for j, (x, y) in enumerate(validation_data):
+                        if isinstance(data, tuple):
+                            x, y = data
+                        elif isinstance(data, dict):
+                            if (not isinstance(keys, tuple)) or len(keys) != 0:
+                                InputDataError(
+                                    "If batches in dataset are dictionaries, "
+                                    " the ``keys`` kwarg must be provided."
+                                )
+                            x = data[keys[0]]
+                            y = data[keys[1]]
+                        else:
+                            InputDataError(
+                                "Batches in dataset should be tuples or "
+                                " dictionaries."
+                            )
                         x = x.to(device).detach()
                         y = y.to(device).detach()
 
@@ -528,7 +524,7 @@ class PytorchModel:
                         else:
                             of = None
                         n_samples = torch.numel(x) / x.size()[1]
-                        log.validation_step(c.item(), n_samples, of=of)
+                        logger.validation_step(c.item(), n_samples, of=of)
 
                     validation_errors.append(validation_error / n)
                     for m in self.modules():
@@ -549,7 +545,7 @@ class PytorchModel:
                         if validation_data:
                             scheduler.step(training_errors[-1])
 
-            log.epoch(learning_rate=lr)
+            logger.epoch(learning_rate=lr)
 
         self.training_errors += training_errors
         self.validation_errors += validation_errors

@@ -24,6 +24,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from quantnn.common import (QuantnnException,
                             UnsupportedBackendException,
                             ModelNotSupported)
+from quantnn.logging import TrainingLogger
 
 _DEFAULT_BACKEND = None
 
@@ -133,7 +134,9 @@ class NeuralNetworkModel:
               scheduler=None,
               n_epochs=None,
               adversarial_training=None,
-              device='cpu'):
+              device='cpu',
+              logger=None,
+              keys=None):
         """
         Train model on given training data.
 
@@ -177,8 +180,9 @@ class NeuralNetworkModel:
                                 scheduler=scheduler,
                                 n_epochs=n_epochs,
                                 adversarial_training=adversarial_training,
-                                batch_size=batch_size,
-                                device=device)
+                                device=device,
+                                logger=logger,
+                                keys=keys)
 
     @staticmethod
     def load(path):

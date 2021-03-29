@@ -51,3 +51,8 @@ class InvalidURL(QuantnnException):
     """
     Thrown when a provided file URL is invalid.
     """
+
+class InputDataError(QuantnnException):
+    """
+    Thrown when the training data does not match the expected format.
+    """

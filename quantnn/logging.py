@@ -34,6 +34,17 @@ class TrainingLogger:
         self.log_rate = log_rate
         self.epoch_start_time = datetime.now()
 
+    def epoch_begin(self, model):
+        """
+        Called at the beginning of each epoch.
+
+        Args:
+            The model that is trained in its current state.
+        """
+        self.epoch_start_time = datetime.now()
+        self.train_loss = 0.0
+        self.train_samples = 0
+
     def training_step(self, loss, n_samples, of=None):
         """
         Log processing of a training batch. This method should be called
@@ -45,11 +56,6 @@ class TrainingLogger:
             n_samples: The number of samples in the batch.
             of: If available the number of batches in the epoch.
         """
-        if (self.i_train_batch == 0):
-            self.epoch_start_time = datetime.now()
-            self.train_loss = 0.0
-            self.train_samples = 0
-
         self.train_loss += n_samples * loss
         self.train_samples += n_samples
 
@@ -65,7 +71,10 @@ class TrainingLogger:
             print(msg, end="\r")
         self.i_train_batch += 1
 
-    def validation_step(self, loss, n_samples, of=None):
+    def validation_step(self,
+                        loss,
+                        n_samples,
+                        of=None):
         """
         Log processing of a validation batch.
 

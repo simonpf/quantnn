@@ -127,7 +127,9 @@ class QRNN(NeuralNetworkModel):
               n_epochs=None,
               adversarial_training=None,
               device='cpu',
-              mask=None):
+              mask=None,
+              logger=None,
+              keys=None):
         """
         Train the underlying neural network model on given training data.
 
@@ -154,6 +156,11 @@ class QRNN(NeuralNetworkModel):
                 device to use for training.
             mask: Optional numeric value to use to mask all values that are
                 smaller than or equal to this value.
+            logger: A custom logger object to use to log training process. If
+                not provided the default ``quantnn.training.TrainingLogger``
+                class will be used.
+            keys: Keys to use to determine input (``x``) and expected output
+                 (``y``) when dataset elements are given as dictionaries.
         """
         loss = self.backend.QuantileLoss(self.quantiles, mask=mask)
         return self.model.train(training_data,
@@ -164,7 +171,9 @@ class QRNN(NeuralNetworkModel):
                                 n_epochs=n_epochs,
                                 adversarial_training=adversarial_training,
                                 batch_size=batch_size,
-                                device=device)
+                                device=device,
+                                logger=logger,
+                                keys=keys)
 
     def predict(self, x):
         r"""
@@ -363,7 +372,7 @@ class QRNN(NeuralNetworkModel):
                                  quantiles,
                                  quantile_axis=self.quantile_axis)
 
-    def crps(x=None, y_pred=None, y_true=None):
+    def crps(self, x=None, y_pred=None, y_true=None):
         r"""
         Compute the Continuous Ranked Probability Score (CRPS).
 

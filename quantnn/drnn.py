@@ -56,7 +56,9 @@ class DRNN(NeuralNetworkModel):
               n_epochs=None,
               adversarial_training=None,
               device='cpu',
-              mask=None):
+              mask=None,
+              logger=None,
+              keys=None):
         if type(training_data) == tuple:
             x_train, y_train = training_data
             y_train = _to_categorical(y_train, self.bins[:-1])
@@ -74,7 +76,9 @@ class DRNN(NeuralNetworkModel):
                                 scheduler=scheduler,
                                 n_epochs=n_epochs,
                                 adversarial_training=adversarial_training,
-                                device=device)
+                                device=device,
+                                logger=logger,
+                                keys=keys)
 
     def predict(self, x):
         y_pred = self.model.predict(x)

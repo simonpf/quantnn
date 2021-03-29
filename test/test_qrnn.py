@@ -71,6 +71,31 @@ class TestQrnn:
         assert r.shape == (4, 2)
 
     @pytest.mark.parametrize("backend", backends)
+    def test_qrnn_dict_iterable(self, backend):
+        """
+        Test training with dataset object that yields dicts instead of
+        tuples.
+        """
+        set_default_backend(backend)
+        backend = get_default_backend()
+
+        class DictWrapper:
+            def __init__(self, data):
+                self.data = data
+
+            def __iter__(self):
+                for x, y in self.data:
+                    yield {"x": x, "y": y}
+
+            def __len__(self):
+                return len(self.data)
+
+        data = backend.BatchedDataset((self.x_train, self.y_train), 256)
+        qrnn = QRNN(np.linspace(0.05, 0.95, 10),
+                    n_inputs=self.x_train.shape[1])
+        qrnn.train(DictWrapper(data), n_epochs=2, keys=("x", "y"))
+
+    @pytest.mark.parametrize("backend", backends)
     def test_qrnn_datasets(self, backend):
         """
         Provide data as dataset object instead of numpy arrays.
