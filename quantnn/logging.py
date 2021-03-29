@@ -59,6 +59,7 @@ class TrainingLogger:
         self.train_loss += n_samples * loss
         self.train_samples += n_samples
 
+
         if (self.i_train_batch % self.log_rate) == self.log_rate - 1:
 
             if of is None:

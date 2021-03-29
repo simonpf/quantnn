@@ -230,13 +230,13 @@ class BatchedDataset:
 
     def __len__(self):
         n_batches = self.n_samples // self.batch_size
-        if (not self.discard_last and (n_samples % self.batch_size > 0)):
+        if (not self.discard_last) and (n_samples % self.batch_size) > 0:
             n_batches += 1
         return n_batches
 
     def __getitem__(self, i):
 
-        if i > len(self):
+        if i >= len(self):
             raise StopIteration()
 
         if (i == 0) and self.shuffle:

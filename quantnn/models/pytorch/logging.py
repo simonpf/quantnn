@@ -11,7 +11,7 @@ from torch.utils.tensorboard.writer import SummaryWriter
 from quantnn.logging import TrainingLogger
 
 
-class TensorboardLogger(TrainingLogger):
+class TensorBoardLogger(TrainingLogger):
     """
     Logger that also logs information to tensor board.
     """
@@ -35,9 +35,11 @@ class TensorboardLogger(TrainingLogger):
         """
         super().__init__(n_epochs, log_rate)
         self.writer = SummaryWriter(log_dir=log_directory)
+        self.epoch_begin_callback = epoch_begin_callback
+
         self.step_training = 0
         self.step_validation = 0
-        self.epoch_begin_callback = epoch_begin_callback
+        self.step_epoch = 0
 
     def epoch_begin(self, model):
         """
@@ -48,7 +50,8 @@ class TensorboardLogger(TrainingLogger):
         """
         TrainingLogger.epoch_begin(self, model)
         if self.epoch_begin_callback:
-            self.epoch_begin_callback(self.writer, model)
+            self.epoch_begin_callback(self.writer, model, self.step_epoch)
+        self.step_epoch += 1
 
     def training_step(self, loss, n_samples, of=None):
         """
@@ -78,7 +81,7 @@ class TensorboardLogger(TrainingLogger):
             n_samples: The number of samples in the batch.
             of: If available the number of batches in the epoch.
         """
-        TrainingLogger.validation_step(self, loss, n_samples, of=None)
+        TrainingLogger.validation_step(self, loss, n_samples, of=of)
         self.writer.add_scalar("Validation loss", loss, self.step_validation)
         self.step_validation += 1
 

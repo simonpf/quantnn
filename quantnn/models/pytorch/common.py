@@ -487,7 +487,7 @@ class PytorchModel:
                 n = 0
                 self.eval()
                 with torch.no_grad():
-                    for j, (x, y) in enumerate(validation_data):
+                    for j, data in enumerate(validation_data):
                         if isinstance(data, tuple):
                             x, y = data
                         elif isinstance(data, dict):
