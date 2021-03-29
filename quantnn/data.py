@@ -223,7 +223,7 @@ class BatchedDataset:
         self.x = x
         self.y = y
         self.n_samples = x.shape[0]
-        self.batch_size = 64
+        self.batch_size = batch_size
         self.discard_last = False,
         self.tensor_backend = tensor_backend
         self.shuffle = shuffle
