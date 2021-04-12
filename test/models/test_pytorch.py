@@ -2,6 +2,7 @@
 Tests for the PyTorch NN backend.
 """
 import torch
+from torch import nn
 import numpy as np
 
 from quantnn.qrnn import QRNN
@@ -108,3 +109,43 @@ def test_training_with_dict_and_keys():
 
     qrnn = QRNN(np.linspace(0.05, 0.95, 10), n_inputs=x.shape[1])
     qrnn.train(batched_data, n_epochs=1, keys=("x", "y"))
+
+def test_training_multiple_outputs():
+    """
+    Ensure that training with batch objects as dicts and provided keys
+    argument works.
+    """
+
+    class MultipleOutputModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.hidden = nn.Linear(16, 128)
+            self.head_1 = nn.Linear(128, 11)
+            self.head_2 = nn.Linear(128, 11)
+
+        def forward(self, x):
+            x = torch.relu(self.hidden(x))
+            y_1 = self.head_1(x)
+            y_2 = self.head_2(x)
+            return {
+                "y_1": y_1,
+                "y_2": y_2
+            }
+
+    x = np.random.rand(1024, 16)
+    y = np.random.rand(1024)
+
+    batched_data = [
+        {
+            "x": torch.tensor(x[i * 128: (i + 1) * 128]),
+            "y": {
+                "y_1": torch.tensor(y[i * 128: (i + 1) * 128]),
+                "y_2": torch.tensor(y[i * 128: (i + 1) * 128])
+            }
+        }
+        for i in range(1024 // 128)
+    ]
+
+    model = MultipleOutputModel()
+    qrnn = QRNN(np.linspace(0.05, 0.95, 11), model=model)
+    qrnn.train(batched_data, n_epochs=10, keys=("x", "y"))

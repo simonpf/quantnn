@@ -145,11 +145,12 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
             mask: All values that are smaller than or equal to this value will
                  be excluded from the calculation of the loss.
         """
-        self.mask = mask
         if mask is None:
             reduction = "mean"
+            self.mask = mask
         else:
             reduction = "none"
+            self.mask = np.float32(mask)
         super().__init__(reduction=reduction)
 
     def __call__(self, y_pred, y_true):
@@ -174,7 +175,7 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
             return (loss * mask).sum() / mask.sum()
 
 
-class QuantileLoss:
+class QuantileLoss(nn.Module):
     r"""
     The quantile loss function
 
@@ -207,6 +208,7 @@ class QuantileLoss:
         Arguments:
             quantiles: Array or iterable containing the quantiles to be estimated.
         """
+        super().__init__()
         self.quantiles = torch.tensor(quantiles).float()
         self.n_quantiles = len(quantiles)
         self.mask = mask
@@ -332,11 +334,9 @@ def _get_x_y(batch_data, keys):
         x, y = batch_data
     return x, y
 
-
 ###############################################################################
 # QRNN
 ###############################################################################
-
 
 class PytorchModel:
     """
@@ -376,12 +376,19 @@ class PytorchModel:
         self.training_errors = []
         self.validation_errors = []
 
-    def _make_adversarial_samples(self, x, y, eps):
-        self.zero_grad(**_ZERO_GRAD_ARGS)
-        x.requires_grad = True
-        y_pred = self(x)
-        c = self.criterion(y_pred, y)
-        c.backward()
+    def _make_adversarial_samples(self, x, eps):
+        """
+        Recycles current gradients to perform an adversarial training
+        step.
+
+        Args:
+            x: The current input.
+            eps: Scaling factor for the fast gradient sign method.
+
+        Returns:
+            x_adv: Perturbed input tensor representing the adversarial
+                example.
+        """
         x_adv = x.detach() + eps * torch.sign(x.grad.detach())
         return x_adv
 
@@ -389,12 +396,63 @@ class PytorchModel:
         """
         Reinitializes the weights of a model.
         """
-
         def reset_function(module):
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
                 m.reset_parameters()
 
         self.apply(reset_function)
+
+    def _train_step(self, x, y, adversarial_training):
+        """
+        Performs a single training step and returns a dictionary of
+        losses for every output.
+
+        Args:
+            x: The input data for the current batch.
+            y: The output data for the current batch.
+            adversarial_training: Scaling factor for adversarial training or
+                None if no adversarial training should be performed.
+
+        Returns:
+            A single loss or a dictionary of losses in the case of a multi-output
+            network.
+        """
+        y_pred = self(x)
+
+        # Keep track of x gradients if adversarial training
+        # is to be performed.
+        if adversarial_training is not None:
+            x.requires_grad = True
+
+        # Make sure both outputs are dicts.
+        if not isinstance(y_pred, dict):
+            y_pred = {"__loss__": y_pred}
+        if not isinstance(y, dict):
+            y = {next(iter(y_pred.keys())): y}
+
+        losses = {}
+        # Loop over keys in prediction.
+        for k in y_pred:
+            y_pred_k = y_pred[k]
+            try:
+                y_k = y[k]
+            except KeyError:
+                raise DatasetError(
+                    f"No targets provided for ouput '{k}'."
+                )
+            shape = x.size()
+            shape = (shape[0], 1) + shape[2:]
+            y_k = y_k.reshape(shape)
+            l = self.loss(y_pred_k, y_k)
+            losses[k] = l
+
+        total_loss = None
+        for k in losses:
+            if not total_loss:
+                total_loss = 0.0
+            total_loss += losses[k]
+        return total_loss
+
 
     def train(self,
               training_data,
@@ -450,7 +508,7 @@ class PytorchModel:
         try:
             x, y = handle_input(validation_data, device)
             validation_data = BatchedDataset((x, y), batch_size=batch_size)
-        except:
+        except Exception:
             pass
 
         # Optimizer
@@ -464,7 +522,10 @@ class PytorchModel:
 
         loss.to(device)
         self.to(device)
+        self.loss = loss
+
         scheduler_sig = signature(scheduler.step)
+
         training_errors = []
         validation_errors = []
 
@@ -474,109 +535,104 @@ class PytorchModel:
 
         # Training loop
         for i in range(n_epochs):
-            error = 0.0
+            epoch_error = 0.0
             n = 0
 
             logger.epoch_begin(self)
 
             for j, data in enumerate(training_data):
 
-                x, y = _get_x_y(data, keys)
-
-                x = x.float().to(device)
-                y = y.to(device)
-
-                shape = x.size()
-                shape = (shape[0], 1) + shape[2:]
-                y = y.reshape(shape)
-
                 self.optimizer.zero_grad(**_ZERO_GRAD_ARGS)
-                y_pred = self(x)
-                c = loss(y_pred, y)
-                c.backward()
-                self.optimizer.step()
 
-                error += c.item() * x.size()[0]
-                n += x.size()[0]
+                x, y = _get_x_y(data, keys)
+                x = x.float().to(device)
+                if isinstance(y, dict):
+                    for _, y_k in y.items():
+                        y_k.to(device)
+                else:
+                    y = y.to(device)
 
-                if adversarial_training:
-                    self.optimizer.zero_grad(set_to_none=True)
-                    x_adv = self._make_adversarial_samples(x, y, adversarial_training)
-                    y_pred = self(x_adv)
-                    c = loss(y_pred, y)
-                    c.backward()
-                    self.optimizer.step()
+                total_loss = self._train_step(x, y, adversarial_training)
+                total_loss.backward()
+                optimizer.step()
 
-                #
                 # Log training step.
-                #
                 if hasattr(training_data, "__len__"):
                     of = len(training_data)
                 else:
                     of = None
                 n_samples = torch.numel(x) / x.size()[1]
-                logger.training_step(c.item(), n_samples, of=of)
+                logger.training_step(total_loss, n_samples, of=of)
+
+                # Track epoch error.
+                n += x.size()[0]
+                epoch_error += total_loss.item() * n
+
+                # Perform adversarial training step if required.
+                if adversarial_training is not None:
+                    x_adv = self._make_adversarial_samples(x)
+                    self.optimizer.zero_grad(**_ZERO_GRAD_ARGS)
+                    total_loss = self._train_step(x_adv, y, adversarial_training)
+                    total_loss.backward()
+                    optimizer.step()
+
 
             # Save training error
-            training_errors.append(error / n)
+            training_errors.append(epoch_error / n)
 
             lr = [group["lr"] for group in self.optimizer.param_groups][0]
 
-            validation_error = 0.0
+            errors = {}
+
             if validation_data is not None:
                 n = 0
+                error = 0
                 self.eval()
                 with torch.no_grad():
                     for j, data in enumerate(validation_data):
 
+                        self.optimizer.zero_grad(**_ZERO_GRAD_ARGS)
+
                         x, y = _get_x_y(data, keys)
+                        x = x.float().to(device)
+                        if isinstance(y, dict):
+                            for _, y_k in y.items():
+                                y_k.to(device)
+                        else:
+                            y = y.to(device)
 
-                        x = x.to(device).detach()
-                        y = y.to(device).detach()
+                        total_loss = self._train_step(x, y, None)
 
-                        shape = x.size()
-                        shape = (shape[0], 1) + shape[2:]
-                        y = y.reshape(shape)
-
-                        y_pred = self(x)
-                        c = loss(y_pred, y)
-
-                        validation_error += c.item() * x.size()[0]
-                        n += x.size()[0]
-
-                        #
                         # Log validation step.
-                        #
                         if hasattr(validation_data, "__len__"):
                             of = len(validation_data)
                         else:
                             of = None
                         n_samples = torch.numel(x) / x.size()[1]
-                        logger.validation_step(c.item(), n_samples, of=of)
+                        logger.validation_step(total_loss, n_samples, of=of)
 
-                    validation_errors.append(validation_error / n)
+                        # Update running validation errors.
+                        n += x.size()[0]
+                        errors = total_loss * n
+
+                    validation_errors.append(error / n)
+
                     for m in self.modules():
                         m.training = state[m]
 
-                    if scheduler:
-                        if len(scheduler_sig.parameters) == 1:
-                            scheduler.step()
-                        else:
-                            if validation_data:
-                                scheduler.step(validation_errors[-1])
-
-            else:
-                if scheduler:
-                    if len(scheduler_sig.parameters) == 1:
-                        scheduler.step()
-                    else:
-                        if validation_data:
-                            scheduler.step(training_errors[-1])
+            # Finally update scheduler.
+            if scheduler:
+                if len(scheduler_sig.parameters) == 1:
+                    scheduler.step()
+                else:
+                    total_loss = 0.0
+                    for k in errors:
+                        total_loss += error[k][-1]
+                    if validation_data:
+                        scheduler.step(total_loss)
 
             logger.epoch(learning_rate=lr)
 
-        self.training_errors += training_errors
-        self.validation_errors += validation_errors
         self.eval()
         return {
             "training_errors": self.training_errors,
