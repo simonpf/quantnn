@@ -216,14 +216,18 @@ class BatchedDataset:
     def __init__(self,
                  x,
                  y,
-                 batch_size=64,
+                 batch_size=None,
                  discard_last=False,
                  tensor_backend=None,
                  shuffle=True):
         self.x = x
         self.y = y
         self.n_samples = x.shape[0]
-        self.batch_size = batch_size
+        if batch_size is None:
+            self.batch_size = 128
+        else:
+            self.batch_size = batch_size
+
         self.discard_last = False,
         self.tensor_backend = tensor_backend
         self.shuffle = shuffle
@@ -255,10 +259,3 @@ class BatchedDataset:
             y_batch = self.tensor_backend.to_tensor(y_batch)
 
         return x_batch, y_batch
-
-
-
-
-
-
-

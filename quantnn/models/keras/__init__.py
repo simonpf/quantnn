@@ -82,19 +82,26 @@ class CrossEntropyLoss(SparseCategoricalCrossentropy):
     """
     def __init__(self, mask=None):
         self.__name__ = "CrossEntropyLoss"
-        self.mask = None
+        self.mask = mask
         super().__init__(reduction="none", from_logits=True)
 
 
     def __call__(self, y_true, y_pred, sample_weight=None):
-        l = SparseCategoricalCrossentropy.__call__(self,
-                                                   y_true,
-                                                   y_pred,
-                                                   sample_weight=sample_weight)
+        l = super().__call__(y_true,
+                             y_pred,
+                             sample_weight=sample_weight)
         if self.mask is None:
             return tf.math.reduce_mean(l)
         mask = tf.cast(y_true > self.mask, tf.float32)
-        return tf.math.reduce_sum(mask * l) / tf.math.reduce_sum(mask)
+        l = tf.where(tf.squeeze(y_true > self.mask, -1), l, tf.zeros_like(l))
+        return tf.math.reduce_sum(l) / tf.math.reduce_sum(mask)
+
+    def get_config(self):
+        return {"mask": self.mask}
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
 
     def __repr__(self):
         return f"CrossEntropyLoss(mask={self.mask})"
@@ -137,6 +144,15 @@ class QuantileLoss:
             return tf.math.reduce_sum(mask * l) / (tf.math.reduce_sum(mask) * n_quantiles)
 
         return tf.math.reduce_mean(l)
+
+    def get_config(self):
+        return {"quantiles": self.quantiles,
+                "mask": self.mask,
+                "quantile_axis": self.quantile_axis}
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
 
     def __repr__(self):
         return "QuantileLoss(" + repr(self.quantiles) + ")"
@@ -633,7 +649,7 @@ Model = KerasModel
 ###############################################################################
 
 
-class FullyConnected(KerasModel, Sequential):
+class FullyConnected(KerasModel, keras.Model):
     """
     A fully-connected network with a given depth and width.
     """
@@ -659,15 +675,19 @@ class FullyConnected(KerasModel, Sequential):
             convolutional: If ``True``, the fully-connected network will be
                  constructed as a fully-connected network.
         """
-        inputs = [n_inputs, n_outputs, n_layers, width, activation]
-        if all([x is None for x in inputs]):
-            super().__init__(**kwargs)
-            return
+        self.n_inputs = n_inputs
+        self.n_outputs = n_outputs
+        self.n_layers = n_layers
+        self.width = width
+        self.activation = activation
+        self.convolutional = convolutional
+
+        super().__init__(**kwargs)
+
+        self.sequential = Sequential()
 
         n_in = n_inputs
         n_out = width
-
-        super().__init__()
 
         if isinstance(activation, str):
             activation = layers.Activation(getattr(keras.activations,
@@ -675,22 +695,42 @@ class FullyConnected(KerasModel, Sequential):
 
         if convolutional:
             for i in range(n_layers - 1):
-                self.add(layers.Conv2D(width, 1,
-                                       input_shape=(None, None, n_in)))
-                self.add(layers.BatchNormalization())
-                self.add(activation)
+                self.sequential.add(layers.Conv2D(width, 1,
+                                                  input_shape=(None, None, n_in)))
+                self.sequential.add(layers.BatchNormalization())
+                self.sequential.add(activation)
                 n_in = n_out
-            self.add(layers.Conv2D(n_outputs, 1))
+            self.sequential.add(layers.Conv2D(n_outputs, 1))
         else:
             for i in range(n_layers - 1):
-                self.add(Dense(n_out, input_shape=(n_in,)))
-                self.add(activation)
+                self.sequential.add(Dense(n_out, input_shape=(n_in,)))
+                self.sequential.add(activation)
                 n_in = n_out
-            self.add(Dense(n_outputs, input_shape=(n_in,)))
+            self.sequential.add(Dense(n_outputs, input_shape=(n_in,)))
 
-        def __repr__(self):
-            return Sequential.__repr__(self)
+        # Make sure model is built so that it can be saved.
+        self.predict(np.zeros((10, n_inputs)))
 
-        def __str__(self):
-            return Sequential.__str__(self)
+    def call(self, input):
+        return self.sequential.call(input)
+
+    def get_config(self):
+        base_config = super().get_config()
+        config = {
+            "n_inputs": self.n_inputs,
+            "n_outputs": self.n_outputs,
+            "n_layers": self.n_layers,
+            "activation": self.activation,
+            "convolutional": self.convolutional
+            }
+        return {**base_config, **config}
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
+
+
+
+
 

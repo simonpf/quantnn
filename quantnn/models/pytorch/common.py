@@ -19,7 +19,7 @@ from torch.utils.data import Dataset
 
 from quantnn.common import ModelNotSupported, InputDataError
 from quantnn.logging import TrainingLogger
-from quantnn.data import BatchedDataset
+import quantnn.data
 from quantnn.backends.pytorch import PyTorch
 from quantnn.generic import to_array
 
@@ -118,7 +118,7 @@ def handle_input(data, device=None):
     return data
 
 
-class BatchedDataset(BatchedDataset):
+class BatchedDataset(quantnn.data.BatchedDataset):
     """
     Batches an un-batched dataset.
     """

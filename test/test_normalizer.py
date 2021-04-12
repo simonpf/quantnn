@@ -105,4 +105,5 @@ def test_load_sftp(tmp_path):
     x_normed_loaded = loaded(x)
 
     assert np.all(np.isclose(x_normed,
-                             x_normed_loaded))
+                             x_normed_loaded,
+                             rtol=1e-3))
