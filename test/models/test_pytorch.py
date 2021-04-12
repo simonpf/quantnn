@@ -1,9 +1,11 @@
 """
 Tests for the PyTorch NN backend.
 """
-from quantnn.models.pytorch import QuantileLoss, CrossEntropyLoss
 import torch
 import numpy as np
+
+from quantnn.qrnn import QRNN
+from quantnn.models.pytorch import QuantileLoss, CrossEntropyLoss
 
 def test_quantile_loss():
     """
@@ -52,6 +54,57 @@ def test_cross_entropy_loss():
     assert np.all(np.isclose(loss(y_pred, y).detach().numpy(),
                              ref.mean().detach().numpy()))
 
+def test_training_with_dataloader():
+    """
+    Ensure that training with a pytorch dataloader works.
+    """
+    x = np.random.rand(1024, 16)
+    y = np.random.rand(1024)
+
+    training_data = torch.utils.data.TensorDataset(torch.tensor(x),
+                                                   torch.tensor(y))
+    training_loader = torch.utils.data.DataLoader(training_data, batch_size=128)
+    qrnn = QRNN(np.linspace(0.05, 0.95, 10), n_inputs=x.shape[1])
+
+    qrnn.train(training_loader, n_epochs=1)
 
 
+def test_training_with_dict():
+    """
+    Ensure that training with batch objects as dicts works.
+    """
+    x = np.random.rand(1024, 16)
+    y = np.random.rand(1024)
 
+    batched_data = [
+        {
+            "x": torch.tensor(x[i * 128: (i + 1) * 128]),
+            "y": torch.tensor(y[i * 128: (i + 1) * 128]),
+        }
+        for i in range(1024 // 128)
+    ]
+
+    qrnn = QRNN(np.linspace(0.05, 0.95, 10), n_inputs=x.shape[1])
+
+    qrnn.train(batched_data, n_epochs=1)
+
+
+def test_training_with_dict_and_keys():
+    """
+    Ensure that training with batch objects as dicts and provided keys
+    argument works.
+    """
+    x = np.random.rand(1024, 16)
+    y = np.random.rand(1024)
+
+    batched_data = [
+        {
+            "x": torch.tensor(x[i * 128: (i + 1) * 128]),
+            "x_2": torch.tensor(x[i * 128: (i + 1) * 128]),
+            "y": torch.tensor(y[i * 128: (i + 1) * 128]),
+        }
+        for i in range(1024 // 128)
+    ]
+
+    qrnn = QRNN(np.linspace(0.05, 0.95, 10), n_inputs=x.shape[1])
+    qrnn.train(batched_data, n_epochs=1, keys=("x", "y"))

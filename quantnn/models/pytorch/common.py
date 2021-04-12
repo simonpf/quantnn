@@ -5,6 +5,7 @@ quantnn.models.pytorch.common
 This module provides common functionality required to realize QRNNs in pytorch.
 """
 from inspect import signature
+from collections.abc import Mapping
 import os
 import shutil
 import tarfile
@@ -17,7 +18,7 @@ from torch import optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import Dataset
 
-from quantnn.common import ModelNotSupported, InputDataError
+from quantnn.common import ModelNotSupported, InputDataError, DatasetError
 from quantnn.logging import TrainingLogger
 import quantnn.data
 from quantnn.backends.pytorch import PyTorch
@@ -279,6 +280,59 @@ def _has_channels_last_tensor(parameters):
                     return True
     return False
 
+def _get_x_y(batch_data, keys):
+    """
+    Retrieve training input from batch data.
+
+    This function checks whether the object returned as a batch from
+    the training loader is an iterable or a mapping. If it is an
+    iterable it will simply unpack the input- and target-data in the
+    order ``x, y``. If ``batch_data`` is a mapping and keys is not
+    ``None`` it will use the two arguments in keys to retrieve elements from
+    ``batch_data``. If ``keys`` is ``None``, the first to keys will
+    be used to retrieve inputs and targets, respectively.
+
+    Args:
+        batch_data: The object that is obtained when iterating o
+
+    Returns:
+        Tuple ``x, y`` of input data ``x`` and corresponding output data
+        ``y``.
+    """
+    if isinstance(batch_data, Mapping):
+
+        if keys is not None:
+            try:
+                x_key, y_key = keys
+            except ValueError:
+                raise DatasetError(
+                    f"Could not unpack provided keys f{keys} into "
+                    "variables 'x_key, y_key'"
+                )
+
+        else:
+            try:
+                x_key, y_key = batch_data.keys()
+            except ValueError as v:
+                raise DatasetError(
+                    f"Could not unpack batch keys f{batch_data.keys()} into "
+                    "variables 'x_key, y_key'"
+                )
+
+        try:
+            x = batch_data[x_key]
+            y = batch_data[y_key]
+        except Exception as e:
+            raise DatasetError(
+                "The following error was encountered when trying to "
+                f"retrieve the keys '{x_key}' and '{y_key} from a batch of  "
+                f"training data.: {e}"
+                )
+    else:
+        x, y = batch_data
+    return x, y
+
+
 ###############################################################################
 # QRNN
 ###############################################################################
@@ -427,21 +481,7 @@ class PytorchModel:
 
             for j, data in enumerate(training_data):
 
-                if isinstance(data, tuple):
-                    x, y = data
-                elif isinstance(data, dict):
-                    if (not isinstance(keys, tuple)) or len(keys) != 0:
-                        InputDataError(
-                            "If batches in dataset are dictionaries, the "
-                            "``keys`` kwarg must be provided."
-                        )
-                    x = data[keys[0]]
-                    y = data[keys[1]]
-                else:
-                    InputDataError(
-                        "Batches in dataset should be tuples or dictionaries."
-                    )
-
+                x, y = _get_x_y(data, keys)
 
                 x = x.float().to(device)
                 y = y.to(device)
@@ -488,21 +528,9 @@ class PytorchModel:
                 self.eval()
                 with torch.no_grad():
                     for j, data in enumerate(validation_data):
-                        if isinstance(data, tuple):
-                            x, y = data
-                        elif isinstance(data, dict):
-                            if (not isinstance(keys, tuple)) or len(keys) != 0:
-                                InputDataError(
-                                    "If batches in dataset are dictionaries, "
-                                    " the ``keys`` kwarg must be provided."
-                                )
-                            x = data[keys[0]]
-                            y = data[keys[1]]
-                        else:
-                            InputDataError(
-                                "Batches in dataset should be tuples or "
-                                " dictionaries."
-                            )
+
+                        x, y = _get_x_y(data, keys)
+
                         x = x.to(device).detach()
                         y = y.to(device).detach()
 

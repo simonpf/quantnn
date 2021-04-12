@@ -5,6 +5,7 @@ quantnn.models.keras
 This module provides Keras neural network models that can be used as backend
 models with the :py:class:`quantnn.QRNN` class.
 """
+from collections.abc import Mapping
 from copy import copy
 import logging
 import tempfile
@@ -23,7 +24,8 @@ from tensorflow.keras.losses import SparseCategoricalCrossentropy
 
 from quantnn.common import (QuantnnException,
                             ModelNotSupported,
-                            InputDataError)
+                            InputDataError,
+                            DatasetError)
 from quantnn.logging import TrainingLogger
 
 def save_model(f, model):
@@ -250,21 +252,36 @@ class TrainingGenerator:
 
     def __next__(self):
         try:
-            data = next(self.iterator)
-            if isinstance(data, tuple):
-                x_batch, y_batch = data
-            elif isinstance(data, dict):
-                if (not isinstance(self.keys, tuple)) or len(self.keys) != 0:
-                    InputDataError(
-                        "If batches in dataset are dictionaries, the "
-                        "``keys`` kwarg must be provided."
-                    )
-                x_batch = data[self.keys[0]]
-                y_batch = data[self.keys[1]]
+            batch_data = next(self.iterator)
+            if isinstance(batch_data, Mapping):
+                if self.keys is not None:
+                    try:
+                        x_key, y_key = self.keys
+                    except ValueError:
+                        raise DatasetError(
+                            f"Could not unpack provided keys f{self.keys} into "
+                            "variables 'x_key, y_key'"
+                        )
+                else:
+                    try:
+                        x_key, y_key = batch_data.keys()
+                    except ValueError as v:
+                        raise DatasetError(
+                            f"Could not unpack batch keys f{batch_data.keys()} into "
+                            "variables 'x_key, y_key'"
+                        )
+                try:
+                    x_batch = batch_data[x_key]
+                    y_batch = batch_data[y_key]
+                except Exception as e:
+                    raise DatasetError(
+                        "The following error was encountered when trying to "
+                        f"retrieve the keys '{x_key}' and '{y_key} from a batch of  "
+                        f"training data.: {e}"
+                        )
             else:
-                InputDataError(
-                    "Batches in dataset should be tuples or dictionaries."
-                )
+                x_batch, y_batch = batch_data
+
         except StopIteration:
             self.iterator = iter(self.training_data)
             return next(self)
