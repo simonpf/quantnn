@@ -1,6 +1,9 @@
 """
 Tests for the PyTorch NN backend.
 """
+import tensorflow as tf
+from tensorflow import keras
+
 from quantnn.models.keras import QuantileLoss, CrossEntropyLoss
 import numpy as np
 from quantnn import (QRNN,
@@ -120,3 +123,43 @@ def test_training_with_dict_and_keys():
     qrnn.train(batched_data, n_epochs=1, keys=("x", "y"))
 
 
+def test_training_multiple_outputs():
+    """
+    Ensure that training with batch objects as dicts and provided keys
+    argument works.
+    """
+    set_default_backend("keras")
+
+    class MultipleOutputModel(keras.Model):
+        def __init__(self):
+            super().__init__()
+            self.hidden = keras.layers.Dense(128, "relu", input_shape=(16,))
+            self.head_1 = keras.layers.Dense(11, None)
+            self.head_2 = keras.layers.Dense(11, None)
+
+        def call(self, x):
+            x = self.hidden(x)
+            y_1 = self.head_1(x)
+            y_2 = self.head_2(x)
+            return {
+                "y_1": y_1,
+                "y_2": y_2
+            }
+
+    x = np.random.rand(1024, 16)
+    y = np.random.rand(1024)
+
+    batched_data = [
+        {
+            "x": x[i * 128: (i + 1) * 128],
+            "y": {
+                "y_1": y[i * 128: (i + 1) * 128],
+                "y_2": y[i * 128: (i + 1) * 128]
+            }
+        }
+        for i in range(1024 // 128)
+    ]
+
+    model = MultipleOutputModel()
+    qrnn = QRNN(np.linspace(0.05, 0.95, 11), model=model)
+    qrnn.train(batched_data, n_epochs=10, keys=("x", "y"))
