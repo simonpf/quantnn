@@ -16,6 +16,7 @@ from rich.text import Text
 from rich.console import Console, RenderGroup
 from rich.columns import Columns
 from rich.panel import Panel
+from rich.padding import Padding
 from rich.table import Table, Column
 import rich.rule
 from rich.progress import (SpinnerColumn, BarColumn, TextColumn,
@@ -25,6 +26,17 @@ _TRAINING = "training"
 _VALIDATION = "validation"
 
 class Progress(rich.progress.Progress):
+    """
+    Custom progress bar that automatically enters the progress
+    bar context on construction.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__enter__()
+
+    def close(self):
+        self.__exit__(None, None, None)
+
     def get_renderables(self):
         table = self.make_tasks_table(self.tasks)
         table.title = "\n Training progress:"
@@ -68,60 +80,69 @@ def _make_table(epoch,
                              leading=0)
     table.width = 90
     table.add_column(Text("Epoch", style="Grey"),
-                     justify="left",
+                     justify="center",
                      max_width=15)
+
+    if losses_training is None:
+        width = 20
+    else:
+        width = min(40, 10 * len(losses_training) + 10)
+
     table.add_column(Text("Training loss", style="red bold"),
                      justify="center",
-                     min_width=20,
-                     max_width=40)
+                     width=width)
+
     if total_loss_validation is not None:
+        if losses_validation is None:
+            width = 20
+        else:
+            width = min(40, 10 * len(losses_training) + 10)
         table.add_column(Text("Validation loss", style="blue bold"),
                          justify="center",
-                         min_width=20,
-                         max_width=40)
-
-    def __del__():
-        if self.progress is not None:
-            self.progress.__exit__(None, None, None)
-
+                         width=width)
 
     def make_header_columns():
         columns = [Align(Text("#", justify="center", style="bold"), align="center", width=5)]
         if learning_rate is not None:
             columns += [Align(Text("LR", justify="center"), width=10)]
-        yield Columns(columns, align="left", expand=True)
+        yield Columns(columns, align="center", expand=True)
 
+        text = Align(Text("Total", justify="right", style="bold red"), width=10)
         if multi_target:
-            columns = [Align(Text("Total", justify="center", style="bold red"), width=7)]
-            columns += [Align(Text(n, justify="center", style="red"), width=7)
-                        for n in losses_training.keys()]
-            yield Columns(columns, expand=True, align="center")
+            columns = [text] + [Align(Text(n, justify="right", style="red"), width=10, align="right")
+                                for n in losses_training.keys()]
+            yield Columns(columns, equal=True, expand=True, align="center")
+        else:
+            yield text
 
-        if losses_validation is not None and multi_target:
-            columns = [Align(Text("Total", justify="center", style="bold blue"), width=7)]
-            columns += [Align(Text(n, justify="center", style="blue"), width=7)
-                        for n in losses_validation.keys()]
-            yield Columns(columns, expand=True, align="center")
+        if losses_validation is not None:
+            text = Align(Text("Total", justify="center", style="bold blue"), width=10)
+            if multi_target:
+                columns = [text] + [Align(Text(n, justify="center", style="blue"), width=10)
+                                    for n in losses_validation.keys()]
+                yield Columns(columns, expand=True, align="center")
+            else:
+                yield text
 
     def make_columns():
         yield Columns([
             Align(Text(f"{epoch:3}", justify="center", style="bold"), width=5),
-            Align(Text(f"{learning_rate:1.3f}", justify="center"), width=5),
-        ], align="left", expand=True)
+            Align(Text(f"{learning_rate:1.3f}", justify="center"), width=10),
+        ], align="center", expand=True)
 
-        text = Align(Text(f"{total_loss_training:2.3f}", style="bold red"),
-                     align="center")
+        text = Align(Text(f"{total_loss_training:3.3f}", style="bold red"),
+                     align="center", width=10)
         if multi_target:
-            columns = [text] + [Align(Text(f"{l:2.3f}", justify="center", style="red"), width=7)
+            columns = [text] + [Align(Text(f"{l:3.3f}", justify="right", style="red"), width=10, align="right")
                         for _, l in losses_training.items()]
-            yield Columns(columns, align="center", expand=True)
+            yield Columns(columns, equal=True, expand=True, align="center")
         else:
             yield text
 
         if losses_validation is not None:
             text = Align(
                 Text(
-                    f"{total_loss_validation:2.3f}",
+                    f"{total_loss_validation:.3f}",
                     justify="center",
                     style="bold blue"),
                 width=7
@@ -130,10 +151,10 @@ def _make_table(epoch,
                 columns = [text]
                 for _, l in losses_validation.items():
                     columns.append(
-                        Align(Text(f"{l:2.3f}",
+                        Align(Text(f"{l:.3f}",
                                    justify="center",
                                    style="rblue"),
-                              width=7)
+                              width=10)
                         )
                 yield Columns(columns, expand=True, align="center")
             else:
@@ -167,8 +188,10 @@ class TrainingLogger:
 
         self.train_loss = 0.0
         self.train_samples = 0
+        self.train_losses = {}
         self.val_loss = 0.0
         self.val_samples = 0
+        self.val_losses = {}
 
         self.log_rate = log_rate
         self.epoch_start_time = datetime.now()
@@ -179,6 +202,17 @@ class TrainingLogger:
         self.state = _TRAINING
         self.initialized = False
         self.progress = None
+
+    def __del__(self):
+        if self.progress is not None:
+            self.progress.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args, **kwargs):
+        if self.progress is not None:
+            self.progress.__exit__(*args, **kwargs)
 
     def initialize(self, total_loss, losses=None):
 
@@ -216,6 +250,7 @@ class TrainingLogger:
         )
 
         self.progress.__enter__()
+
         if of is None:
             of = 0
         fields={
@@ -237,9 +272,7 @@ class TrainingLogger:
         Args:
             The model that is trained in its current state.
         """
-        self.epoch_start_time = datetime.now()
-        self.train_loss = 0.0
-        self.train_samples = 0
+        pass
 
     def training_step(self,
                       total_loss,
@@ -262,9 +295,20 @@ class TrainingLogger:
             self.make_progress_bar(of=of)
             self.state = _TRAINING
 
+        if (self.i_train_batch == 0):
+            self.train_loss = 0.0
+            self.train_samples = 0
+            if losses is not None and len(losses) > 1:
+                for k in losses:
+                    self.train_losses[k] = 0.0
+
         self.train_loss += n_samples * total_loss
         self.train_samples += n_samples
         self.i_train_batch += 1
+
+        if losses is not None and len(losses) > 1:
+            for k in losses:
+                self.train_losses[k] += n_samples * losses[k]
 
         self.progress.update(
             task_id=self.task,
@@ -274,17 +318,6 @@ class TrainingLogger:
             of=of,
             batch_loss=total_loss
         )
-
-        #if (self.i_train_batch % self.log_rate) == self.log_rate - 1:
-
-        #    if of is None:
-        #        of = "?"
-        #    else:
-        #        of = f"{of:2}"
-
-        #    avg_loss = self.train_loss / self.train_samples
-        #    msg = f"Batch {self.i_train_batch:2} / {of}: train. loss = {avg_loss:.4f}"
-        #    print(msg, end="\r")
 
     def validation_step(self,
                         total_loss,
@@ -305,12 +338,19 @@ class TrainingLogger:
         if (self.i_val_batch == 0):
             self.val_loss = 0.0
             self.val_samples = 0
+            if losses is not None and len(losses) > 1:
+                for k in losses:
+                    self.val_losses[k] = 0.0
 
         self.val_loss += n_samples * total_loss
         self.val_samples += n_samples
         self.i_val_batch += 1
 
-    def epoch(self, learning_rate=None):
+        if losses is not None and len(losses) > 1:
+            for k in losses:
+                self.val_losses[k] += n_samples * losses[k]
+
+    def epoch(self, learning_rate=None, metrics=None):
         """
         Log processing of epoch.
 
@@ -320,8 +360,10 @@ class TrainingLogger:
         train_loss = self.train_loss / self.train_samples
         if self.val_samples > 0:
             val_loss = self.val_loss / self.val_samples
+            val_losses = self.val_losses
         else:
             val_loss = None
+            val_losses = None
 
         self.i_epoch += 1
         self.i_train_batch = 0
@@ -333,12 +375,16 @@ class TrainingLogger:
             table_row = _make_table(self.i_epoch,
                                     train_loss,
                                     val_loss,
+                                    losses_training=self.train_losses,
+                                    losses_validation=val_losses,
                                     learning_rate=learning_rate,
                                     header=True)
             self.console.print(table_row)
         table_row = _make_table(self.i_epoch,
                                 train_loss,
                                 val_loss,
+                                losses_training=self.train_losses,
+                                losses_validation=val_losses,
                                 learning_rate=learning_rate,
                                 header=False)
         self.console.print(table_row)

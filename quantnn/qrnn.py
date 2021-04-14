@@ -129,6 +129,7 @@ class QRNN(NeuralNetworkModel):
               device='cpu',
               mask=None,
               logger=None,
+              metrics=None,
               keys=None):
         """
         Train the underlying neural network model on given training data.
@@ -163,17 +164,18 @@ class QRNN(NeuralNetworkModel):
                  (``y``) when dataset elements are given as dictionaries.
         """
         loss = self.backend.QuantileLoss(self.quantiles, mask=mask)
-        return self.model.train(training_data,
-                                validation_data=validation_data,
-                                loss=loss,
-                                optimizer=optimizer,
-                                scheduler=scheduler,
-                                n_epochs=n_epochs,
-                                adversarial_training=adversarial_training,
-                                batch_size=batch_size,
-                                device=device,
-                                logger=logger,
-                                keys=keys)
+        return super().train(training_data,
+                             loss,
+                             validation_data=validation_data,
+                             optimizer=optimizer,
+                             scheduler=scheduler,
+                             n_epochs=n_epochs,
+                             adversarial_training=adversarial_training,
+                             batch_size=batch_size,
+                             device=device,
+                             logger=logger,
+                             metrics=metrics,
+                             keys=keys)
 
     def predict(self, x):
         r"""

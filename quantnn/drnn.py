@@ -58,6 +58,7 @@ class DRNN(NeuralNetworkModel):
               device='cpu',
               mask=None,
               logger=None,
+              metrics=None,
               keys=None):
         if type(training_data) == tuple:
             x_train, y_train = training_data
@@ -78,6 +79,7 @@ class DRNN(NeuralNetworkModel):
                                 adversarial_training=adversarial_training,
                                 device=device,
                                 logger=logger,
+                                metrics=metrics,
                                 keys=keys)
 
     def predict(self, x):

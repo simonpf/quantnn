@@ -603,6 +603,7 @@ class KerasModel:
               batch_size=None,
               device='cpu',
               logger=None,
+              metrics=None,
               keys=None):
 
         # Input data.

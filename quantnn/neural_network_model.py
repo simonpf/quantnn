@@ -23,8 +23,10 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 from quantnn.common import (QuantnnException,
                             UnsupportedBackendException,
-                            ModelNotSupported)
+                            ModelNotSupported,
+                            InputDataError)
 from quantnn.logging import TrainingLogger
+import quantnn.metrics
 
 _DEFAULT_BACKEND = None
 
@@ -134,8 +136,10 @@ class NeuralNetworkModel:
               scheduler=None,
               n_epochs=None,
               adversarial_training=None,
+              batch_size=None,
               device='cpu',
               logger=None,
+              metrics=None,
               keys=None):
         """
         Train model on given training data.
@@ -173,6 +177,25 @@ class NeuralNetworkModel:
         Returns:
             Dictionary containing the training and validation losses.
         """
+        # Prepare metrics by replacing string
+        if metrics is not None:
+            for i, m in enumerate(metrics):
+                if isinstance(m, str):
+                    error = InputDataError(
+                            f"The metric name '{m} does not match any "
+                            f"trivially constructable metric classes in "
+                            f"'quantnn.metrics'."
+                        )
+                    try:
+                        m = getattr(quantnn.metrics, m)()
+                    except AttributeError:
+                        raise error
+                    if not isinstance(m, quantnn.metrics.Metric):
+                        raise error
+                    metrics[i] = m
+                metrics[i].model = self
+
+
         return self.model.train(training_data,
                                 validation_data=validation_data,
                                 loss=loss,
@@ -180,8 +203,10 @@ class NeuralNetworkModel:
                                 scheduler=scheduler,
                                 n_epochs=n_epochs,
                                 adversarial_training=adversarial_training,
+                                batch_size=batch_size,
                                 device=device,
                                 logger=logger,
+                                metrics=metrics,
                                 keys=keys)
 
     @staticmethod
