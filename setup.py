@@ -16,7 +16,13 @@ setuptools.setup(
         "Programming Language :: Python :: 3",
         "Operating System :: OS Independent",
     ],
-    install_requires=["numpy", "scipy", "paramiko", "einops", "rich"],
+    install_requires=[
+        "numpy",
+        "scipy",
+        "paramiko",
+        "einops",
+        "matplotlib",
+        "rich"],
     python_requires=">=3.6",
     include_package_data=True,
 )
