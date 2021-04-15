@@ -405,6 +405,7 @@ class PytorchModel:
     def _train_step(self,
                     x,
                     y,
+                    loss,
                     adversarial_training,
                     metrics=None):
         """
@@ -447,12 +448,12 @@ class PytorchModel:
             shape = x.size()
             shape = (shape[0], 1) + shape[2:]
             y_k = y_k.reshape(shape)
-            l = self.loss(y_pred_k, y_k)
+            l = loss(y_pred_k, y_k)
 
             cache = {}
             if metrics is not None:
                 for m in metrics:
-                    m.process_batch(k, y_pred_k, y, cache=cache)
+                    m.process_batch(k, y_pred_k, y_k, cache=cache)
 
             losses[k] = l
 
@@ -531,9 +532,8 @@ class PytorchModel:
         if not scheduler:
             scheduler = _get_default_scheduler(optimizer)
 
-        loss.to(device)
         self.to(device)
-        self.loss = loss
+        loss.to(device)
 
         # metrics
         if metrics is None:
@@ -573,7 +573,7 @@ class PytorchModel:
                         y = y.to(device)
 
                     total_loss, losses = self._train_step(
-                        x, y, adversarial_training
+                        x, y, loss, adversarial_training
                     )
                     total_loss.backward()
                     optimizer.step()
@@ -595,7 +595,7 @@ class PytorchModel:
                         x_adv = self._make_adversarial_samples(x)
                         self.optimizer.zero_grad(**_ZERO_GRAD_ARGS)
                         total_loss, _ = self._train_step(
-                            x_adv, y, adversarial_training
+                            x_adv, y, loss, adversarial_training
                         )
                         total_loss.backward()
                         optimizer.step()
@@ -625,7 +625,7 @@ class PytorchModel:
                             else:
                                 y = y.to(device)
 
-                            total_loss, losses = self._train_step(x, y, None, metrics=metrics)
+                            total_loss, losses = self._train_step(x, y, loss, None, metrics=metrics)
 
                             # Log validation step.
                             if hasattr(validation_data, "__len__"):

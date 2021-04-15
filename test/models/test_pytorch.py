@@ -173,14 +173,14 @@ def test_training_metrics():
             }
 
     x = np.random.rand(1024, 16)
-    y = np.random.rand(1024)
+    y = np.sum(x, axis=-1)
 
     batched_data = [
         {
             "x": torch.tensor(x[i * 128: (i + 1) * 128]),
             "y": {
                 "y_1": torch.tensor(y[i * 128: (i + 1) * 128]),
-                "y_2": torch.tensor(y[i * 128: (i + 1) * 128])
+                "y_2": torch.tensor(y[i * 128: (i + 1) * 128] ** 2)
             }
         }
         for i in range(1024 // 128)
@@ -190,5 +190,5 @@ def test_training_metrics():
     qrnn = QRNN(np.linspace(0.05, 0.95, 11), model=model)
     qrnn.train(batched_data,
                validation_data=batched_data,
-               n_epochs=10, keys=("x", "y"),
+               n_epochs=30, keys=("x", "y"),
                metrics=["MeanSquaredError"])

@@ -142,7 +142,7 @@ class PyTorch(TensorBackend):
             if shape is None:
                 return torch.zeros_like(like)
             dtype = like.dtype
-            device = like.dtype
+            device = like.device
 
         return torch.zeros(shape, device=device, dtype=dtype)
 

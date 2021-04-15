@@ -53,7 +53,7 @@ class TensorBoardLogger(TrainingLogger):
             self.epoch_begin_callback(self.writer, model, self.step_epoch)
         self.step_epoch += 1
 
-    def training_step(self, loss, n_samples, of=None):
+    def training_step(self, loss, n_samples, of=None, losses=None):
         """
         Log processing of a training batch. This method should be called
         after each batch is processed so that the logger can keep track
@@ -71,7 +71,8 @@ class TensorBoardLogger(TrainingLogger):
     def validation_step(self,
                         loss,
                         n_samples,
-                        of=None):
+                        of=None,
+                        losses=None):
         """
         Log processing of a validation batch.
 
@@ -85,11 +86,24 @@ class TensorBoardLogger(TrainingLogger):
         self.writer.add_scalar("Validation loss", loss, self.step_validation)
         self.step_validation += 1
 
-    def epoch(self, learning_rate=None):
+    def epoch(self, learning_rate=None, metrics=None):
         """
         Log processing of epoch.
 
         Args:
             learning_rate: If available the learning rate of the optimizer.
         """
+        self.writer.add_scalar("Learning rate", learning_rate)
+
         TrainingLogger.epoch(self, learning_rate)
+
+        if metrics is not None:
+            for m in metrics:
+                if hasattr(m, "get_figures"):
+                    figures = m.get_figures()
+                    if isinstance(figures, dict):
+                        for target in figures.keys():
+                            f = figures[target]
+                            self.writer.add_figure(f"{m.name} ({target})", f, self.i_epoch)
+                    else:
+                        self.writer.add_figure(f"{m.name}", figures, self.i_epoch)

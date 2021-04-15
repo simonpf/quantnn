@@ -194,6 +194,7 @@ class NeuralNetworkModel:
                         raise error
                     metrics[i] = m
                 metrics[i].model = self
+                metrics[i].mask = loss.mask
 
 
         return self.model.train(training_data,

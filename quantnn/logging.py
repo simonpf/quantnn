@@ -48,6 +48,7 @@ def _make_table(epoch,
                 total_loss_validation=None,
                 losses_training=None,
                 losses_validation=None,
+                metrics=None,
                 learning_rate=None,
                 header=True):
     """
@@ -64,12 +65,36 @@ def _make_table(epoch,
         learning_rate: The learning rate during the epoch.
         header: Whether or not to print the header.
     """
-    multi_target = losses_training is not None
+    col_width = 8
+    multi_target = losses_training is not None and len(losses_training) > 1
 
     if header:
         title = "\n\n Training history\n"
     else:
         title = None
+
+    # Calculate width of table and columns
+    epoch_width = 15
+    if not multi_target:
+        train_width = 20
+    else:
+        train_width = min(40, (col_width + 2) * (len(losses_training) + 1))
+
+    val_width = 0
+    if total_loss_validation is not None:
+        val_width = 20
+        if multi_target:
+            val_width = min(40, (col_width + 2) * (len(losses_training) + 1))
+
+    all_metrics_width = 0
+    if metrics is not None:
+        if not multi_target:
+            metrics_width = (col_width + 2)
+        else:
+            metrics_width = len(losses_training) * (col_width + 2) + 1
+        all_metrics_width = len(metrics) * metrics_width
+
+    table_width = epoch_width + train_width + val_width + all_metrics_width
 
     table = rich.table.Table(expand=False,
                              box=rich.box.SIMPLE,
@@ -77,66 +102,75 @@ def _make_table(epoch,
                              show_header=header,
                              show_footer=False,
                              show_edge=False,
+                             width=table_width,
                              leading=0)
-    table.width = 90
+
     table.add_column(Text("Epoch", style="Grey"),
                      justify="center",
-                     max_width=15)
-
-    if losses_training is None:
-        width = 20
-    else:
-        width = min(40, 10 * len(losses_training) + 10)
-
+                     width=epoch_width)
     table.add_column(Text("Training loss", style="red bold"),
                      justify="center",
-                     width=width)
-
+                     width=train_width)
     if total_loss_validation is not None:
-        if losses_validation is None:
-            width = 20
-        else:
-            width = min(40, 10 * len(losses_training) + 10)
         table.add_column(Text("Validation loss", style="blue bold"),
                          justify="center",
-                         width=width)
+                         width=val_width)
+    if metrics is not None:
+        for name, m in metrics.items():
+            table.add_column(Text(name, style="purple bold"),
+                             justify="center",
+                             width=metrics_width)
 
     def make_header_columns():
-        columns = [Align(Text("#", justify="center", style="bold"), align="center", width=5)]
+        # Epoch and LR
+        columns = [Text("#", justify="right", style="bold")]
         if learning_rate is not None:
-            columns += [Align(Text("LR", justify="center"), width=10)]
-        yield Columns(columns, align="center", expand=True)
+            columns += [Text("LR", justify="right")]
+        yield Columns(columns, align="center", width=5)
 
-        text = Align(Text("Total", justify="right", style="bold red"), width=10)
+        # Training losses
+        text = Align(Text("Total", justify="right", style="bold red"), width=col_width, align="center")
         if multi_target:
-            columns = [text] + [Align(Text(n, justify="right", style="red"), width=10, align="right")
+            columns = [text] + [Align(Text(n, justify="right", style="red"), width=col_width)
                                 for n in losses_training.keys()]
-            yield Columns(columns, equal=True, expand=True, align="center")
+            yield Columns(columns, align="center", width=col_width)
         else:
             yield text
 
+        # Validation losses
         if losses_validation is not None:
-            text = Align(Text("Total", justify="center", style="bold blue"), width=10)
+            text = Align(Text("Total", justify="center", style="bold blue"), width=col_width)
             if multi_target:
                 columns = [text] + [Align(Text(n, justify="center", style="blue"), width=10)
                                     for n in losses_validation.keys()]
-                yield Columns(columns, expand=True, align="center")
+                yield Columns(columns, align="center", width=col_width)
             else:
                 yield text
 
+        # Metrics
+        if metrics is not None:
+            for name, values in metrics.items():
+                if isinstance(values, dict):
+                    columns = [Align(Text(n, justify="center", style="purple"), width=10)
+                                    for n in values.keys()]
+                    yield Columns(columns, align="center", width=col_width)
+                else:
+                    yield Align(Text(""), width=10)
+
     def make_columns():
         yield Columns([
-            Align(Text(f"{epoch:3}", justify="center", style="bold"), width=5),
-            Align(Text(f"{learning_rate:1.3f}", justify="center"), width=10),
-        ], align="center", expand=True)
+            Align(Text(f"{epoch:3}", justify="right", style="bold"), width=4),
+            Align(Text(f"{learning_rate:1.3f}", justify="right"), width=5),
+        ], align="center", width=5)
 
         text = Align(Text(f"{total_loss_training:3.3f}", style="bold red"),
                      align="center", width=10)
         if multi_target:
-            columns = [text] + [Align(Text(f"{l:3.3f}", justify="right", style="red"), width=10, align="right")
+            columns = [text] + [Align(Text(f"{l:3.3f}", justify="right", style="red"), width=col_width, align="right")
                         for _, l in losses_training.items()]
-            yield Columns(columns, equal=True, expand=True, align="center")
+            yield Columns(columns, align="center", width=col_width)
         else:
+            #yield Columns([text], align="center", width=col_width)
             yield text
 
         if losses_validation is not None:
@@ -145,7 +179,7 @@ def _make_table(epoch,
                     f"{total_loss_validation:.3f}",
                     justify="center",
                     style="bold blue"),
-                width=7
+                width=col_width
             )
             if multi_target:
                 columns = [text]
@@ -153,12 +187,23 @@ def _make_table(epoch,
                     columns.append(
                         Align(Text(f"{l:.3f}",
                                    justify="center",
-                                   style="rblue"),
-                              width=10)
+                                   style="blue"),
+                              width=col_width)
                         )
-                yield Columns(columns, expand=True, align="center")
+                yield Columns(columns, align="center", width=col_width)
             else:
                 yield text
+                #yield Columns([text], align="center", width=col_width)
+
+        # Metrics
+        if metrics is not None:
+            for name, values in metrics.items():
+                if isinstance(values, dict):
+                    columns = [Align(Text(f"{v:.3f}", justify="center", style="purple"), width=10)
+                               for _, v in values.items()]
+                    yield Columns(columns, align="center", width=col_width)
+                else:
+                    yield Align(Text(f"{values:.3f}"), width=10)
 
     if header:
         table.add_row(*make_header_columns())
@@ -358,9 +403,11 @@ class TrainingLogger:
             learning_rate: If available the learning rate of the optimizer.
         """
         train_loss = self.train_loss / self.train_samples
+        train_losses = {k: v / self.train_samples for k, v in self.train_losses.items()}
+
         if self.val_samples > 0:
             val_loss = self.val_loss / self.val_samples
-            val_losses = self.val_losses
+            val_losses = {k: v / self.train_samples for k, v in self.val_losses.items()}
         else:
             val_loss = None
             val_losses = None
@@ -371,20 +418,30 @@ class TrainingLogger:
 
         self.progress.__exit__(None, None, None)
         self.progress = None
+
+        metric_values = {}
+        if metrics is not None:
+            for m in metrics:
+                if hasattr(m, "get_values"):
+                    metric_values[m.name] = m.get_values()
+
+
         if (self.i_epoch <= 1):
             table_row = _make_table(self.i_epoch,
-                                    train_loss,
-                                    val_loss,
-                                    losses_training=self.train_losses,
+                                    total_loss_training=train_loss,
+                                    total_loss_validation=val_loss,
+                                    losses_training=train_losses,
                                     losses_validation=val_losses,
                                     learning_rate=learning_rate,
+                                    metrics=metric_values,
                                     header=True)
             self.console.print(table_row)
         table_row = _make_table(self.i_epoch,
-                                train_loss,
-                                val_loss,
-                                losses_training=self.train_losses,
+                                total_loss_training=train_loss,
+                                total_loss_validation=val_loss,
+                                losses_training=train_losses,
                                 losses_validation=val_losses,
                                 learning_rate=learning_rate,
+                                metrics=metric_values,
                                 header=False)
         self.console.print(table_row)
