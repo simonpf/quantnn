@@ -133,8 +133,8 @@ class XceptionFpn(nn.Module):
         x_2 = self.down_block_2(x_in)
         x_4 = self.down_block_4(x_2)
         x_8 = self.down_block_8(x_4)
-        x_16 = self.down_block_8(x_8)
-        x_32 = self.down_block_16(x_16)
+        x_16 = self.down_block_16(x_8)
+        x_32 = self.down_block_32(x_16)
 
         x_16_u = self.up_block_16(x_32, x_16)
         x_8_u = self.up_block_8(x_16_u, x_8)
