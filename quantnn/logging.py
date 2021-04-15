@@ -32,10 +32,7 @@ class Progress(rich.progress.Progress):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.__enter__()
-
-    def close(self):
-        self.__exit__(None, None, None)
+        super().start()
 
     def get_renderables(self):
         table = self.make_tasks_table(self.tasks)
@@ -248,16 +245,13 @@ class TrainingLogger:
         self.initialized = False
         self.progress = None
 
-    def __del__(self):
-        if self.progress is not None:
-            self.progress.close()
-
     def __enter__(self):
         return self
 
     def __exit__(self, *args, **kwargs):
         if self.progress is not None:
-            self.progress.__exit__(*args, **kwargs)
+            self.progress.stop()
+            self.progress = None
 
     def initialize(self, total_loss, losses=None):
 
@@ -277,37 +271,38 @@ class TrainingLogger:
         losses = {"Name 1": 1, "Name 2": 2}
 
 
-    def make_progress_bar(self, of=None):
-        if self.progress is not None:
-            self.progress.__exit__(None, None, None)
-        self.progress = Progress(
-            TextColumn(f"Epoch {self.i_epoch + 1}"),
-            SpinnerColumn(),
-            TextColumn("Batch {task.fields[batch]:3} / {task.fields[of]:3}"),
-            BarColumn(),
-            TimeElapsedColumn(table_column=Column(header="Elapsed")),
-            TextColumn("/"),
-            TimeRemainingColumn(table_column=Column(header="Remaining")),
-            TextColumn("|"),
-            TextColumn("[red]Loss: {task.fields[batch_loss]:1.3f}[red],"),
-            TextColumn("[red][b]Avg.: {task.fields[running_mean]:1.3f}[/b][/red]"),
-            transient=True,
-        )
+    def start_progress_bar(self, of=None):
 
-        self.progress.__enter__()
+        if self.progress is None:
+            self.progress = Progress(
+                TextColumn(f"Epoch {self.i_epoch + 1}"),
+                SpinnerColumn(),
+                TextColumn("Batch {task.fields[batch]:3} / {task.fields[of]:3}"),
+                BarColumn(),
+                TimeElapsedColumn(table_column=Column(header="Elapsed")),
+                TextColumn("/"),
+                TimeRemainingColumn(table_column=Column(header="Remaining")),
+                TextColumn("|"),
+                TextColumn("[red]Loss: {task.fields[batch_loss]:1.3f}[red],"),
+                TextColumn("[red][b]Avg.: {task.fields[running_mean]:1.3f}[/b][/red]"),
+                transient=True
+            )
 
-        if of is None:
-            of = 0
-        fields={
-            "running_mean": np.nan,
-            "batch_loss": np.nan,
-            "of": of,
-            "batch": 0,
-        }
-        self.task = self.progress.add_task(
-            f"Epoch {self.i_epoch + 1}",
-            total=of,
-            **fields)
+            if of is None:
+                of = 0
+            fields={
+                "running_mean": np.nan,
+                "batch_loss": np.nan,
+                "of": of,
+                "batch": 0,
+            }
+            self.task = self.progress.add_task(
+                f"Epoch {self.i_epoch + 1}",
+                total=of,
+                **fields)
+        self.progress.start()
+        self.progress.update(self.task, completed=0, total=of)
+
 
 
     def epoch_begin(self, model):
@@ -336,16 +331,13 @@ class TrainingLogger:
             losses: Dictionary containing the losses for each
                  model output.
         """
-        if (self.progress is None) or (self.state == _VALIDATION):
-            self.make_progress_bar(of=of)
-            self.state = _TRAINING
-
         if (self.i_train_batch == 0):
             self.train_loss = 0.0
             self.train_samples = 0
             if losses is not None and len(losses) > 1:
                 for k in losses:
                     self.train_losses[k] = 0.0
+            self.start_progress_bar(of=of)
 
         self.train_loss += n_samples * total_loss
         self.train_samples += n_samples
@@ -416,15 +408,14 @@ class TrainingLogger:
         self.i_train_batch = 0
         self.i_val_batch = 0
 
-        self.progress.__exit__(None, None, None)
-        self.progress = None
-
         metric_values = {}
         if metrics is not None:
             for m in metrics:
                 if hasattr(m, "get_values"):
                     metric_values[m.name] = m.get_values()
 
+        self.progress.stop()
+        self.progress = None
 
         if (self.i_epoch <= 1):
             table_row = _make_table(self.i_epoch,

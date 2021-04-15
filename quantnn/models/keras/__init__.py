@@ -491,7 +491,6 @@ class LogCallback(keras.callbacks.Callback):
 
     def on_train_batch_end(self, batch, logs=None):
         """Log training batch end."""
-        print(logs)
         self.logger.training_step(logs["loss"], 1,
                                   of=self.n_training_samples)
 

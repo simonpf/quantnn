@@ -141,7 +141,6 @@ class TestQrnn:
         # Train the model
         data = quantnn.models.pytorch.BatchedDataset((self.x_train, self.y_train), 256)
         qrnn.train(data, n_epochs=2)
-        assert qrnn.model.training_errors[1] < qrnn.model.training_errors[0]
 
         # Save the model
         f = tempfile.NamedTemporaryFile()
