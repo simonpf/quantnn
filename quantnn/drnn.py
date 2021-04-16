@@ -55,6 +55,7 @@ class DRNN(NeuralNetworkModel):
               scheduler=None,
               n_epochs=None,
               adversarial_training=None,
+              batch_size=None,
               device='cpu',
               mask=None,
               logger=None,
@@ -70,17 +71,18 @@ class DRNN(NeuralNetworkModel):
                 validation_data = x_val, y_val
 
         loss = self.backend.CrossEntropyLoss(mask=mask)
-        return self.model.train(training_data,
-                                validation_data=validation_data,
-                                loss=loss,
-                                optimizer=optimizer,
-                                scheduler=scheduler,
-                                n_epochs=n_epochs,
-                                adversarial_training=adversarial_training,
-                                device=device,
-                                logger=logger,
-                                metrics=metrics,
-                                keys=keys)
+        return super().train(training_data,
+                             loss,
+                             validation_data=validation_data,
+                             optimizer=optimizer,
+                             scheduler=scheduler,
+                             n_epochs=n_epochs,
+                             adversarial_training=adversarial_training,
+                             batch_size=batch_size,
+                             device=device,
+                             logger=logger,
+                             metrics=metrics,
+                             keys=keys)
 
     def predict(self, x):
         y_pred = self.model.predict(x)

@@ -436,6 +436,8 @@ class PytorchModel:
             y = {next(iter(y_pred.keys())): y}
 
         losses = {}
+
+        total_loss = None
         # Loop over keys in prediction.
         for k in y_pred:
             y_pred_k = y_pred[k]
@@ -455,13 +457,12 @@ class PytorchModel:
                 for m in metrics:
                     m.process_batch(k, y_pred_k, y_k, cache=cache)
 
-            losses[k] = l
+            losses[k] = l.item()
 
-        total_loss = None
-        for k in losses:
             if not total_loss:
                 total_loss = 0.0
-            total_loss += losses[k]
+            total_loss += l
+
         return total_loss, losses
 
 
@@ -584,7 +585,7 @@ class PytorchModel:
                     else:
                         of = None
                     n_samples = torch.numel(x) / x.size()[1]
-                    logger.training_step(total_loss, n_samples, of=of, losses=losses)
+                    logger.training_step(total_loss.item(), n_samples, of=of, losses=losses)
 
                     # Track epoch error.
                     n += x.size()[0]
@@ -633,7 +634,7 @@ class PytorchModel:
                             else:
                                 of = None
                             n_samples = torch.numel(x) / x.size()[1]
-                            logger.validation_step(total_loss, n_samples, of=of, losses=losses)
+                            logger.validation_step(total_loss.item(), n_samples, of=of, losses=losses)
 
                             # Update running validation errors.
                             n += x.size()[0]
@@ -652,6 +653,7 @@ class PytorchModel:
                         scheduler.step(epoch_error)
 
                 logger.epoch(learning_rate=lr, metrics=metrics)
+        logger.training_end()
 
         self.eval()
         return {

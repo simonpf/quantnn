@@ -106,27 +106,36 @@ class NeuralNetworkModel:
                  n_inputs,
                  n_outputs,
                  model):
+        self._model = None
 
         # Provided model is just an architecture tuple
-        if type(model) == tuple:
+        if isinstance(model, tuple):
             self.backend = get_default_backend()
             self.model = self.backend.FullyConnected(n_inputs,
                                                      n_outputs,
                                                      *model)
-        # Provided model is predefined model.
         else:
-            # Determine module and check if supported.
-            self.model = None
-            for backend in get_available_backends():
-                try:
-                    self.model = backend.Model.create(model)
-                    self.backend = backend
-                except ModelNotSupported:
-                    pass
-            if not self.model:
-                raise UnsupportedBackendException(
-                    "The provided model is not supported by any "
-                    "of the backend modules.")
+            self.model = model
+
+    @property
+    def model(self):
+        return self._model
+
+    @model.setter
+    def model(self, model):
+        if not hasattr(self, "_model"):
+            self._model = None
+        # Determine module and check if supported.
+        for backend in get_available_backends():
+            try:
+                self._model = backend.Model.create(model)
+                self.backend = backend
+            except ModelNotSupported:
+                pass
+        if not self._model:
+            raise UnsupportedBackendException(
+                "The provided model is not supported by any "
+                "of the backend modules.")
 
     def train(self,
               training_data,
@@ -182,7 +191,7 @@ class NeuralNetworkModel:
             for i, m in enumerate(metrics):
                 if isinstance(m, str):
                     error = InputDataError(
-                            f"The metric name '{m} does not match any "
+                            f"The metric name '{m}' does not match any "
                             f"trivially constructable metric classes in "
                             f"'quantnn.metrics'."
                         )
@@ -196,19 +205,25 @@ class NeuralNetworkModel:
                 metrics[i].model = self
                 metrics[i].mask = loss.mask
 
+        if logger is None:
+            logger = TrainingLogger(n_epochs)
 
-        return self.model.train(training_data,
-                                validation_data=validation_data,
-                                loss=loss,
-                                optimizer=optimizer,
-                                scheduler=scheduler,
-                                n_epochs=n_epochs,
-                                adversarial_training=adversarial_training,
-                                batch_size=batch_size,
-                                device=device,
-                                logger=logger,
-                                metrics=metrics,
-                                keys=keys)
+        training_results = self.model.train(training_data,
+                                            validation_data=validation_data,
+                                            loss=loss,
+                                            optimizer=optimizer,
+                                            scheduler=scheduler,
+                                            n_epochs=n_epochs,
+                                            adversarial_training=adversarial_training,
+                                            batch_size=batch_size,
+                                            device=device,
+                                            logger=logger,
+                                            metrics=metrics,
+                                            keys=keys)
+        if hasattr(logger, "history"):
+            self.training_history = logger.history
+
+        return training_results
 
     @staticmethod
     def load(path):
@@ -259,10 +274,10 @@ class NeuralNetworkModel:
 
     def __getstate__(self):
         dct = copy.copy(self.__dict__)
-        dct.pop("model")
+        dct.pop("_model")
         dct["backend"] = self.backend.__name__
         return dct
 
     def __setstate__(self, state):
         self.__dict__ = state
-        self.model = None
+        self._model = None

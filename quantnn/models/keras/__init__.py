@@ -89,7 +89,13 @@ class CrossEntropyLoss(SparseCategoricalCrossentropy):
 
 
     def __call__(self, y_true, y_pred, sample_weight=None):
-        l = super().__call__(y_true,
+        if self.mask is not None:
+            y_m = tf.where(y_true > self.mask,
+                           y_true,
+                           tf.zeros_like(y_true))
+        else:
+            y_m = y_true
+        l = super().__call__(y_m,
                              y_pred,
                              sample_weight=sample_weight)
         if self.mask is None:
@@ -648,14 +654,16 @@ class KerasModel:
             logger = TrainingLogger(n_epochs)
         log = LogCallback(logger, training_generator, validation_generator)
         with tf.device(device):
-            self.fit(
-                training_generator,
-                steps_per_epoch=len(training_generator),
-                epochs=n_epochs,
-                validation_data=validation_generator,
-                validation_steps=1,
-                callbacks=[scheduler, log],
-                verbose=False)
+            with logger:
+                self.fit(
+                    training_generator,
+                    steps_per_epoch=len(training_generator),
+                    epochs=n_epochs,
+                    validation_data=validation_generator,
+                    validation_steps=1,
+                    callbacks=[scheduler, log],
+                    verbose=False)
+        logger.training_end()
 
         def predict(self, *args, device="cpu", **kwargs):
             return keras.Model.predict(self, *args, **kwargs)

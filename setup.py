@@ -19,6 +19,7 @@ setuptools.setup(
     install_requires=[
         "numpy",
         "scipy",
+        "xarray",
         "paramiko",
         "einops",
         "matplotlib",

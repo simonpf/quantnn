@@ -7,6 +7,7 @@ This module contains training logger that are specific for the
 PyTorch backend.
 """
 from torch.utils.tensorboard.writer import SummaryWriter
+import xarray as xr
 
 from quantnn.logging import TrainingLogger
 
@@ -36,10 +37,18 @@ class TensorBoardLogger(TrainingLogger):
         super().__init__(n_epochs, log_rate)
         self.writer = SummaryWriter(log_dir=log_directory)
         self.epoch_begin_callback = epoch_begin_callback
+        self.attributes = None
 
-        self.step_training = 0
-        self.step_validation = 0
-        self.step_epoch = 0
+    def set_attributes(self, attributes):
+        """
+        Stores attributes that describe the training in the logger.
+        These will be stored in the logger history.
+
+        Args:
+            Dictionary of attributes to store in the history of the
+            logger.
+        """
+        super().set_attributes(attributes)
 
     def epoch_begin(self, model):
         """
@@ -50,8 +59,7 @@ class TensorBoardLogger(TrainingLogger):
         """
         TrainingLogger.epoch_begin(self, model)
         if self.epoch_begin_callback:
-            self.epoch_begin_callback(self.writer, model, self.step_epoch)
-        self.step_epoch += 1
+            self.epoch_begin_callback(self.writer, model, self.i_epoch)
 
     def training_step(self, loss, n_samples, of=None, losses=None):
         """
@@ -64,9 +72,7 @@ class TensorBoardLogger(TrainingLogger):
             n_samples: The number of samples in the batch.
             of: If available the number of batches in the epoch.
         """
-        TrainingLogger.training_step(self, loss, n_samples, of=of)
-        self.writer.add_scalar("Training loss", loss, self.step_training)
-        self.step_training += 1
+        super().training_step(loss, n_samples, of=of, losses=losses)
 
     def validation_step(self,
                         loss,
@@ -82,9 +88,7 @@ class TensorBoardLogger(TrainingLogger):
             n_samples: The number of samples in the batch.
             of: If available the number of batches in the epoch.
         """
-        TrainingLogger.validation_step(self, loss, n_samples, of=of)
-        self.writer.add_scalar("Validation loss", loss, self.step_validation)
-        self.step_validation += 1
+        super().validation_step(loss, n_samples, of=of, losses=losses)
 
     def epoch(self, learning_rate=None, metrics=None):
         """
@@ -95,7 +99,14 @@ class TensorBoardLogger(TrainingLogger):
         """
         self.writer.add_scalar("Learning rate", learning_rate)
 
-        TrainingLogger.epoch(self, learning_rate)
+        TrainingLogger.epoch(self, learning_rate, metrics=metrics)
+
+        for name, v in self.history.variables.items():
+            if name == "epochs":
+                continue
+            if len(v.dims) == 1:
+                value = v.data[-1]
+                self.writer.add_scalar(name, value, self.i_epoch)
 
         if metrics is not None:
             for m in metrics:
@@ -107,3 +118,20 @@ class TensorBoardLogger(TrainingLogger):
                             self.writer.add_figure(f"{m.name} ({target})", f, self.i_epoch)
                     else:
                         self.writer.add_figure(f"{m.name}", figures, self.i_epoch)
+
+    def training_end(self):
+        """
+        Called to signal the end of the training to the logger.
+        """
+        # Extract metric values for hyper parameters.
+        if self.attributes is not None:
+            metrics = {}
+            for name, v in self.history.variables.items():
+                if name == "epochs":
+                    continue
+                if len(v.dims) == 1:
+                    metrics[name] = v.data[-1]
+            self.writer.add_hparams(self.attributes, metrics)
+            self.writer.flush()
+
+

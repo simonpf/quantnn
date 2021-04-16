@@ -114,6 +114,16 @@ def to_array(module, array, like=None):
         else:
             return module.asarray(array)
     elif module == torch:
+        if isinstance(array, torch.Tensor):
+            if like is None:
+                return array
+            else:
+                return array.to(
+                    device=like.device,
+                    dtype=like.dtype,
+                    requires_grad=like.requires_grad
+                )
+
         if like is not None:
             return module.tensor(array,
                                  dtype=like.dtype,

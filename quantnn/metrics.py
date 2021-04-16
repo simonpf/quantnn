@@ -57,11 +57,54 @@ class Metric(ABC):
 # Scalar metrics
 ################################################################################
 
-class Bias(Metric):
+class ScalarMetric(Metric):
+
+    def __init__(self):
+        self._model = None
+        self.keys = set()
+
+    @property
+    def model(self):
+        return self._model
+
+    @model.setter
+    def model(self, model):
+        self._model = model
+
+    @abstractmethod
+    def get_value(self, key):
+        """
+        Return scalar value of the metric for give target.
+
+        Args:
+             key: The key identifying the target.
+        """
+    def get_values(self):
+        """
+        The values of the metric.
+
+        Returns:
+
+            In the case of a single-target model only a single scalar
+            is returns.
+
+            In the case of a multi-target model a dict is returned that
+            maps the target keys to metric values.
+        """
+        if len(self.keys) == 1:
+            return self.get_value(next(iter(self.keys)))
+
+        results = {}
+        for key in self.keys:
+            results[key] = self.get_value(key)
+        return results
+
+class Bias(ScalarMetric):
     """
     Calculates the bias (mean error).
     """
     def __init__(self):
+        super().__init__()
         self.error = {}
         self.n_samples = {}
         self._model = None
@@ -81,6 +124,9 @@ class Bias(Metric):
 
 
     def process_batch(self, key, y_pred, y, cache=None):
+
+        self.keys.add(key)
+
         if self.tensor_backend == None:
             self.tensor_backend = get_tensor_backend(y_pred)
         xp = self.tensor_backend
@@ -106,45 +152,30 @@ class Bias(Metric):
         self.error = {}
         self.n_samples = {}
 
-    def get_values(self):
+    def get_value(self, key):
         xp = self.tensor_backend
         if xp is None:
             return 0.0
+        return xp.to_numpy(self.error[key] / self.n_samples[key])
 
-        if len(self.error) == 1:
-            e = next(iter(self.error.items()))[1]
-            n = next(iter(self.n_samples.items()))[1]
-            return xp.to_numpy(e / n)[0]
-
-        results = {}
-        for k in self.error:
-            results[k] = self.error[k] / self.n_samples[k]
-        return results
-
-class MeanSquaredError(Metric):
+class MeanSquaredError(ScalarMetric):
     """
     Mean squared error metric computed using the posterior mean.
     """
     def __init__(self):
+        super().__init__()
         self.squared_error = {}
         self.n_samples = {}
-        self._model = None
         self.tensor_backend = None
 
     @property
     def name(self):
         return "MSE"
 
-    @property
-    def model(self):
-        return self._model
-
-    @model.setter
-    def model(self, model):
-        self._model = model
-
-
     def process_batch(self, key, y_pred, y, cache=None):
+
+        self.keys.add(key)
+
         if self.tensor_backend == None:
             self.tensor_backend = get_tensor_backend(y_pred)
         xp = self.tensor_backend
@@ -170,20 +201,54 @@ class MeanSquaredError(Metric):
         self.squared_error = {}
         self.n_samples = {}
 
-    def get_values(self):
+    def get_value(self, key):
         xp = self.tensor_backend
         if xp is None:
             return 0.0
 
-        if len(self.squared_error) == 1:
-            se = next(iter(self.squared_error.items()))[1]
-            n = next(iter(self.n_samples.items()))[1]
-            return xp.to_numpy(se / n)[0]
+        return xp.to_numpy(self.squared_error[key] / self.n_samples[key])
 
-        results = {}
-        for k in self.squared_error:
-            results[k] = self.squared_error[k] / self.n_samples[k]
-        return results
+class CRPS(ScalarMetric):
+    """
+    Mean squared error metric computed using the posterior mean.
+    """
+    def __init__(self):
+        super().__init__()
+        self.crps = {}
+        self.tensor_backend = None
+
+    @property
+    def name(self):
+        return "CRPS"
+
+    def process_batch(self, key, y_pred, y, cache=None):
+
+        self.keys.add(key)
+
+        if self.tensor_backend == None:
+            self.tensor_backend = get_tensor_backend(y_pred)
+        xp = self.tensor_backend
+
+        crps_batches = self.crps.setdefault(key, [])
+        crps = xp.to_numpy(self.model.crps(y_pred=y_pred, y_true=y))
+        y = xp.to_numpy(y)
+
+        if self.mask is not None:
+            crps = crps[y.squeeze() > self.mask]
+
+        crps_batches.append(crps.ravel())
+
+    def reset(self):
+        self.crps = {}
+
+    def get_value(self, key):
+        xp = self.tensor_backend
+        if xp is None:
+            return 0.0
+
+        crps = np.concatenate(self.crps[key])
+        return crps.mean()
+
 
 ################################################################################
 # Calibration plot

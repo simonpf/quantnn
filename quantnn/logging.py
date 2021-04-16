@@ -22,6 +22,8 @@ import rich.rule
 from rich.progress import (SpinnerColumn, BarColumn, TextColumn,
                            TimeElapsedColumn, TimeRemainingColumn)
 
+import xarray as xr
+
 _TRAINING = "training"
 _VALIDATION = "validation"
 
@@ -35,10 +37,15 @@ class Progress(rich.progress.Progress):
         super().start()
 
     def get_renderables(self):
+        """
+        Overrides get_renderables method to add a title to the progress
+        bar.
+        """
         table = self.make_tasks_table(self.tasks)
         table.title = "\n Training progress:"
         table.width = 90
         yield table
+
 
 def _make_table(epoch,
                 total_loss_training,
@@ -135,10 +142,10 @@ def _make_table(epoch,
             yield text
 
         # Validation losses
-        if losses_validation is not None:
-            text = Align(Text("Total", justify="center", style="bold blue"), width=col_width)
+        if total_loss_validation is not None:
+            text = Align(Text("Total", justify="center", style="bold blue"), width=col_width, align="center")
             if multi_target:
-                columns = [text] + [Align(Text(n, justify="center", style="blue"), width=10)
+                columns = [text] + [Align(Text(n, justify="center", style="blue"), width=col_width)
                                     for n in losses_validation.keys()]
                 yield Columns(columns, align="center", width=col_width)
             else:
@@ -148,11 +155,11 @@ def _make_table(epoch,
         if metrics is not None:
             for name, values in metrics.items():
                 if isinstance(values, dict):
-                    columns = [Align(Text(n, justify="center", style="purple"), width=10)
+                    columns = [Align(Text(n, justify="center", style="purple"), width=col_width)
                                     for n in values.keys()]
                     yield Columns(columns, align="center", width=col_width)
                 else:
-                    yield Align(Text(""), width=10)
+                    yield Align(Text(""), width=col_width)
 
     def make_columns():
         yield Columns([
@@ -161,22 +168,22 @@ def _make_table(epoch,
         ], align="center", width=5)
 
         text = Align(Text(f"{total_loss_training:3.3f}", style="bold red"),
-                     align="center", width=10)
+                     align="center", width=col_width)
         if multi_target:
             columns = [text] + [Align(Text(f"{l:3.3f}", justify="right", style="red"), width=col_width, align="right")
                         for _, l in losses_training.items()]
             yield Columns(columns, align="center", width=col_width)
         else:
-            #yield Columns([text], align="center", width=col_width)
             yield text
 
-        if losses_validation is not None:
+        if total_loss_validation is not None:
             text = Align(
                 Text(
                     f"{total_loss_validation:.3f}",
                     justify="center",
                     style="bold blue"),
-                width=col_width
+                width=col_width,
+                align="center"
             )
             if multi_target:
                 columns = [text]
@@ -185,22 +192,22 @@ def _make_table(epoch,
                         Align(Text(f"{l:.3f}",
                                    justify="center",
                                    style="blue"),
-                              width=col_width)
+                              width=col_width,
+                              align="center")
                         )
                 yield Columns(columns, align="center", width=col_width)
             else:
                 yield text
-                #yield Columns([text], align="center", width=col_width)
 
         # Metrics
         if metrics is not None:
             for name, values in metrics.items():
                 if isinstance(values, dict):
-                    columns = [Align(Text(f"{v:.3f}", justify="center", style="purple"), width=10)
+                    columns = [Align(Text(f"{v:.3f}", justify="center", style="purple"), width=col_width)
                                for _, v in values.items()]
                     yield Columns(columns, align="center", width=col_width)
                 else:
-                    yield Align(Text(f"{values:.3f}"), width=10)
+                    yield Align(Text(f"{values:.3f}"), width=col_width, style="purple")
 
     if header:
         table.add_row(*make_header_columns())
@@ -235,6 +242,8 @@ class TrainingLogger:
         self.val_samples = 0
         self.val_losses = {}
 
+        self.attributes = None
+
         self.log_rate = log_rate
         self.epoch_start_time = datetime.now()
 
@@ -245,6 +254,8 @@ class TrainingLogger:
         self.initialized = False
         self.progress = None
 
+        self.history = None
+
     def __enter__(self):
         return self
 
@@ -253,26 +264,14 @@ class TrainingLogger:
             self.progress.stop()
             self.progress = None
 
-    def initialize(self, total_loss, losses=None):
-
-        multi_loss = losses is not None
-
-        titles = [
-            RenderGroup(
-                rich.panel.Panel("Epoch", box=rich.box.ROUNDED),
-                rich.panel.Panel("Epoch", box=rich.box.SIMPLE)
-            ),
-            rich.panel.Panel("Training\n", box=rich.box.SIMPLE_HEAVY),
-            rich.panel.Panel("Validation", box=rich.box.SIMPLE_HEAVY)
-        ]
-        columns = rich.columns.Columns(titles,
-                                       expand=True)
-
-        losses = {"Name 1": 1, "Name 2": 2}
-
-
     def start_progress_bar(self, of=None):
+        """
+        Starts the progress bar for the current epoch.
 
+        Args:
+             of: The total number of batches in the epoch or None
+                  if that is unknown.
+        """
         if self.progress is None:
             self.progress = Progress(
                 TextColumn(f"Epoch {self.i_epoch + 1}"),
@@ -303,6 +302,17 @@ class TrainingLogger:
         self.progress.start()
         self.progress.update(self.task, completed=0, total=of)
 
+
+    def set_attributes(self, attributes):
+        """
+        Stores attributes that describe the training in the logger.
+        These will be stored in the logger history.
+
+        Args:
+            Dictionary of attributes to store in the history of the
+            logger.
+        """
+        self.attributes = attributes
 
 
     def epoch_begin(self, model):
@@ -394,6 +404,7 @@ class TrainingLogger:
         Args:
             learning_rate: If available the learning rate of the optimizer.
         """
+        # Calculate statistics from epoch
         train_loss = self.train_loss / self.train_samples
         train_losses = {k: v / self.train_samples for k, v in self.train_losses.items()}
 
@@ -411,12 +422,45 @@ class TrainingLogger:
         metric_values = {}
         if metrics is not None:
             for m in metrics:
-                if hasattr(m, "get_values"):
+                try:
                     metric_values[m.name] = m.get_values()
+                except AttributeError as e:
+                    pass
 
+        # Combine stats in dataset
+        data = {}
+        data["training_loss"] = (("epochs",), [train_loss])
+        if len(train_losses) > 1:
+            for t in train_losses:
+                k = "training_loss_" + t
+                data[k] = (("epochs",), [train_losses[t]])
+
+
+        if val_loss is not None:
+            data["validation_loss"] = (("epochs",), [val_loss])
+            if len(val_losses) > 1:
+                for t in val_losses:
+                    k = "validation_loss_" + t
+                    data[k] = (("epochs",), [val_losses[t]])
+
+        for name, values in metric_values.items():
+            if isinstance(values, dict):
+                for target, value in values.items():
+                    k = name + "_" + target
+                    data[k] = (("epochs",), [value])
+            else:
+                data[name] = (("epochs"), [values])
+        data["epochs"] = [self.i_epoch]
+        dataset = xr.Dataset(data)
+        if self.history is None:
+            self.history = xr.Dataset(dataset)
+        else:
+            self.history = xr.concat([self.history, dataset], dim="epochs")
+
+
+        # Write output
         self.progress.stop()
         self.progress = None
-
         if (self.i_epoch <= 1):
             table_row = _make_table(self.i_epoch,
                                     total_loss_training=train_loss,
@@ -436,3 +480,13 @@ class TrainingLogger:
                                 metrics=metric_values,
                                 header=False)
         self.console.print(table_row)
+
+    def training_end(self):
+        """
+        Called to signal the end of the training to the logger.
+        """
+        if self.attributes is not None:
+            self.history.attrs.update(self.attributes)
+
+
+

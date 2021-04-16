@@ -208,8 +208,9 @@ def test_training_metrics_multi():
                 "y_2": y_2
             }
 
-    x = np.random.rand(1024, 16)
+    x = np.random.rand(2024, 16)
     y = np.sum(x, axis=-1)
+    y += np.random.normal(size=y.size)
 
     batched_data = [
         {
@@ -224,7 +225,7 @@ def test_training_metrics_multi():
 
     model = MultipleOutputModel()
     qrnn = QRNN(np.linspace(0.05, 0.95, 11), model=model)
-    metrics = ["Bias", "MeanSquaredError", "ScatterPlot", "CalibrationPlot"]
+    metrics = ["Bias", "CRPS", "MeanSquaredError", "ScatterPlot", "CalibrationPlot"]
     qrnn.train(batched_data,
                validation_data=batched_data,
                n_epochs=30, keys=("x", "y"),
