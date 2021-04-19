@@ -32,7 +32,6 @@ from quantnn.quantiles import (cdf,
                                quantile_loss)
 
 _LOG_LEVEL = os.environ.get('QUANTNN_LOG_LEVEL', 'WARNING').upper()
-print("LOGLEVEL: ", _LOG_LEVEL)
 _logging.basicConfig(
     level=_LOG_LEVEL,
     format="%(message)s",
