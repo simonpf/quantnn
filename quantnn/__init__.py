@@ -16,6 +16,8 @@ The modules :py:mod:`quantnn.quantiles` and :py:mod:`quantnn.density` provide ge
 """
 import logging as _logging
 import os
+
+from rich.logging import RichHandler
 from quantnn.neural_network_model import (set_default_backend,
                                           get_default_backend)
 from quantnn.qrnn import QRNN
@@ -30,4 +32,10 @@ from quantnn.quantiles import (cdf,
                                quantile_loss)
 
 _LOG_LEVEL = os.environ.get('QUANTNN_LOG_LEVEL', 'WARNING').upper()
-_logging.basicConfig(level=_LOG_LEVEL)
+print("LOGLEVEL: ", _LOG_LEVEL)
+_logging.basicConfig(
+    level=_LOG_LEVEL,
+    format="%(message)s",
+    datefmt="[%X]",
+    handlers=[RichHandler()]
+)
