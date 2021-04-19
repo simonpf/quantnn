@@ -115,7 +115,6 @@ class DataFolder:
                  of the dataset files.
             n_files: How many of the file from the folder.
         """
-        print(path)
         self.path = path
         self.folder = CachedDataFolder(path)
         self.dataset_factory = dataset_factory
