@@ -421,7 +421,7 @@ class ScatterPlot(Metric):
         if len(self.y) < len(self.y_pred[key]):
             if self.mask is not None:
                 y = y[y > self.mask]
-            self.y.append(y)
+            self.y.append(y.ravel())
 
     def reset(self):
         self.y_pred = {}
