@@ -221,7 +221,7 @@ class TrainingLogger:
     """
     Logger class that prints training statistics to standard out.
     """
-    def __init__(self, n_epochs, log_rate=100):
+    def __init__(self, n_epochs, log_rate=9):
         """
         Create a new logger instance.
 
@@ -284,6 +284,7 @@ class TrainingLogger:
                 TextColumn("|"),
                 TextColumn("[red]Loss: {task.fields[batch_loss]:1.3f}[red],"),
                 TextColumn("[red][b]Avg.: {task.fields[running_mean]:1.3f}[/b][/red]"),
+                auto_refresh=False,
                 transient=True
             )
 
@@ -301,6 +302,7 @@ class TrainingLogger:
                 **fields)
         self.progress.start()
         self.progress.update(self.task, completed=0, total=of)
+        self.progress.refresh()
 
 
     def set_attributes(self, attributes):
@@ -365,6 +367,8 @@ class TrainingLogger:
             of=of,
             batch_loss=total_loss
         )
+        if (self.i_train_batch % self.log_rate) == 0:
+            self.progress.refresh()
 
     def validation_step(self,
                         total_loss,
