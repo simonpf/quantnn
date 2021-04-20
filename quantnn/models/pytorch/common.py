@@ -621,8 +621,8 @@ class PytorchModel:
                             x, y = _get_x_y(data, keys)
                             x = x.float().to(device)
                             if isinstance(y, dict):
-                                for _, y_k in y.items():
-                                    y_k.to(device)
+                                for k in y:
+                                    y[k] = y[k].to(device)
                             else:
                                 y = y.to(device)
 

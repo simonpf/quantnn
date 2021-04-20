@@ -97,9 +97,8 @@ class TensorBoardLogger(TrainingLogger):
         Args:
             learning_rate: If available the learning rate of the optimizer.
         """
-        self.writer.add_scalar("Learning rate", learning_rate)
-
         TrainingLogger.epoch(self, learning_rate, metrics=metrics)
+        self.writer.add_scalar("Learning rate", learning_rate, self.i_epoch)
 
         for name, v in self.history.variables.items():
             if name == "epochs":
@@ -115,9 +114,13 @@ class TensorBoardLogger(TrainingLogger):
                     if isinstance(figures, dict):
                         for target in figures.keys():
                             f = figures[target]
-                            self.writer.add_figure(f"{m.name} ({target})", f, self.i_epoch)
+                            self.writer.add_figure(f"{m.name} ({target})",
+                                                   f,
+                                                   self.i_epoch)
                     else:
-                        self.writer.add_figure(f"{m.name}", figures, self.i_epoch)
+                        self.writer.add_figure(f"{m.name}",
+                                               figures,
+                                               self.i_epoch)
 
     def training_end(self):
         """
