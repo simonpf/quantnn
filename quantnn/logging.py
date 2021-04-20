@@ -414,7 +414,7 @@ class TrainingLogger:
 
         if self.val_samples > 0:
             val_loss = self.val_loss / self.val_samples
-            val_losses = {k: v / self.train_samples for k, v in self.val_losses.items()}
+            val_losses = {k: v / self.val_samples for k, v in self.val_losses.items()}
         else:
             val_loss = None
             val_losses = None

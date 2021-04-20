@@ -447,7 +447,7 @@ class PytorchModel:
                 raise DatasetError(
                     f"No targets provided for ouput '{k}'."
                 )
-            shape = x.size()
+            shape = y_pred_k.size()
             shape = (shape[0], 1) + shape[2:]
             y_k = y_k.reshape(shape)
             l = loss(y_pred_k, y_k)

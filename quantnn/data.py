@@ -206,6 +206,86 @@ class DataFolder:
             dataset = self.get_next_dataset()
             yield from iterate_dataset(dataset)
 
+class LazyDataFolder:
+    """
+    A data folder loader for lazy datasets.
+    """
+    def __init__(self,
+                 path,
+                 dataset_factory,
+                 args=None,
+                 kwargs=None,
+                 n_workers=4,
+                 n_files=None,
+                 batch_queue_size=32):
+        """
+        Create new DataFolder object.
+
+        Args:
+            path: The path of the folder containing the dataset files.
+            dataset_factory: The function used to construct the dataset
+                 instances for each file.
+            args: Additional, positional arguments passed to
+                 ``dataset_factory`` following the local file path of the
+                 local copy of the dataset file.
+            kwargs: Dictionary of keyword arguments passed to the dataset
+                 factory.
+            n_workers: The number of workers to use for concurrent loading
+                 of the dataset files.
+            n_files: How many of the file from the folder.
+        """
+        self.path = path
+        self.folder = CachedDataFolder(path)
+        self.dataset_factory = dataset_factory
+        self.args = args
+        self.kwargs = kwargs
+
+        self.n_workers = n_workers
+        self.files = self.folder.files
+
+        # Sort datasets into random order.
+        self.batch_queue = Queue(maxsize=batch_queue_size)
+        self.pool = ProcessPoolExecutor(max_workers=self.n_workers)
+        self.folder.download(self.pool)
+        files = [
+            self.folder.get(f) for f in np.random.permutation(self.folder.files)
+        ]
+
+        if args is None:
+            args = []
+        if kwargs is None:
+            kwargs = {}
+
+        self.datasets = [dataset_factory(f, *args, **kwargs) for f in files]
+
+        self.n_batches = sum([len(d) for d in self.datasets])
+
+    def __len__(self):
+        return self.n_batches
+
+    def __iter__(self):
+        counters = {id(d): 0 for d in self.datasets}
+        num_active = len(self.datasets)
+        while (num_active > 0):
+            for d in self.datasets:
+                i = counters[id(d)]
+                if i >= len(d):
+                    num_active -= 1
+                    continue
+
+                # Return batch if queue is full.
+                if self.batch_queue.full():
+                    yield self.batch_queue.get().result()
+
+                # Put next batch on queue.
+                self.batch_queue.put(
+                    self.pool.submit(d.__getitem__, i)
+                )
+                counters[id(d)] += 1
+
+        while not self.batch_queue.empty():
+            yield self.batch_queue.get().result()
+
 class BatchedDataset:
     """
     A generic batched dataset, that takes two numpy array and generates a sequence

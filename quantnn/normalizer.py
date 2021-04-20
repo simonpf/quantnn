@@ -12,6 +12,17 @@ import pickle
 import numpy as np
 from quantnn.files import read_file
 
+class Identity:
+    """
+    A dummy normalizer that does nothing. Useful as default value.
+    """
+    def __call__(self, x):
+        return x
+
+    def invert(self, y):
+        return y
+
+
 class NormalizerBase(ABC):
     """
     The Normalizer class can be used to normalize input data to a neural
