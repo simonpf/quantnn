@@ -459,7 +459,7 @@ class ScatterPlot(Metric):
             y = y[y > self.mask]
 
         self.y_pred.setdefault(key, []).append(y_mean.ravel())
-        self.y.setdefault(key, []).append(y_mean.ravel())
+        self.y.setdefault(key, []).append(y.ravel())
 
     def reset(self):
         self.y_pred = {}
