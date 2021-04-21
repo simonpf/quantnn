@@ -65,7 +65,7 @@ class Progress(rich.progress.Progress):
         title = "\n\n Training history\n"
 
         # Calculate width of table and columns
-        epoch_width = 15
+        epoch_width = 18
         if not multi_target:
             train_width = 20
         else:
@@ -114,7 +114,7 @@ class Progress(rich.progress.Progress):
             columns = [Text("#", justify="right", style="bold")]
             if learning_rate is not None:
                 columns += [Text("LR", justify="right")]
-            yield Columns(columns, align="center", width=5)
+            yield Columns(columns, align="center", width=6)
 
             # Training losses
             text = Align(Text("Total", justify="right", style="bold red"), width=col_width, align="center")
@@ -149,13 +149,13 @@ class Progress(rich.progress.Progress):
         self.table.add_row()
 
     def update_table(self,
-                    epoch,
-                    total_loss_training,
-                    total_loss_validation=None,
-                    losses_training=None,
-                    losses_validation=None,
-                    metrics=None,
-                    learning_rate=None):
+                     epoch,
+                     total_loss_training,
+                     total_loss_validation=None,
+                     losses_training=None,
+                     losses_validation=None,
+                     metrics=None,
+                     learning_rate=None):
         if self.table is None:
             self._make_table(epoch,
                              total_loss_training,
@@ -171,8 +171,8 @@ class Progress(rich.progress.Progress):
         def make_columns():
             yield Columns([
                 Align(Text(f"{epoch:3}", justify="right", style="bold"), width=4),
-                Align(Text(f"{learning_rate:1.3f}", justify="right"), width=5),
-            ], align="center", width=5)
+                Align(Text(f"{learning_rate:1.4f}", justify="right"), width=6),
+            ], align="center", width=6)
 
             text = Align(Text(f"{total_loss_training:3.3f}", style="bold red"),
                         align="center", width=col_width)
