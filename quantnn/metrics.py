@@ -140,6 +140,7 @@ class Bias(ScalarMetric):
         if cache is not None:
             cache["y_mean"] = y_mean
 
+        y = y.squeeze()
         dy = y_mean - y
 
         # Calculate the error.
@@ -147,6 +148,17 @@ class Bias(ScalarMetric):
         self.error[key] = e + dy.sum()
         n = self.n_samples.get(key, 0.0)
         self.n_samples[key] = n + xp.size(y_pred)
+        if self.mask is not None:
+            mask = xp.as_type(y > self.mask, y)
+            se = self.error.get(key, 0.0)
+            self.error[key] = se + (mask * dy).sum()
+            n = self.n_samples.get(key, 0.0)
+            self.n_samples[key] = n + mask.sum()
+        else:
+            se = self.error.get(key, 0.0)
+            self.error[key] = se + dy.sum()
+            n = self.n_samples.get(key, 0.0)
+            self.n_samples[key] = n + xp.size(y_pred)
 
     def reset(self):
         self.error = {}
@@ -189,13 +201,21 @@ class MeanSquaredError(ScalarMetric):
         if cache is not None:
             cache["y_mean"] = y_mean
 
+        y = y.squeeze()
         dy = y_mean - y
 
         # Calculate the squared error.
-        se = self.squared_error.get(key, 0.0)
-        self.squared_error[key] = se + (dy ** 2).sum()
-        n = self.n_samples.get(key, 0.0)
-        self.n_samples[key] = n + xp.size(y_pred)
+        if self.mask is not None:
+            mask = xp.as_type(y > self.mask, y)
+            se = self.squared_error.get(key, 0.0)
+            self.squared_error[key] = se + ((mask * dy)**2).sum()
+            n = self.n_samples.get(key, 0.0)
+            self.n_samples[key] = n + mask.sum()
+        else:
+            se = self.squared_error.get(key, 0.0)
+            self.squared_error[key] = se + (dy ** 2).sum()
+            n = self.n_samples.get(key, 0.0)
+            self.n_samples[key] = n + xp.size(y_pred)
 
     def reset(self):
         self.squared_error = {}
@@ -284,6 +304,7 @@ class CalibrationPlot(Metric):
         if not hasattr(self._model, "quantiles"):
             return None
         quantiles = self._model.quantiles
+        n_quantiles = len(quantiles)
 
         if self.tensor_backend == None:
             self.tensor_backend = get_tensor_backend(y_pred)
@@ -407,8 +428,8 @@ class ScatterPlot(Metric):
             y_mean = cache["y_mean"]
         else:
             y_mean = self.model.posterior_mean(y_pred=y_pred)
-        if cache is not None:
-            cache["y_mean"] = y_mean
+            if cache is not None:
+                cache["y_mean"] = y_mean
 
         y_mean = xp.to_numpy(y_mean)
         y = xp.to_numpy(y)

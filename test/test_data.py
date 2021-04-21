@@ -70,7 +70,7 @@ def test_sftp_stream():
     stream = DataFolder("sftp://" + host + path,
                         Dataset,
                         kwargs={"batch_size": 2},
-                        n_workers=2)
+                        n_workers=1)
     x_sum = 0.0
     y_sum = 0.0
     for x, y in stream:
