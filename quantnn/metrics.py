@@ -456,17 +456,14 @@ class ScatterPlot(Metric):
 
         if self.mask is not None:
             y_mean = y_mean[y.squeeze() > self.mask]
+            y = y[y > self.mask]
 
         self.y_pred.setdefault(key, []).append(y_mean.ravel())
-
-        if len(self.y) < len(self.y_pred[key]):
-            if self.mask is not None:
-                y = y[y > self.mask]
-            self.y.append(y.ravel())
+        self.y.setdefault(key, []).append(y_mean.ravel())
 
     def reset(self):
         self.y_pred = {}
-        self.y = []
+        self.y = {}
 
     def make_scatter_plot(self, key):
         """
@@ -483,7 +480,7 @@ class ScatterPlot(Metric):
         xp = self.tensor_backend
 
         y_pred = np.concatenate(self.y_pred[key])
-        y = np.concatenate(self.y)
+        y = np.concatenate(self.y[key])
 
         img, x_edges, y_edges = np.histogram2d(y, y_pred, bins=self.bins)
 
