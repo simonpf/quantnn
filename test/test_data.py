@@ -7,7 +7,7 @@ import os
 import numpy as np
 import pytest
 
-from quantnn.data import DataFolder
+from quantnn.data import DataFolder, LazyDataFolder
 
 
 HAS_LOGIN_INFO = ("QUANTNN_SFTP_USER" in os.environ and
@@ -70,7 +70,27 @@ def test_sftp_stream():
     stream = DataFolder("sftp://" + host + path,
                         Dataset,
                         kwargs={"batch_size": 2},
-                        n_workers=2)
+                        n_workers=1)
+    x_sum = 0.0
+    y_sum = 0.0
+    for x, y in stream:
+        x_sum += x.sum()
+        y_sum += y.sum()
+        assert x.shape[0] == 2
+
+    assert np.isclose(x_sum, 7 * 8 / 2 * 10 * 10)
+    assert np.isclose(y_sum, 7 * 8 / 2 * 10)
+
+@pytest.mark.skipif(not HAS_LOGIN_INFO, reason="No SFTP login info.")
+def test_lazy_datafolder():
+    host = "129.16.35.202"
+    path = "/mnt/array1/share/MLDatasets/test/"
+    stream = LazyDataFolder("sftp://" + host + path,
+                            Dataset,
+                            kwargs={"batch_size": 2},
+                            n_workers=2,
+                            batch_queue_size=1)
+
     x_sum = 0.0
     y_sum = 0.0
     for x, y in stream:

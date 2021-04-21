@@ -12,6 +12,25 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from quantnn.backends import get_tensor_backend
+from quantnn.common import InvalidDimensionException
+
+def _check_input_dimensions(y_pred, y):
+    """
+    Ensures that input to a metric's 'process_batch' method have the same rank.
+
+    Args:
+         y_pred: The predictions given to the 'process_batch' method.
+         y: The target values given to the 'process_batch' method.
+
+    Raises:
+         InvalidDimensionsException if ``y_pred`` and ``y`` don't match in
+         rank.
+    """
+    if len(y.shape) != len(y_pred.shape):
+        raise InvalidDimensionException(
+            "The 'y' and 'y_pred' tensor arguments given to a metric must "
+            "be of identical rank."
+        )
 
 class Metric(ABC):
     """
@@ -124,6 +143,7 @@ class Bias(ScalarMetric):
 
 
     def process_batch(self, key, y_pred, y, cache=None):
+        _check_input_dimensions(y_pred, y)
 
         self.keys.add(key)
 
@@ -140,13 +160,21 @@ class Bias(ScalarMetric):
         if cache is not None:
             cache["y_mean"] = y_mean
 
+        y = y.squeeze()
         dy = y_mean - y
 
         # Calculate the error.
-        e = self.error.get(key, 0.0)
-        self.error[key] = e + dy.sum()
-        n = self.n_samples.get(key, 0.0)
-        self.n_samples[key] = n + xp.size(y_pred)
+        if self.mask is not None:
+            mask = xp.as_type(y > self.mask, y)
+            e = self.error.get(key, 0.0)
+            self.error[key] = e + (mask * dy).sum()
+            n = self.n_samples.get(key, 0.0)
+            self.n_samples[key] = n + mask.sum()
+        else:
+            e = self.error.get(key, 0.0)
+            self.error[key] = e + dy.sum()
+            n = self.n_samples.get(key, 0.0)
+            self.n_samples[key] = n + xp.size(y)
 
     def reset(self):
         self.error = {}
@@ -173,6 +201,7 @@ class MeanSquaredError(ScalarMetric):
         return "MSE"
 
     def process_batch(self, key, y_pred, y, cache=None):
+        _check_input_dimensions(y_pred, y)
 
         self.keys.add(key)
 
@@ -189,13 +218,21 @@ class MeanSquaredError(ScalarMetric):
         if cache is not None:
             cache["y_mean"] = y_mean
 
+        y = y.squeeze()
         dy = y_mean - y
 
         # Calculate the squared error.
-        se = self.squared_error.get(key, 0.0)
-        self.squared_error[key] = se + (dy ** 2).sum()
-        n = self.n_samples.get(key, 0.0)
-        self.n_samples[key] = n + xp.size(y_pred)
+        if self.mask is not None:
+            mask = xp.as_type(y > self.mask, y)
+            se = self.squared_error.get(key, 0.0)
+            self.squared_error[key] = se + ((mask * dy)**2).sum()
+            n = self.n_samples.get(key, 0.0)
+            self.n_samples[key] = n + mask.sum()
+        else:
+            se = self.squared_error.get(key, 0.0)
+            self.squared_error[key] = se + (dy ** 2).sum()
+            n = self.n_samples.get(key, 0.0)
+            self.n_samples[key] = n + xp.size(y)
 
     def reset(self):
         self.squared_error = {}
@@ -222,6 +259,7 @@ class CRPS(ScalarMetric):
         return "CRPS"
 
     def process_batch(self, key, y_pred, y, cache=None):
+        _check_input_dimensions(y_pred, y)
 
         self.keys.add(key)
 
@@ -276,14 +314,16 @@ class CalibrationPlot(Metric):
 
     @model.setter
     def model(self, model):
-
         self._model = model
 
     def process_batch(self, key, y_pred, y, cache=None):
+        _check_input_dimensions(y_pred, y)
 
         if not hasattr(self._model, "quantiles"):
             return None
+
         quantiles = self._model.quantiles
+        n_quantiles = len(quantiles)
 
         if self.tensor_backend == None:
             self.tensor_backend = get_tensor_backend(y_pred)
@@ -300,14 +340,14 @@ class CalibrationPlot(Metric):
 
             c = self.calibration.get(key, xp.zeros(len(quantiles), y))
             self.calibration[key] = c + valid_predictions.sum(axes)
-            n = self.calibration.get(key, xp.zeros(len(quantiles), y))
+            n = self.n_samples.get(key, xp.zeros(len(quantiles), y))
             self.n_samples[key] = n + valid_pixels.sum()
         else:
             valid_predictions = xp.as_type(y <= y_pred, y_pred)
 
             c = self.calibration.get(key, xp.zeros(len(quantiles), y))
             self.calibration[key] = c + valid_predictions.sum(axes)
-            n = self.calibration.get(key, xp.zeros(len(quantiles), y))
+            n = self.n_samples.get(key, xp.zeros(len(quantiles), y))
             self.n_samples[key] = n + xp.size(y)
 
     def reset(self):
@@ -380,7 +420,7 @@ class ScatterPlot(Metric):
         self.mask = None
 
         self.y_pred = {}
-        self.y = []
+        self.y = {}
 
     @property
     def name(self):
@@ -396,6 +436,7 @@ class ScatterPlot(Metric):
         self._model = model
 
     def process_batch(self, key, y_pred, y, cache=None):
+        _check_input_dimensions(y_pred, y)
 
         if self.tensor_backend == None:
             self.tensor_backend = get_tensor_backend(y_pred)
@@ -407,8 +448,8 @@ class ScatterPlot(Metric):
             y_mean = cache["y_mean"]
         else:
             y_mean = self.model.posterior_mean(y_pred=y_pred)
-        if cache is not None:
-            cache["y_mean"] = y_mean
+            if cache is not None:
+                cache["y_mean"] = y_mean
 
         y_mean = xp.to_numpy(y_mean)
         y = xp.to_numpy(y)
@@ -421,7 +462,7 @@ class ScatterPlot(Metric):
         if len(self.y) < len(self.y_pred[key]):
             if self.mask is not None:
                 y = y[y > self.mask]
-            self.y.append(y)
+            self.y.append(y.ravel())
 
     def reset(self):
         self.y_pred = {}
@@ -443,6 +484,7 @@ class ScatterPlot(Metric):
 
         y_pred = np.concatenate(self.y_pred[key])
         y = np.concatenate(self.y)
+
         img, x_edges, y_edges = np.histogram2d(y, y_pred, bins=self.bins)
 
         plt.ioff()

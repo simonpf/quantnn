@@ -83,8 +83,8 @@ class _DummyCache:
 
 class CachedDataFolder:
     """
-    This class provides an interface to generic folder containing
-    dataset files. This folder can accessible via the local file
+    This class provides an interface to a generic folder containing
+    dataset files. This folder can be accessed via the local file
     system or SFTP. If the folder is located on a remote SFTP server,
     the files are cached to avoid having to retransfer the files.
 
@@ -96,7 +96,17 @@ class CachedDataFolder:
     """
     def __init__(self,
                  path,
-                 pattern="*"):
+                 pattern="*",
+                 n_files=None):
+        """
+        Create a CachedDataFolder.
+
+        Args:
+            path: Path to the folder to load.
+            pattern: Glob pattern to select the files.
+            n_files: If given only the first ``n_files`` matching files will
+                be loaded.
+        """
         if isinstance(path, PurePath):
             files = path.iterdir()
             self.host = ""
@@ -122,10 +132,12 @@ class CachedDataFolder:
                     raise InvalidURL(f"The provided protocol '{url.scheme}' "
                                     f" is not supported.")
         self.files = list(filter(lambda f: f.match(pattern), files))
+        if n_files:
+            self.files = self.files[:n_files]
 
     def download(self, pool):
         """
-        This method download all files in the folder to populate the
+        This method downloads all files in the folder to populate the
         cache.
 
         Args:
