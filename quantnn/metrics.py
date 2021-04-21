@@ -401,7 +401,7 @@ class ScatterPlot(Metric):
         self.mask = None
 
         self.y_pred = {}
-        self.y = []
+        self.y = {}
 
     @property
     def name(self):

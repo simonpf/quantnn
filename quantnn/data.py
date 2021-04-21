@@ -116,7 +116,7 @@ class DataFolder:
             n_files: How many of the file from the folder.
         """
         self.path = path
-        self.folder = CachedDataFolder(path)
+        self.folder = CachedDataFolder(path, n_files=n_files)
         self.dataset_factory = dataset_factory
         self.args = args
         self.kwargs = kwargs
