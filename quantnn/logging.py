@@ -293,6 +293,8 @@ class TrainingLogger:
              of: The total number of batches in the epoch or None
                   if that is unknown.
         """
+        if of is None:
+            of = 0
         if self.progress is None:
             self.progress = Progress(
                 TextColumn("Epoch {task.fields[epoch]}"),
@@ -308,9 +310,6 @@ class TrainingLogger:
                 auto_refresh=False,
                 transient=True
             )
-
-            if of is None:
-                of = 0
             fields={
                 "epoch": 1,
                 "running_mean": np.nan,
@@ -382,6 +381,8 @@ class TrainingLogger:
             for k in losses:
                 self.train_losses[k] += n_samples * losses[k]
 
+        if of is None:
+            of = 0
         self.progress.update(
             task_id=self.task,
             completed=self.i_train_batch,
