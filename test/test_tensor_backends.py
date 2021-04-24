@@ -46,6 +46,32 @@ def test_concatenate(backend):
         assert np.all(np.isclose(xs[:, i], i))
 
 @pytest.mark.parametrize("backend", TENSOR_BACKENDS)
+def test_expand_dims(backend):
+    x = np.arange(10)
+    x = backend.from_numpy(x)
+    y = backend.expand_dims(x, 0)
+
+    assert len(y.shape) == len(x.shape) + 1
+    assert y.shape[0] == 1
+
+@pytest.mark.parametrize("backend", TENSOR_BACKENDS)
+def test_exp(backend):
+    x = np.arange(10).astype(np.float)
+    x = backend.from_numpy(x)
+    y = backend.exp(x)
+
+    assert np.all(np.isclose(backend.to_numpy(y), np.exp(x)))
+
+@pytest.mark.parametrize("backend", TENSOR_BACKENDS)
+def test_log(backend):
+    x = np.arange(10).astype(np.float)
+    x = backend.from_numpy(x)
+    y = backend.log(x)
+
+    assert np.all(np.isclose(backend.to_numpy(y), np.log(x)))
+
+
+@pytest.mark.parametrize("backend", TENSOR_BACKENDS)
 def test_pad_zeros(backend):
     x = np.arange(10)
     x = backend.from_numpy(x)

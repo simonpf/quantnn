@@ -23,6 +23,7 @@ from quantnn.logging import TrainingLogger
 import quantnn.data
 from quantnn.backends.pytorch import PyTorch
 from quantnn.generic import to_array
+from quantnn.utils import apply
 
 activations = {
     "elu": nn.ELU,
@@ -139,12 +140,13 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
     over the given inputs but applies an optional masking to the
     inputs, in order to allow the handling of missing values.
     """
-    def __init__(self, mask=None):
+    def __init__(self, bins, mask=None):
         """
         Args:
             mask: All values that are smaller than or equal to this value will
                  be excluded from the calculation of the loss.
         """
+        self.bins = apply(lambda x: torch.Tensor(x).to(torch.float), bins)
         if mask is None:
             reduction = "mean"
             self.mask = mask
@@ -153,23 +155,29 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
             self.mask = np.float32(mask)
         super().__init__(reduction=reduction)
 
-    def __call__(self, y_pred, y_true):
+    def __call__(self, y_pred, y_true, key=None):
         """Evaluate the loss."""
-        y_true = y_true.long()
-        if len(y_true.shape) == len(y_pred.shape):
+        if key is None:
+            bins = self.bins.to(y_pred.device)
+        else:
+            bins = self.bins[key].to(y_pred.device)
+        y_cat = torch.bucketize(y_true, bins[1:-1])
+
+        if len(y_cat.shape) == len(y_pred.shape):
+            y_cat = y_cat.squeeze(1)
             y_true = y_true.squeeze(1)
 
         if self.mask is None:
             return nn.CrossEntropyLoss.__call__(
                 self,
                 y_pred,
-                y_true
+                y_cat
             )
         else:
             loss = nn.CrossEntropyLoss.__call__(
                 self,
                 y_pred,
-                torch.relu(y_true)
+                y_cat,
             )
             mask = (y_true > self.mask).to(dtype=y_pred.dtype)
             return (loss * mask).sum() / mask.sum()
@@ -219,7 +227,7 @@ class QuantileLoss(nn.Module):
     def to(self, device):
         self.quantiles = self.quantiles.to(device)
 
-    def __call__(self, y_pred, y_true):
+    def __call__(self, y_pred, y_true, key=None):
         """
         Compute the mean quantile loss for given inputs.
 
@@ -407,7 +415,8 @@ class PytorchModel:
                     y,
                     loss,
                     adversarial_training,
-                    metrics=None):
+                    metrics=None,
+                    transformation=None):
         """
         Performs a single training step and returns a dictionary of
         losses for every output.
@@ -440,6 +449,12 @@ class PytorchModel:
         total_loss = None
         # Loop over keys in prediction.
         for k in y_pred:
+
+            if isinstance(transformation, dict):
+                transform_k = transformation[k]
+            else:
+                transform_k = transformation
+
             y_pred_k = y_pred[k]
             try:
                 y_k = y[k]
@@ -449,13 +464,26 @@ class PytorchModel:
                 )
             shape = y_pred_k.size()
             shape = (shape[0], 1) + shape[2:]
+
             y_k = y_k.reshape(shape)
-            l = loss(y_pred_k, y_k)
+            if transform_k is None:
+                y_k_t = y_k
+                y_pred_k_t = y_pred_k
+            else:
+                y_k_t = transform_k(y_k)
+                y_pred_k_t = transform_k.invert(y_pred_k)
+            y_k_t = y_k_t.reshape(shape)
+
+            if k == "__loss__":
+                l = loss(y_pred_k, y_k_t)
+            else:
+                l = loss(y_pred_k, y_k_t, k)
 
             cache = {}
-            if metrics is not None:
-                for m in metrics:
-                    m.process_batch(k, y_pred_k, y_k, cache=cache)
+            with torch.no_grad():
+                if metrics is not None:
+                    for m in metrics:
+                        m.process_batch(k, y_pred_k_t, y_k, cache=cache)
 
             losses[k] = l.item()
 
@@ -478,7 +506,8 @@ class PytorchModel:
               device='cpu',
               logger=None,
               metrics=None,
-              keys=None):
+              keys=None,
+              transformation=None):
         """
         Train the network.
 
@@ -574,7 +603,8 @@ class PytorchModel:
                         y = y.to(device)
 
                     total_loss, losses = self._train_step(
-                        x, y, loss, adversarial_training
+                        x, y, loss, adversarial_training,
+                        transformation=transformation
                     )
                     total_loss.backward()
                     optimizer.step()
@@ -596,7 +626,7 @@ class PytorchModel:
                         x_adv = self._make_adversarial_samples(x)
                         self.optimizer.zero_grad(**_ZERO_GRAD_ARGS)
                         total_loss, _ = self._train_step(
-                            x_adv, y, loss, adversarial_training
+                            x_adv, y, loss, adversarial_training, transformation
                         )
                         total_loss.backward()
                         optimizer.step()
@@ -626,7 +656,11 @@ class PytorchModel:
                             else:
                                 y = y.to(device)
 
-                            total_loss, losses = self._train_step(x, y, loss, None, metrics=metrics)
+                            total_loss, losses = self._train_step(
+                                x, y, loss, None,
+                                metrics=metrics,
+                                transformation=transformation
+                            )
 
                             # Log validation step.
                             if hasattr(validation_data, "__len__"):

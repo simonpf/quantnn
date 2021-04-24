@@ -8,7 +8,7 @@ data.
 """
 from collections import OrderedDict
 from collections.abc import Iterable, Mapping
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import logging
 import multiprocessing
 from queue import Queue
@@ -128,7 +128,7 @@ class DataFolder:
         self.epoch_queue = Queue()
         self.active_queue = Queue()
         self.cache = OrderedDict()
-        self.pool = ProcessPoolExecutor(max_workers=self.n_workers)
+        self.pool = ThreadPoolExecutor(max_workers=self.n_workers)
         self.folder.download(self.pool)
         self._prefetch()
 

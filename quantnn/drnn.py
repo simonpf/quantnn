@@ -13,6 +13,7 @@ import quantnn.density as qd
 from quantnn.common import QuantnnException
 from quantnn.generic import softmax, to_array, get_array_module
 from quantnn.neural_network_model import NeuralNetworkModel
+from quantnn.utils import apply
 
 def _to_categorical(y, bins):
     """
@@ -44,7 +45,11 @@ class DRNN(NeuralNetworkModel):
                  n_inputs=None,
                  model=(3, 128, "relu")):
         self.bins = bins
-        super().__init__(n_inputs, bins.size - 1, model)
+        if isinstance(self.bins, dict):
+            n_bins = next(iter(self.bins.items()))[1].size
+        else:
+            n_bins = self.bins.size
+        super().__init__(n_inputs, n_bins - 1, model)
         self.bin_axis = self.model.channel_axis
 
 
@@ -70,7 +75,7 @@ class DRNN(NeuralNetworkModel):
                 y_val = _to_categorical(y_val, self.bins[:-1])
                 validation_data = x_val, y_val
 
-        loss = self.backend.CrossEntropyLoss(mask=mask)
+        loss = self.backend.CrossEntropyLoss(self.bins, mask=mask)
         return super().train(training_data,
                              loss,
                              validation_data=validation_data,
@@ -84,16 +89,23 @@ class DRNN(NeuralNetworkModel):
                              metrics=metrics,
                              keys=keys)
 
-    def predict(self, x):
-        y_pred = self.model.predict(x)
-
+    def _post_process_prediction(self, y_pred, bins=None, key=None):
+        module = get_array_module(y_pred)
+        if bins is not None:
+            bins = to_array(module, bins, like=y_pred)
+        else:
+            bins = to_array(module, self.bins[key], like=y_pred)
         module = get_array_module(y_pred)
         y_pred = softmax(module, y_pred, axis=1)
-        bins = to_array(module, self.bins, like=y_pred)
+        bins = to_array(module, bins, like=y_pred)
         y_pred = qd.normalize(y_pred, bins, bin_axis=self.bin_axis)
-        return y_pred
+        return (y_pred)
 
-    def posterior_mean(self, x=None, y_pred=None):
+    def predict(self, x):
+        y_pred = self.model.predict(x)
+        return apply(self._post_process_prediction, y_pred, self.bins)
+
+    def posterior_mean(self, x=None, y_pred=None, key=None):
         r"""
         Computes the posterior mean by computing the first moment of the
         predicted posterior PDF.
@@ -116,12 +128,16 @@ class DRNN(NeuralNetworkModel):
             y_pred = self.predict(x)
 
         module = get_array_module(y_pred)
-        bins = to_array(module, self.bins, like=y_pred)
+        if key is None:
+            bins = to_array(module, self.bins, like=y_pred)
+        else:
+            bins = to_array(module, self.bins[key], like=y_pred)
         return qd.posterior_mean(y_pred,
                                  bins,
                                  bin_axis=self.bin_axis)
 
-    def posterior_quantiles(self, x=None, y_pred=None, quantiles=None):
+    def posterior_quantiles(self, x=None, y_pred=None, quantiles=None,
+                            key=None):
         r"""
         Compute the posterior quantiles.
 
@@ -149,13 +165,16 @@ class DRNN(NeuralNetworkModel):
                              "calculate the posterior quantiles.")
 
         module = get_array_module(y_pred)
-        bins = to_array(module, self.bins, like=y_pred)
+        if key is None:
+            bins = to_array(module, self.bins, like=y_pred)
+        else:
+            bins = to_array(module, self.bins[key], like=y_pred)
         return qd.posterior_quantiles(y_pred,
                                       bins,
                                       quantiles,
                                       bin_axis=self.bin_axis)
 
-    def probability_larger_than(self, x=None, y=None, y_pred=None):
+    def probability_larger_than(self, x=None, y=None, y_pred=None, key=None):
         """
         Calculate probability of the output value being larger than a
         given numeric threshold.
@@ -183,13 +202,16 @@ class DRNN(NeuralNetworkModel):
             raise ValueError("The y argument must be provided to compute the "
                              " probability.")
         module = get_array_module(y_pred)
-        bins = to_array(module, self.bins, like=y_pred)
+        if key is None:
+            bins = to_array(module, self.bins, like=y_pred)
+        else:
+            bins = to_array(module, self.bins[key], like=y_pred)
         return qd.probability_larger_than(y_pred,
                                           bins,
                                           y,
                                           bin_axis=self.bin_axis)
 
-    def sample_posterior(self, x=None, y_pred=None, n_samples=1):
+    def sample_posterior(self, x=None, y_pred=None, n_samples=1, key=None):
         r"""
         Generates :code:`n` samples from the predicted posterior distribution
         for the input vector :code:`x`. The sampling is performed by the
@@ -217,7 +239,10 @@ class DRNN(NeuralNetworkModel):
                                  " provided.")
             y_pred = self.predict(x)
         module = get_array_module(y_pred)
-        bins = to_array(module, self.bins, like=y_pred)
+        if key is None:
+            bins = to_array(module, self.bins, like=y_pred)
+        else:
+            bins = to_array(module, self.bins[key], like=y_pred)
         return qd.sample_posterior(y_pred,
                                    bins,
                                    n_samples=n_samples,

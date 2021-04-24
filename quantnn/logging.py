@@ -34,8 +34,11 @@ class Progress(rich.progress.Progress):
     """
     def __init__(self, *args, **kwargs):
         self.table = None
-        super().__init__(*args, refresh_per_second=2, **kwargs)
-        super().start()
+        try:
+            super().__init__(*args, refresh_per_second=2, **kwargs)
+            super().start()
+        except rich.errors.LiveError:
+            pass
 
     def _make_table(self,
                     epoch,
@@ -285,6 +288,10 @@ class TrainingLogger:
             self.progress.console.print(self.progress.table)
             self.progress = None
 
+    def __del__(self):
+        if self.progress is not None:
+            self.progress.stop()
+
     def start_progress_bar(self, of=None):
         """
         Starts the progress bar for the current epoch.
@@ -424,6 +431,19 @@ class TrainingLogger:
         if losses is not None and len(losses) > 1:
             for k in losses:
                 self.val_losses[k] += n_samples * losses[k]
+
+        if of is None:
+            of = 0
+        self.progress.update(
+            task_id=self.task,
+            completed=self.i_val_batch,
+            running_mean=self.val_loss / self.val_samples,
+            batch=self.i_val_batch,
+            of=of,
+            batch_loss=total_loss
+        )
+        if (self.i_val_batch % self.log_rate) == 0:
+            self.progress.refresh()
 
     def epoch(self, learning_rate=None, metrics=None):
         """

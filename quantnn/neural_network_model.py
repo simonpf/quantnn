@@ -149,7 +149,8 @@ class NeuralNetworkModel:
               device='cpu',
               logger=None,
               metrics=None,
-              keys=None):
+              keys=None,
+              transformation=None):
         """
         Train model on given training data.
 
@@ -219,7 +220,8 @@ class NeuralNetworkModel:
                                             device=device,
                                             logger=logger,
                                             metrics=metrics,
-                                            keys=keys)
+                                            keys=keys,
+                                            transformation=transformation)
         if hasattr(logger, "history"):
             self.training_history = logger.history
 

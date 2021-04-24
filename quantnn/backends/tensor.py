@@ -188,6 +188,30 @@ class TensorBackend(ABC):
         """
 
     @abstractclassmethod
+    def exp(cls, tensor):
+        """
+        Element-wise exponential.
+        Args:
+            tensor: The rank-k tensor of which to compute the exponential.
+
+        Returns:
+            Tensor of same rank as ``tensor`` containing the exponential of
+            all elements in ``tensor``.
+        """
+
+    @abstractclassmethod
+    def log(cls, tensor):
+        """
+        Element-wise natural logarithm.
+        Args:
+            tensor: The rank-k tensor of which to compute the logarithm.
+
+        Returns:
+            Tensor of same rank as ``tensor`` containing the natural logarithm
+            of all elements in ``tensor``.
+        """
+
+    @abstractclassmethod
     def pad_zeros(cls, tensor, n, dimension):
         """
         Pad a given tensor with zeros along a given dimension.

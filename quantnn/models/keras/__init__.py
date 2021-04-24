@@ -82,8 +82,9 @@ class CrossEntropyLoss(SparseCategoricalCrossentropy):
     Wrapper class around Keras' SparseCategoricalCrossEntropy class to support 
     masking of input values.
     """
-    def __init__(self, mask=None):
+    def __init__(self, bins, mask=None):
         self.__name__ = "CrossEntropyLoss"
+        self.bins = bins
         self.mask = mask
         super().__init__(reduction="none", from_logits=True)
 
@@ -609,7 +610,8 @@ class KerasModel:
               device='cpu',
               logger=None,
               metrics=None,
-              keys=None):
+              keys=None,
+              transformation=None):
 
         # Input data.
         if type(training_data) == tuple:

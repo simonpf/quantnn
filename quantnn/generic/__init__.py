@@ -118,11 +118,13 @@ def to_array(module, array, like=None):
             if like is None:
                 return array
             else:
-                return array.to(
+                t = array.to(
                     device=like.device,
-                    dtype=like.dtype,
-                    requires_grad=like.requires_grad
+                    dtype=like.dtype
                 )
+                if like.requires_grad:
+                    t.requires_grad = True
+                return t
 
         if like is not None:
             return module.tensor(array,

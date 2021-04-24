@@ -7,7 +7,9 @@ import numpy as np
 
 from quantnn import set_default_backend
 from quantnn.qrnn import QRNN
+from quantnn.drnn import DRNN, _to_categorical
 from quantnn.models.pytorch import QuantileLoss, CrossEntropyLoss
+from quantnn.transformations import Log10
 
 def test_quantile_loss():
     """
@@ -45,10 +47,11 @@ def test_cross_entropy_loss():
     set_default_backend("pytorch")
 
     y_pred = torch.rand(10, 10, 10)
-    y = torch.ones(10, 1, 10, dtype=torch.long)
-    y[:, 0, :] = 5
+    y = torch.ones(10, 1, 10)
+    bins = np.linspace(0, 1, 11)
+    y[:, 0, :] = 0.55
 
-    loss = CrossEntropyLoss(mask=-1.0)
+    loss = CrossEntropyLoss(bins, mask=-1.0)
     ref = -y_pred[:, 5, :] + torch.log(torch.exp(y_pred).sum(1))
     assert np.all(np.isclose(loss(y_pred, y).detach().numpy(),
                              ref.mean().detach().numpy()))
@@ -60,7 +63,7 @@ def test_cross_entropy_loss():
     assert np.all(np.isclose(loss(y_pred, y).detach().numpy(),
                              ref.mean().detach().numpy()))
 
-def test_training_with_dataloader():
+def test_qrnn_training_with_dataloader():
     """
     Ensure that training with a pytorch dataloader works.
     """
@@ -77,7 +80,7 @@ def test_training_with_dataloader():
     qrnn.train(training_loader, n_epochs=1)
 
 
-def test_training_with_dict():
+def test_qrnn_training_with_dict():
     """
     Ensure that training with batch objects as dicts works.
     """
@@ -99,7 +102,7 @@ def test_training_with_dict():
     qrnn.train(batched_data, n_epochs=1)
 
 
-def test_training_with_dict_and_keys():
+def test_qrnn_training_with_dict_and_keys():
     """
     Ensure that training with batch objects as dicts and provided keys
     argument works.
@@ -121,7 +124,7 @@ def test_training_with_dict_and_keys():
     qrnn = QRNN(np.linspace(0.05, 0.95, 10), n_inputs=x.shape[1])
     qrnn.train(batched_data, n_epochs=1, keys=("x", "y"))
 
-def test_training_metrics():
+def test_qrnn_training_metrics():
     """
     Ensure that training with a single target and metrics works.
     """
@@ -142,6 +145,29 @@ def test_training_metrics():
     qrnn = QRNN(np.linspace(0.05, 0.95, 10), n_inputs=x.shape[1])
     metrics = ["Bias", "MeanSquaredError"]
     qrnn.train(batched_data, n_epochs=1, keys=("x", "y"), metrics=metrics)
+
+def test_drnn_training_metrics():
+    """
+    Ensure that training with a single target and metrics works.
+    """
+    set_default_backend("pytorch")
+
+    x = np.random.rand(1024, 16)
+    bins = np.arange(128 * 8)
+    y = _to_categorical(np.random.rand(1024), bins)
+
+    batched_data = [
+        {
+            "x": torch.tensor(x[i * 128: (i + 1) * 128]),
+            "x_2": torch.tensor(x[i * 128: (i + 1) * 128]),
+            "y": torch.tensor(y[i * 128: (i + 1) * 128]),
+        }
+        for i in range(1024 // 128)
+    ]
+
+    drnn = DRNN(np.linspace(0.05, 0.95, 10), n_inputs=x.shape[1])
+    metrics = ["Bias", "MeanSquaredError"]
+    drnn.train(batched_data, n_epochs=1, keys=("x", "y"), metrics=metrics)
 
 
 def test_training_multiple_outputs():
@@ -183,7 +209,7 @@ def test_training_multiple_outputs():
 
     model = MultipleOutputModel()
     qrnn = QRNN(np.linspace(0.05, 0.95, 11), model=model)
-    qrnn.train(batched_data, n_epochs=10, keys=("x", "y"))
+    qrnn.train(batched_data, n_epochs=5, keys=("x", "y"))
 
 def test_training_metrics_multi():
     """
@@ -208,7 +234,7 @@ def test_training_metrics_multi():
                 "y_2": y_2
             }
 
-    x = np.random.rand(2024, 16)
+    x = np.random.rand(2024, 16) + 1.0
     y = np.sum(x, axis=-1)
     y += np.random.normal(size=y.size)
 
@@ -228,5 +254,51 @@ def test_training_metrics_multi():
     metrics = ["Bias", "CRPS", "MeanSquaredError", "ScatterPlot", "CalibrationPlot"]
     qrnn.train(batched_data,
                validation_data=batched_data,
-               n_epochs=30, keys=("x", "y"),
+               n_epochs=5, keys=("x", "y"),
                metrics=metrics)
+
+def test_training_transformation():
+    """
+    Ensure that training in transformed space works.
+    """
+    set_default_backend("pytorch")
+
+    class MultipleOutputModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.hidden = nn.Linear(16, 128)
+            self.head_1 = nn.Linear(128, 11)
+            self.head_2 = nn.Linear(128, 11)
+
+        def forward(self, x):
+            x = torch.relu(self.hidden(x))
+            y_1 = self.head_1(x)
+            y_2 = self.head_2(x)
+            return {
+                "y_1": y_1,
+                "y_2": y_2
+            }
+
+    x = np.random.rand(2024, 16) + 1.0
+    y = np.sum(x, axis=-1)
+    y += np.random.normal(size=y.size)
+
+    batched_data = [
+        {
+            "x": torch.tensor(x[i * 128: (i + 1) * 128]),
+            "y": {
+                "y_1": torch.tensor(y[i * 128: (i + 1) * 128]),
+                "y_2": torch.tensor(y[i * 128: (i + 1) * 128] ** 2)
+            }
+        }
+        for i in range(1024 // 128)
+    ]
+
+    model = MultipleOutputModel()
+    qrnn = QRNN(np.linspace(0.05, 0.95, 11), model=model)
+    metrics = ["Bias", "CRPS", "MeanSquaredError", "ScatterPlot", "CalibrationPlot"]
+    qrnn.train(batched_data,
+               validation_data=batched_data,
+               n_epochs=5, keys=("x", "y"),
+               metrics=metrics,
+               transformation=Log10())

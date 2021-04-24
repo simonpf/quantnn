@@ -84,6 +84,14 @@ class PyTorch(TensorBackend):
         return tensor.unsqueeze(dimension_index)
 
     @classmethod
+    def exp(cls, tensor):
+        return tensor.exp()
+
+    @classmethod
+    def log(cls, tensor):
+        return tensor.log()
+
+    @classmethod
     def pad_zeros(cls, tensor, n, dimension_index):
         import torch
         n_dims = len(tensor.shape)

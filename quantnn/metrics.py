@@ -144,6 +144,8 @@ class Bias(ScalarMetric):
 
     def process_batch(self, key, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
+        if hasattr(self.model, "_post_process_prediction"):
+            y_pred = self.model._post_process_prediction(y_pred, key=key)
 
         self.keys.add(key)
 
@@ -156,7 +158,7 @@ class Bias(ScalarMetric):
         if cache is not None and "y_mean" in cache:
             y_mean = cache["y_mean"]
         else:
-            y_mean = self.model.posterior_mean(y_pred=y_pred)
+            y_mean = self.model.posterior_mean(y_pred=y_pred, key=key)
         if cache is not None:
             cache["y_mean"] = y_mean
 
@@ -202,6 +204,8 @@ class MeanSquaredError(ScalarMetric):
 
     def process_batch(self, key, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
+        if hasattr(self.model, "_post_process_prediction"):
+            y_pred = self.model._post_process_prediction(y_pred, key=key)
 
         self.keys.add(key)
 
@@ -214,7 +218,7 @@ class MeanSquaredError(ScalarMetric):
         if cache is not None and "y_mean" in cache:
             y_mean = cache["y_mean"]
         else:
-            y_mean = self.model.posterior_mean(y_pred=y_pred)
+            y_mean = self.model.posterior_mean(y_pred=y_pred, key=key)
         if cache is not None:
             cache["y_mean"] = y_mean
 
@@ -260,6 +264,8 @@ class CRPS(ScalarMetric):
 
     def process_batch(self, key, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
+        if hasattr(self.model, "_post_process_prediction"):
+            y_pred = self.model._post_process_prediction(y_pred, key=key)
 
         self.keys.add(key)
 
@@ -297,12 +303,13 @@ class CalibrationPlot(Metric):
     Produces a plot of  the calibration of the predicted quantiles of a QRNN.
     Currently only works in combination with the tensor board logger.
     """
-    def __init__(self):
+    def __init__(self, quantiles=None):
         self.calibration = {}
         self.n_samples = {}
         self._model = None
         self.tensor_backend = None
         self.mask = None
+        self.quantiles = None
 
     @property
     def name(self):
@@ -318,12 +325,18 @@ class CalibrationPlot(Metric):
 
     def process_batch(self, key, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
+        if hasattr(self.model, "_post_process_prediction"):
+            y_pred = self.model._post_process_prediction(y_pred, key=key)
 
-        if not hasattr(self._model, "quantiles"):
-            return None
-
-        quantiles = self._model.quantiles
-        n_quantiles = len(quantiles)
+        if hasattr(self._model, "quantiles"):
+            quantiles = self._model.quantiles
+        else:
+            quantiles = self.quantiles
+            if quantiles is None:
+                quantiles = np.linspace(0.05, 0.95, 10)
+            y_pred = self.model.posterior_quantiles(y_pred=y_pred,
+                                                    quantiles=quantiles,
+                                                    key=key)
 
         if self.tensor_backend == None:
             self.tensor_backend = get_tensor_backend(y_pred)
@@ -332,7 +345,12 @@ class CalibrationPlot(Metric):
         # Get deviation from mean from cache
         # if not already computed.
         axes = list(range(len(y.shape)))
-        del axes[self._model.quantile_axis]
+        if hasattr(self.model, "quantile_axis"):
+            q_axis = self.model.quantile_axis
+        else:
+            q_axis = self.model.bin_axis
+
+        del axes[q_axis]
 
         if self.mask is not None:
             valid_pixels = xp.as_type(y > self.mask, y)
@@ -366,22 +384,25 @@ class CalibrationPlot(Metric):
         Return:
             matplotlib Figure object containing the calibration plot.
         """
-        if not hasattr(self._model, "quantiles"):
-            return None
+        if hasattr(self._model, "quantiles"):
+            quantiles = self._model.quantiles
+        else:
+            quantiles = self.quantiles
+            if quantiles is None:
+                quantiles = np.linspace(0.05, 0.95, 10)
 
         xp = self.tensor_backend
         n_right = self.calibration[key]
         n_total = self.n_samples[key]
 
         cal = xp.to_numpy(n_right / n_total)
-        qs = self.model.quantiles
 
         plt.ioff()
         f, ax = plt.subplots(1, 1, dpi=100)
 
         x = np.linspace(0, 1, 21)
         ax.plot(x, x, ls="--", c="k")
-        ax.plot(qs, cal)
+        ax.plot(quantiles, cal)
 
         ax.set_xlim([0, 1])
         ax.set_ylim([0, 1])
@@ -437,6 +458,8 @@ class ScatterPlot(Metric):
 
     def process_batch(self, key, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
+        if hasattr(self.model, "_post_process_prediction"):
+            y_pred = self.model._post_process_prediction(y_pred, key=key)
 
         if self.tensor_backend == None:
             self.tensor_backend = get_tensor_backend(y_pred)
@@ -447,7 +470,7 @@ class ScatterPlot(Metric):
         if cache is not None and "y_mean" in cache:
             y_mean = cache["y_mean"]
         else:
-            y_mean = self.model.posterior_mean(y_pred=y_pred)
+            y_mean = self.model.posterior_mean(y_pred=y_pred, key=key)
             if cache is not None:
                 cache["y_mean"] = y_mean
 

@@ -26,7 +26,7 @@ def _check_dimensions(n_y, n_b):
         raise InvalidDimensionException(
             f"Dimensions of the provided array 'y_pred' ({n_y}) do not match the"
             f" provided number of bin edges ({n_b}). Note that there should be"
-            f" one more bin edge than bins values is 'y_pred'."
+            f" one more bin edge than bin values in 'y_pred'."
         )
 
 def normalize(y_pred,
