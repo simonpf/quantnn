@@ -6,11 +6,35 @@ quantnn.models.pytorch.logging
 This module contains training logger that are specific for the
 PyTorch backend.
 """
+import torch
 from torch.utils.tensorboard.writer import SummaryWriter
+from torch.utils.tensorboard.summary import hparams
 import xarray as xr
+
 
 from quantnn.logging import TrainingLogger
 
+class SummaryWriter(SummaryWriter):
+    """
+    Specialization of torch original SummaryWriter that overrides 'add_params'
+    to avoid creating a new directory to store the hyperparameters.
+
+    Source: https://github.com/pytorch/pytorch/issues/32651
+    """
+    def add_hparams(self, hparam_dict, metric_dict, epoch):
+        torch._C._log_api_usage_once("tensorboard.logging.add_hparams")
+        if type(hparam_dict) is not dict or type(metric_dict) is not dict:
+            raise TypeError('hparam_dict and metric_dict should be dictionary.')
+        exp, ssi, sei = hparams(hparam_dict, metric_dict)
+
+        logdir = self._get_file_writer().get_logdir()
+
+        with SummaryWriter(log_dir=logdir) as w_hp:
+            w_hp.file_writer.add_summary(exp)
+            w_hp.file_writer.add_summary(ssi)
+            w_hp.file_writer.add_summary(sei)
+            for k, v in metric_dict.items():
+                w_hp.add_scalar(k, v, epoch)
 
 class TensorBoardLogger(TrainingLogger):
     """
@@ -126,15 +150,18 @@ class TensorBoardLogger(TrainingLogger):
         """
         Called to signal the end of the training to the logger.
         """
-        # Extract metric values for hyper parameters.
         if self.attributes is not None:
-            metrics = {}
-            for name, v in self.history.variables.items():
-                if name == "epochs":
-                    continue
-                if len(v.dims) == 1:
-                    metrics[name] = v.data[-1]
-            self.writer.add_hparams(self.attributes, metrics)
-            self.writer.flush()
+            if self.i_epoch >= self.n_epochs:
+                metrics = {}
+                for name, v in self.history.variables.items():
+                    if name == "epochs":
+                        continue
+                    if len(v.dims) == 1:
+                        metrics[name + "_final"] = v.data[-1]
+                self.writer.add_hparams(self.attributes, {}, self.i_epoch)
+                self.writer.flush()
 
 
+    def __del__(self):
+        # Extract metric values for hyper parameters.
+        super().__del__()

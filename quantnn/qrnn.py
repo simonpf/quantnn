@@ -93,7 +93,8 @@ class QRNN(NeuralNetworkModel):
     def __init__(self,
                  quantiles,
                  n_inputs=None,
-                 model=(3, 128, "relu")):
+                 model=(3, 128, "relu"),
+                 transformation=None):
         """
         Create a QRNN model.
 
@@ -118,6 +119,7 @@ class QRNN(NeuralNetworkModel):
                          self.n_outputs,
                          model)
         self.quantile_axis = self.model.channel_axis
+        self.transformation = transformation
 
     def train(self,
               training_data,
@@ -131,8 +133,7 @@ class QRNN(NeuralNetworkModel):
               mask=None,
               logger=None,
               metrics=None,
-              keys=None,
-              transformation=None):
+              keys=None):
         """
         Train the underlying neural network model on given training data.
 
@@ -178,7 +179,7 @@ class QRNN(NeuralNetworkModel):
                              logger=logger,
                              metrics=metrics,
                              keys=keys,
-                             transformation=transformation)
+                             transformation=self.transformation)
 
     def predict(self, x):
         r"""
@@ -198,7 +199,11 @@ class QRNN(NeuralNetworkModel):
             Rank-k tensor ``y_pred`` containing the quantiles of each input
             sample along its first dimension
         """
-        return self.model.predict(x)
+        def transform(x, t):
+            return t
+        if self.transformation is None:
+            return self.model.predict(x)
+        return apply(transform, self.model.predict(x), self.transformation)
 
     def cdf(self, x=None, y_pred=None, **kwargs):
         r"""
@@ -547,3 +552,8 @@ class QRNN(NeuralNetworkModel):
                                           quantile_axis=self.quantile_axis)
 
         return apply(calculate_quantiles, y_pred)
+
+    def __setstate__(self, state):
+        super().__setstate__(state)
+        if not hasattr(self, "transformation"):
+            self.transformation = None

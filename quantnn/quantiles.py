@@ -21,10 +21,12 @@ from quantnn.generic import (arange,
                              concatenate,
                              pad_zeros,
                              as_type,
+                             cumtrapz,
                              trapz,
                              reshape,
                              zeros,
-                             ones)
+                             ones,
+                             cumsum)
 
 
 def cdf(y_pred,
@@ -762,3 +764,135 @@ def quantile_loss(y_pred,
     loss += mask * ((1.0 - quantiles) * dy)
     loss += -(1.0 - mask) * (quantiles * dy)
     return loss
+
+def correct_a_priori(y_pred, quantiles, r_x, r_y, quantile_axis=1):
+    """
+    Calculate the probability that the predicted value is less
+    than a given threshold value ``y`` given a tensor of predicted
+    quantiles ``y_pred``.
+
+    The probability :math:`P(Y > y)` is calculated by using the predicted
+    quantiles to estimate the CDF of the posterior distribution, which
+    is then interpolate to the given threshold value.
+
+    Args:
+        y_pred: A rank-k tensor containing the predicted quantiles along the
+            axis specified by ``quantile_axis``.
+        quantiles: The quantile fractions corresponding to the predicted
+            quantiles.
+        y: The threshold value.
+        quantile_axis: The axis in y_pred along which the predicted quantiles
+             are found.
+
+    Returns:
+         A rank-(k-1) tensor containing for each set of predicted quantiles the
+         estimated probability of the true value being larger than the given
+         threshold.
+    """
+    if len(y_pred.shape) == 1:
+        quantile_axis = 0
+    xp = get_array_module(y_pred)
+    n_dims = len(y_pred.shape)
+    x_pdf, y_pdf = pdf(y_pred, quantiles, quantile_axis=quantile_axis)
+
+    selection = [slice(0, None)] * len(y_pred.shape)
+    selection_c = copy(selection)
+    selection_c[quantile_axis] = 0
+    selection_c = tuple(selection_c)
+    selection_r = copy(selection)
+    selection_r[quantile_axis] = 1
+    selection_r = tuple(selection_r)
+    dy = (y_pred[selection_r] - y_pred[selection_c])
+    dy /= (quantiles[1] - quantiles[0])
+    x_cdf_l = y_pred[selection_c] - 2.0 * quantiles[0] * dy
+    x_cdf_l = expand_dims(xp, x_cdf_l, quantile_axis)
+
+    selection_l = copy(selection)
+    selection_l[quantile_axis] = -2
+    selection_l = tuple(selection_l)
+    selection_c = copy(selection)
+    selection_c[quantile_axis] = -1
+    selection_c = tuple(selection_c)
+    dy = (y_pred[selection_c] - y_pred[selection_l])
+    dy /= (quantiles[-1] - quantiles[-2])
+    x_cdf_r = y_pred[selection_c] + 2.0 * (1.0 - quantiles[-1]) * dy
+    x_cdf_r = expand_dims(xp, x_cdf_r, quantile_axis)
+
+    x_cdf = concatenate(xp, [x_cdf_l, y_pred, x_cdf_r], quantile_axis)
+
+    selection_l = [slice(0, None)] * n_dims
+    selection_l[quantile_axis] = slice(0, -1)
+    selection_l = tuple(selection_l)
+    selection_r = [slice(0, None)] * n_dims
+    selection_r[quantile_axis] = slice(1, None)
+    selection_r = tuple(selection_r)
+
+    x_index = [slice(0, None)] * n_dims
+    x_index[quantile_axis] = 0
+
+    n = x_pdf.shape[quantile_axis]
+
+    r_shape = [1] * n_dims
+    r_shape[quantile_axis] = -1
+    r_x = r_x.reshape(r_shape)
+    r_y = r_y.reshape(r_shape)
+
+    r_x_l = r_x[selection_l]
+    r_x_r = r_x[selection_r]
+    r_y_l = r_y[selection_l]
+    r_y_r = r_y[selection_r]
+
+    # Copy leftmost value from original cdf
+    selection = [slice(0, None)] * n_dims
+    selection[quantile_axis] = slice(0, 1)
+    selection = tuple(selection)
+    y_pdf_new = []
+
+    for i in range(0, n):
+        x_index[quantile_axis] = slice(i, i + 1)
+        index = tuple(x_index)
+        x = x_pdf[index]
+        y = y_pdf[index]
+
+        mask = as_type(xp, (r_x_l < x) * (r_x_r >= x), x)
+        r = r_y_l * (r_x_r - x) * mask
+        r += r_y_r * (x - r_x_l) * mask
+        r /= (mask * (r_x_r - r_x_l) + (1.0 - mask))
+        r = expand_dims(xp, r.sum(quantile_axis), quantile_axis)
+
+        y_pdf_new.append(y * r)
+
+    y_pdf_new = concatenate(xp, y_pdf_new, quantile_axis)
+
+    selection = [slice(0, None)] * n_dims
+    selection[quantile_axis] = slice(1, -1)
+    selection = tuple(selection)
+    y_cdf_new = cumtrapz(xp, y_pdf_new[selection], x_cdf, quantile_axis)
+
+    selection = [slice(0, None)] * n_dims
+    selection[quantile_axis] = slice(-1, None)
+    selection = tuple(selection)
+    y_cdf_new = y_cdf_new / y_cdf_new[selection]
+
+
+    x_cdf_l = x_cdf[selection_l]
+    x_cdf_r = x_cdf[selection_r]
+    y_cdf_new_l = y_cdf_new[selection_l]
+    y_cdf_new_r = y_cdf_new[selection_r]
+
+    y_pred_new = []
+
+    for i in range(0, len(quantiles)):
+        q = quantiles[i]
+
+        mask = as_type(xp, (y_cdf_new_l < q) * (y_cdf_new_r  >= q), x_cdf_l)
+        y_new = x_cdf_l * (y_cdf_new_r - q) * mask
+        y_new += x_cdf_r * (q - y_cdf_new_l) * mask
+        y_new /= (mask * (y_cdf_new_r - y_cdf_new_l) + (1.0 - mask))
+        y_new = expand_dims(xp, y_new.sum(quantile_axis), quantile_axis)
+
+        y_pred_new.append(y_new)
+
+
+    y_pred_new = concatenate(xp, y_pred_new, quantile_axis)
+    return y_pred_new

@@ -295,10 +295,14 @@ def test_training_transformation():
     ]
 
     model = MultipleOutputModel()
-    qrnn = QRNN(np.linspace(0.05, 0.95, 11), model=model)
+    transformations = {
+        "y_1": Log10(),
+        "y_2": None
+    }
+    qrnn = QRNN(np.linspace(0.05, 0.95, 11), model=model,
+                transformation=transformations)
     metrics = ["Bias", "CRPS", "MeanSquaredError", "ScatterPlot", "CalibrationPlot"]
     qrnn.train(batched_data,
                validation_data=batched_data,
                n_epochs=5, keys=("x", "y"),
-               metrics=metrics,
-               transformation=Log10())
+               metrics=metrics)

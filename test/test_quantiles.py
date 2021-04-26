@@ -11,7 +11,8 @@ from quantnn.quantiles import (cdf, pdf, pdf_binned, posterior_mean, crps,
                                sample_posterior,
                                sample_posterior_gaussian,
                                quantile_loss,
-                               posterior_quantiles)
+                               posterior_quantiles,
+                               correct_a_priori)
 
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_cdf(xp):
@@ -641,3 +642,24 @@ def test_posterior_quantiles(xp):
     y_q = posterior_quantiles(y_pred, quantiles, new_quantiles,
                               quantile_axis=1)
     assert np.all(np.isclose(y_pred[:, -1, :], y_q))
+
+@pytest.mark.parametrize("xp", pytest.backends)
+def test_correct_a_priori(xp):
+    """
+    Test correcting for a priori.
+    """
+
+    #
+    # 1D predictions
+    #
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    y_pred = arange(xp, 1.0, 9.1, 1.0)
+    r_x = to_array(xp, [-1, 4.99, 5.01, 10])
+    r_y = to_array(xp, [1, 1, 1, 1])
+
+    y_pred_new = correct_a_priori(y_pred, quantiles, r_x, r_y)
+
+    assert np.isclose(y_pred_new[0], y_pred[0])
+    assert np.isclose(y_pred_new[-1], y_pred[-1])
+

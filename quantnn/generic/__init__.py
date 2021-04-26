@@ -497,13 +497,14 @@ def cumtrapz(module, y, x, dimension):
     selection_r = tuple(selection_r)
 
     dx = x[selection_r] - x[selection_l]
+    print("DX: ", dx.shape, y.shape)
 
     if dx.shape[dimension] == y.shape[dimension]:
         y_int = cumsum(module, dx * y, dimension)
     elif dx.shape[dimension] == y.shape[dimension] - 1:
         y_int = cumsum(module, 0.5 * (dx * y[selection_l] + dx * y[selection_r]), dimension)
     else:
-        InvalidDimensionException(
+        raise InvalidDimensionException(
             "To integrate y over x, x must have exactly as many or one more "
             "along dimension."
         )

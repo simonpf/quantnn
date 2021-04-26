@@ -261,7 +261,7 @@ def _get_default_optimizer(model):
     """
     The default optimizer. Currently set to Adam optimizer.
     """
-    optimizer = optim.Adam(model.parameters(), lr=0.01)
+    optimizer = optim.Adam(model.parameters(), lr=0.0005)
     return optimizer
 
 def _get_default_scheduler(optimizer):
