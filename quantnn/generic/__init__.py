@@ -497,7 +497,6 @@ def cumtrapz(module, y, x, dimension):
     selection_r = tuple(selection_r)
 
     dx = x[selection_r] - x[selection_l]
-    print("DX: ", dx.shape, y.shape)
 
     if dx.shape[dimension] == y.shape[dimension]:
         y_int = cumsum(module, dx * y, dimension)
