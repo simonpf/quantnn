@@ -222,7 +222,10 @@ class MeanSquaredError(ScalarMetric):
         if cache is not None:
             cache["y_mean"] = y_mean
 
-        y = y.squeeze()
+        if len(y.shape) == (y_pred.shape):
+            axis = np.where(y.shape != y_pred.shape)[0][0]
+            y = y.squeeze(axis)
+
         dy = y_mean - y
 
         # Calculate the squared error.
@@ -278,7 +281,14 @@ class CRPS(ScalarMetric):
         y = xp.to_numpy(y)
 
         if self.mask is not None:
-            crps = crps[y.squeeze() > self.mask]
+            if hasattr(self.model, "quantile_axis"):
+                dist_axis = self.model.quantile_axis
+            else:
+                dist_axis = self.model.bins_axis
+            if len(y.shape) > len(crps.shape):
+                y = y.squeeze(dist_axis)
+
+            crps = crps[y > self.mask]
 
         crps_batches.append(crps.ravel())
 
@@ -478,7 +488,13 @@ class ScatterPlot(Metric):
         y = xp.to_numpy(y)
 
         if self.mask is not None:
-            y_mean = y_mean[y.squeeze() > self.mask]
+            if hasattr(self.model, "quantile_axis"):
+                dist_axis = self.model.quantile_axis
+            else:
+                dist_axis = self.model.bins_axis
+            if len(y.shape) > len(y_mean.shape):
+                y = y.squeeze(dist_axis)
+            y_mean = y_mean[y > self.mask]
             y = y[y > self.mask]
 
         self.y_pred.setdefault(key, []).append(y_mean.ravel())

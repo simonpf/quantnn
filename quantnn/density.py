@@ -324,3 +324,58 @@ def sample_posterior(y_pred,
     mask = as_type(xp, y_r < samples, y_r)
     results += mask * b_r
     return results
+
+def crps(y_pdf,
+         y_true,
+         bins,
+         bin_axis=1):
+    r"""
+    Compute the Continuous Ranked Probability Score (CRPS) for a given
+    discrete probability density.
+
+    This function uses a piece-wise linear fit to the approximate posterior
+    CDF obtained from the predicted quantiles in :code:`y_pred` to
+    approximate the continuous ranked probability score (CRPS):
+
+    .. math::
+        CRPS(\mathbf{y}, x) = \int_{-\infty}^\infty (F_{x | \mathbf{y}}(x')
+        - \mathrm{1}_{x < x'})^2 \: dx'
+
+    Args:
+
+        y_pred: Tensor containing the predicted discrete posterior PDF
+            with the probabilities for different bins oriented along axis
+            ``bin_axis`` in ``y_pred``.
+
+        y_true: Array containing the true point values.
+
+        bins: 1D array containing the bins corresponding to the probabilities
+            in ``y_pred``.
+
+    Returns:
+
+        Tensor of rank :math:`k - 1` containing the CRPS values for each of the
+        predictions in ``y_pred``.
+    """
+    if len(y_pdf.shape) == 1:
+        bin_axis = 0
+    n_y = y_pdf.shape[bin_axis]
+    n_b = len(bins)
+    n_dims = len(y_pdf.shape)
+    _check_dimensions(n_y, n_b)
+    xp = get_array_module(y_pdf)
+    n = len(y_pdf.shape)
+
+    y_cdf = cdf(y_pdf, bins, bins_axis=bin_axis)
+
+    x = 0.5 * (bins[1:] + bins[:-1])
+    shape = [1] * n_dims
+    x = x.reshape(shape)
+
+    if len(y_true.shape) < len(y_pdf.shape):
+        y_true = y_true.unsqueeze(bins_axis)
+
+    i = as_type(xp, x > y_true, y_cdf)
+    crps = trapz(xp, (y_cdf - i) ** 2, x)
+    return crps
+

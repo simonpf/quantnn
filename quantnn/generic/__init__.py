@@ -484,9 +484,10 @@ def cumtrapz(module, y, x, dimension):
        given dimension.
     """
     n = len(y.shape)
-    x_shape = [1] * n
-    x_shape[dimension] = -1
-    x = reshape(module, x, x_shape)
+    if len(x.shape) < n:
+        x_shape = [1] * n
+        x_shape[dimension] = -1
+        x = reshape(module, x, x_shape)
 
     selection = [slice(0, None)] * n
     selection_l = selection[:]
@@ -592,4 +593,49 @@ def softmax(module, x, axis=None):
         return jax.nn.softmax(x, axis=axis)
     elif module == tf:
         return module.nn.softmax(x, axis=axis)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+
+def exp(module, x):
+    """
+    Calculate exponential of tensor.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        x: The tensor to calculate the exponential of.
+
+    Return:
+         exp(x)
+    """
+    _import_modules()
+    if module in [np, ma]:
+        return np.exp(x)
+    elif module == torch:
+        return torch.exp(x)
+    elif module == jnp:
+        return jnp.exp(x)
+    elif module == tf:
+        return tf.math.exp(x)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+def tensordot(module, x, y, axes):
+    """
+    Calculate exponential of tensor.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        x: The tensor to calculate the exponential of.
+
+    Return:
+         exp(x)
+    """
+    _import_modules()
+    if module in [np, ma]:
+        return np.tensordot(x, y, axes)
+    elif module == torch:
+        return torch.tensordot(x, y, axes)
+    elif module == jnp:
+        return jnp.tensordot(x, y, axes)
+    elif module == tf:
+        return tf.tensordot(x, y, axes)
     raise UnknownModuleException(f"Module {module.__name__} not supported.")

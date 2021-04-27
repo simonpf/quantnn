@@ -5,6 +5,7 @@ import einops as eo
 import numpy as np
 import pytest
 from quantnn.generic import sample_uniform, to_array, arange, reshape
+from quantnn.a_priori import LookupTable
 from quantnn.quantiles import (cdf, pdf, pdf_binned, posterior_mean, crps,
                                probability_less_than,
                                probability_larger_than,
@@ -267,8 +268,8 @@ def test_crps(xp):
     #
 
     quantiles = arange(xp, 0.1, 0.91, 0.1)
-    y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> w q', w=10)
-    y_true = 4.9 * xp.ones(10)
+    y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> w q', w=2)
+    y_true = 4.9 * xp.ones(2)
     scores = crps(y_pred, quantiles, y_true)
     assert np.all(np.isclose(scores, 0.86 * xp.ones_like(scores)))
 
@@ -648,6 +649,9 @@ def test_correct_a_priori(xp):
     """
     Test correcting for a priori.
     """
+    r_x = to_array(xp, [-1, 4.99, 5.01, 10])
+    r_y = to_array(xp, [1, 1, 1, 1])
+    r = LookupTable(r_x, r_y)
 
     #
     # 1D predictions
@@ -655,11 +659,56 @@ def test_correct_a_priori(xp):
 
     quantiles = arange(xp, 0.1, 0.91, 0.1)
     y_pred = arange(xp, 1.0, 9.1, 1.0)
-    r_x = to_array(xp, [-1, 4.99, 5.01, 10])
-    r_y = to_array(xp, [1, 1, 1, 1])
 
-    y_pred_new = correct_a_priori(y_pred, quantiles, r_x, r_y)
+    y_pred_new = correct_a_priori(y_pred, quantiles, r)
 
     assert np.isclose(y_pred_new[0], y_pred[0])
     assert np.isclose(y_pred_new[-1], y_pred[-1])
 
+    #
+    # 2D predictions
+    #
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> h q', h=10)
+    r_x = to_array(xp, [-1, 4.99, 5.01, 10])
+    r_y = to_array(xp, [1, 1, 1, 1])
+
+    y_pred_new = correct_a_priori(y_pred, quantiles, r)
+
+    assert np.isclose(y_pred_new[0, 0], y_pred[0, 0])
+    assert np.isclose(y_pred_new[-1, -1], y_pred[-1, -1])
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> q h', h=10)
+    r_x = to_array(xp, [-1, 4.99, 5.01, 10])
+    r_y = to_array(xp, [1, 1, 1, 1])
+
+    y_pred_new = correct_a_priori(y_pred, quantiles, r, quantile_axis=0)
+
+    assert np.isclose(y_pred_new[0, 0], y_pred[0, 0])
+    assert np.isclose(y_pred_new[-1, -1], y_pred[-1, -1])
+
+    #
+    # 2D predictions
+    #
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> h q w', h=10, w=10)
+    r_x = to_array(xp, [-1, 4.99, 5.01, 10])
+    r_y = to_array(xp, [1, 1, 1, 1])
+
+    y_pred_new = correct_a_priori(y_pred, quantiles, r)
+
+    assert np.isclose(y_pred_new[0, 0, 0], y_pred[0, 0, 0])
+    assert np.isclose(y_pred_new[-1, -1, -1], y_pred[-1, -1, -1])
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> w h q', h=10, w=10)
+    r_x = to_array(xp, [-1, 4.99, 5.01, 10])
+    r_y = to_array(xp, [1, 1, 1, 1])
+
+    y_pred_new = correct_a_priori(y_pred, quantiles, r, quantile_axis=-1)
+
+    assert np.isclose(y_pred_new[0, 0, 0], y_pred[0, 0, 0])
+    assert np.isclose(y_pred_new[-1, -1, -1], y_pred[-1, -1, -1])

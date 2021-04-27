@@ -7,7 +7,7 @@ from quantnn.generic import (get_array_module, to_array, sample_uniform,
                              sample_gaussian, numel, concatenate, expand_dims,
                              pad_zeros, pad_zeros_left, as_type, arange,
                              reshape, trapz, cumsum, cumtrapz, ones, zeros,
-                             softmax)
+                             softmax, exp, tensordot)
 
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_get_array_module(backend):
@@ -171,3 +171,10 @@ def test_zeros(backend):
 def test_softmax(backend):
     array = arange(backend, 0, 10.1, 1)
     y = softmax(backend, array)
+
+@pytest.mark.parametrize("backend", pytest.backends)
+def test_tensordot(backend):
+    x = arange(backend, 0, 10.1, 1)
+    y = ones(backend, 11)
+    z = tensordot(backend, x, y, ((0,), (0,)))
+    assert np.isclose(z, 55)

@@ -306,3 +306,36 @@ def test_training_transformation():
                validation_data=batched_data,
                n_epochs=5, keys=("x", "y"),
                metrics=metrics)
+
+def test_qrnn_training_metrics_conv():
+    """
+    E
+
+    """
+    set_default_backend("pytorch")
+
+    x_train = np.random.rand(1024, 16, 32, 32,)
+    y_train = np.random.rand(1024, 1, 32, 32)
+    x_val = np.random.rand(32, 16, 32, 32,)
+    y_val = np.random.rand(32, 1, 32, 32)
+
+    training_data = torch.utils.data.TensorDataset(torch.tensor(x_train),
+                                                   torch.tensor(y_train))
+    training_loader = torch.utils.data.DataLoader(training_data, batch_size=128)
+    validation_data = torch.utils.data.TensorDataset(torch.tensor(x_val),
+                                                     torch.tensor(y_val))
+    validation_loader = torch.utils.data.DataLoader(validation_data, batch_size=1)
+
+    model = nn.Sequential(
+        nn.Conv2d(16, 10, 1)
+    )
+
+    qrnn = QRNN(np.linspace(0.05, 0.95, 10), model=model)
+
+    metrics = ["Bias", "MeanSquaredError", "CRPS", "CalibrationPlot", "ScatterPlot"]
+    qrnn.train(training_loader,
+               validation_data=validation_loader,
+               n_epochs=2,
+               metrics=metrics,
+               batch_size=1,
+               mask=-1)

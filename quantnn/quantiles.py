@@ -132,6 +132,7 @@ def pdf(y_pred,
     xp = get_array_module(y_pred)
 
     x_cdf, y_cdf = cdf(y_pred, quantiles, quantile_axis=quantile_axis)
+
     output_shape = list(x_cdf.shape)
     output_shape[quantile_axis] += 1
     n_dims = len(output_shape)
@@ -163,8 +164,10 @@ def pdf(y_pred,
     # Assemble y-tensor
     #
 
+    shape = [1] * n_dims
+    shape[quantile_axis] = -1
     y_pdf = 1.0 / (x_cdf[selection_r] - x_cdf[selection_l])
-    y_pdf = y_pdf * (y_cdf[1:] - y_cdf[:-1])
+    y_pdf = y_pdf * (y_cdf[1:] - y_cdf[:-1]).reshape(shape)
     y_pdf = pad_zeros(xp, y_pdf, 1, quantile_axis)
 
     return x_pdf, y_pdf
@@ -430,7 +433,7 @@ def crps(y_pred, quantiles, y_true, quantile_axis=1):
         CRPS(\mathbf{y}, x) = \int_{-\infty}^\infty (F_{x | \mathbf{y}}(x')
         - \mathrm{1}_{x < x'})^2 \: dx'
 
-    Args::
+    Args:
 
         y_pred: Tensor containing the predicted quantiles along the axis
                 specified by ``quantile_axis``.
@@ -765,29 +768,18 @@ def quantile_loss(y_pred,
     loss += -(1.0 - mask) * (quantiles * dy)
     return loss
 
-def correct_a_priori(y_pred, quantiles, r_x, r_y, quantile_axis=1):
+def correct_a_priori(y_pred, quantiles, r, quantile_axis=1):
     """
-    Calculate the probability that the predicted value is less
-    than a given threshold value ``y`` given a tensor of predicted
-    quantiles ``y_pred``.
-
-    The probability :math:`P(Y > y)` is calculated by using the predicted
-    quantiles to estimate the CDF of the posterior distribution, which
-    is then interpolate to the given threshold value.
+    Correct predicted quantiles for a priori.
 
     Args:
-        y_pred: A rank-k tensor containing the predicted quantiles along the
-            axis specified by ``quantile_axis``.
-        quantiles: The quantile fractions corresponding to the predicted
-            quantiles.
-        y: The threshold value.
-        quantile_axis: The axis in y_pred along which the predicted quantiles
-             are found.
-
-    Returns:
-         A rank-(k-1) tensor containing for each set of predicted quantiles the
-         estimated probability of the true value being larger than the given
-         threshold.
+        y_pred: Rank-k tensor containing the predicted quantiles along
+            the axis given by 'quantile_axis'.
+        quantiles: Rank-1 tensor containing the quantile fractions that
+            correspond to the predicted quantiles.
+        r: A priori density ratio to use to correct the observations.
+        quantile_axis: The axis along which the quantile are oriented
+            in 'y_pred'.
     """
     if len(y_pred.shape) == 1:
         quantile_axis = 0
@@ -830,39 +822,7 @@ def correct_a_priori(y_pred, quantiles, r_x, r_y, quantile_axis=1):
     x_index = [slice(0, None)] * n_dims
     x_index[quantile_axis] = 0
 
-    n = x_pdf.shape[quantile_axis]
-
-    r_shape = [1] * n_dims
-    r_shape[quantile_axis] = -1
-    r_x = r_x.reshape(r_shape)
-    r_y = r_y.reshape(r_shape)
-
-    r_x_l = r_x[selection_l]
-    r_x_r = r_x[selection_r]
-    r_y_l = r_y[selection_l]
-    r_y_r = r_y[selection_r]
-
-    # Copy leftmost value from original cdf
-    selection = [slice(0, None)] * n_dims
-    selection[quantile_axis] = slice(0, 1)
-    selection = tuple(selection)
-    y_pdf_new = []
-
-    for i in range(0, n):
-        x_index[quantile_axis] = slice(i, i + 1)
-        index = tuple(x_index)
-        x = x_pdf[index]
-        y = y_pdf[index]
-
-        mask = as_type(xp, (r_x_l < x) * (r_x_r >= x), x)
-        r = r_y_l * (r_x_r - x) * mask
-        r += r_y_r * (x - r_x_l) * mask
-        r /= (mask * (r_x_r - r_x_l) + (1.0 - mask))
-        r = expand_dims(xp, r.sum(quantile_axis), quantile_axis)
-
-        y_pdf_new.append(y * r)
-
-    y_pdf_new = concatenate(xp, y_pdf_new, quantile_axis)
+    y_pdf_new = r(x_pdf, dist_axis=quantile_axis) * y_pdf
 
     selection = [slice(0, None)] * n_dims
     selection[quantile_axis] = slice(1, -1)
@@ -873,7 +833,6 @@ def correct_a_priori(y_pred, quantiles, r_x, r_y, quantile_axis=1):
     selection[quantile_axis] = slice(-1, None)
     selection = tuple(selection)
     y_cdf_new = y_cdf_new / y_cdf_new[selection]
-
 
     x_cdf_l = x_cdf[selection_l]
     x_cdf_r = x_cdf[selection_r]
@@ -892,7 +851,6 @@ def correct_a_priori(y_pred, quantiles, r_x, r_y, quantile_axis=1):
         y_new = expand_dims(xp, y_new.sum(quantile_axis), quantile_axis)
 
         y_pred_new.append(y_new)
-
 
     y_pred_new = concatenate(xp, y_pred_new, quantile_axis)
     return y_pred_new
