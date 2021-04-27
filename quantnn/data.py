@@ -98,7 +98,8 @@ class DataFolder:
                  args=None,
                  kwargs=None,
                  n_workers=4,
-                 n_files=None):
+                 n_files=None,
+                 iterations_per_file=1):
         """
         Create new DataFolder object.
 
@@ -120,6 +121,7 @@ class DataFolder:
         self.dataset_factory = dataset_factory
         self.args = args
         self.kwargs = kwargs
+        self.iterations_per_file = iterations_per_file
 
         self.n_workers = n_workers
         self.files = self.folder.files
@@ -204,7 +206,8 @@ class DataFolder:
         """
         for _ in self.files:
             dataset = self.get_next_dataset()
-            yield from iterate_dataset(dataset)
+            for i in range(self.iterations_per_file):
+                yield from iterate_dataset(dataset)
 
 class LazyDataFolder:
     """
