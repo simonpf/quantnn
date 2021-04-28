@@ -26,6 +26,7 @@ from quantnn.common import (QuantnnException,
                             ModelNotSupported,
                             InputDataError)
 from quantnn.logging import TrainingLogger
+from quantnn.utils import serialize_dataset, deserialize_dataset
 import quantnn.metrics
 
 _DEFAULT_BACKEND = None
@@ -278,8 +279,18 @@ class NeuralNetworkModel:
         dct = copy.copy(self.__dict__)
         dct.pop("_model")
         dct["backend"] = self.backend.__name__
+
+        if "training_history" in dct:
+            history = dct["training_history"]
+            dct["training_history"] = serialize_dataset(history)
+
         return dct
 
     def __setstate__(self, state):
         self.__dict__ = state
         self._model = None
+
+        if hasattr(self, "training_history"):
+            history = self.training_history
+            if isinstance(history, bytes):
+                self.training_history = deserialize_dataset(history)
