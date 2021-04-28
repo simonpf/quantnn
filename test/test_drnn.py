@@ -39,7 +39,7 @@ class TestDrnn:
         self.x_train = (x_train - x_mean) / x_sigma
         self.bins = np.logspace(0, 3, 21)
         y = np.load(os.path.join(path, "y_train.npy"))
-        self.y_train = drnn._to_categorical(y, self.bins)
+        self.y_train = y
 
     def test_to_categorical(self):
         """

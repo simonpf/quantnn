@@ -84,12 +84,15 @@ class CrossEntropyLoss(SparseCategoricalCrossentropy):
     """
     def __init__(self, bins, mask=None):
         self.__name__ = "CrossEntropyLoss"
-        self.bins = bins
+        self.bins = [b for b in bins]
         self.mask = mask
         super().__init__(reduction="none", from_logits=True)
 
 
     def __call__(self, y_true, y_pred, sample_weight=None):
+        y_true = tf.raw_ops.Bucketize(input=y_true,
+                                      boundaries=self.bins[1:-1],
+                                      name=None)
         if self.mask is not None:
             y_m = tf.where(y_true > self.mask,
                            y_true,
