@@ -149,7 +149,7 @@ class Bias(ScalarMetric):
 
         self.keys.add(key)
 
-        if self.tensor_backend == None:
+        if self.tensor_backend is None:
             self.tensor_backend = get_tensor_backend(y_pred)
         xp = self.tensor_backend
 
@@ -214,7 +214,7 @@ class MeanSquaredError(ScalarMetric):
 
         self.keys.add(key)
 
-        if self.tensor_backend == None:
+        if self.tensor_backend is None:
             self.tensor_backend = get_tensor_backend(y_pred)
         xp = self.tensor_backend
 
@@ -280,7 +280,7 @@ class CRPS(ScalarMetric):
 
         self.keys.add(key)
 
-        if self.tensor_backend == None:
+        if self.tensor_backend is None:
             self.tensor_backend = get_tensor_backend(y_pred)
         xp = self.tensor_backend
 
@@ -356,7 +356,7 @@ class CalibrationPlot(Metric):
                                                     quantiles=quantiles,
                                                     key=key)
 
-        if self.tensor_backend == None:
+        if self.tensor_backend is None:
             self.tensor_backend = get_tensor_backend(y_pred)
         xp = self.tensor_backend
 
@@ -442,6 +442,7 @@ class CalibrationPlot(Metric):
             return next(iter(figures.items()))[1]
         return figures
 
+
 ################################################################################
 # HeatMap
 ################################################################################
@@ -479,7 +480,7 @@ class ScatterPlot(Metric):
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
-        if self.tensor_backend == None:
+        if self.tensor_backend is None:
             self.tensor_backend = get_tensor_backend(y_pred)
         xp = self.tensor_backend
 
@@ -557,6 +558,101 @@ class ScatterPlot(Metric):
              case of a multi-target model returns a dict of figures.
         """
         figures = {k: self.make_scatter_plot(k) for k in self.y_pred}
+        if len(figures) == 1:
+            return next(iter(figures.items()))[1]
+        return figures
+
+class QuantileFunction(Metric):
+    """
+    Produces a plot of the distribution of the quantile function for true predictions.
+    """
+    def __init__(self):
+        self.qfs = {}
+        self._model = None
+        self.tensor_backend = None
+        self.mask = None
+
+    @property
+    def name(self):
+        return "Quantile function"
+
+    @property
+    def model(self):
+        return self._model
+
+    @model.setter
+    def model(self, model):
+        self._model = model
+
+    def process_batch(self, key, y_pred, y, cache=None):
+        _check_input_dimensions(y_pred, y)
+        if hasattr(self.model, "_post_process_prediction"):
+            y_pred = self.model._post_process_prediction(y_pred, key=key)
+
+
+        qf = self.model.quantile_function(y_pred=y_pred,
+                                          y_true=y,
+                                          key=key)
+
+        if self.tensor_backend is None:
+            self.tensor_backend = get_tensor_backend(y_pred)
+        xp = self.tensor_backend
+
+        qf = xp.to_numpy(qf)
+        if self.mask is not None:
+            y = xp.to_numpy(y)
+            if hasattr(self.model, "quantile_axis"):
+                dist_axis = self.model.quantile_axis
+            else:
+                dist_axis = self.model.bin_axis
+            if len(y.shape) > len(qf.shape):
+                y = y.squeeze(dist_axis)
+            self.qfs.setdefault(key, []).append(qf[y > self.mask])
+        else:
+            self.qfs.setdefault(key, []).append(qf.ravel())
+
+    def reset(self):
+        self.qfs = {}
+
+    def make_quantile_function_plot(self, key):
+        """
+        Plots the calibration for a given target key using
+        matplotlib.
+
+        Args:
+            key: Name of the target for which to plot the
+                 calibration.
+
+        Return:
+            matplotlib Figure object containing the calibration plot.
+        """
+        bins = np.linspace(0, 1, 41)
+        qfs = np.concatenate(self.qfs[key])
+        y, _ = np.histogram(self.qfs[key], bins=bins, density=True)
+
+        plt.ioff()
+        f, ax = plt.subplots(1, 1, dpi=100)
+
+        x = 0.5 * (bins[1:] + bins[:-1])
+        ax.plot(x, y)
+        #ax.plot(x, 1.0 * np.ones(x.size), ls="--", c="k")
+
+        #ax.set_xlim([0, 1])
+        #ax.set_ylim([0, 2])
+        ax.set_xlabel("F^{-1}(y_true)")
+        ax.set_ylabel("p(F(y_true))")
+
+        f.tight_layout()
+        return f
+
+    def get_figures(self):
+        """
+        Return:
+             In the case of a single-target model directly returns the
+             matplotlib figure containing the calibration plot. In the
+             case of a multi-target model returns a dict of figures.
+        """
+        figures = {k: self.make_quantile_function_plot(k) for k in self.qfs}
         if len(figures) == 1:
             return next(iter(figures.items()))[1]
         return figures

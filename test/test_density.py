@@ -11,7 +11,8 @@ from quantnn.density import (posterior_quantiles,
                              posterior_mean,
                              probability_larger_than,
                              probability_less_than,
-                             sample_posterior)
+                             sample_posterior,
+                             quantile_function)
 
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_posterior_cdf(xp):
@@ -94,12 +95,13 @@ def test_posterior_quantiles(xp):
 
     bins = arange(xp, 1.0, 11.1, 0.1)
     y_pred = 0.1 * xp.ones(100)
-    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    quantiles = arange(xp, 0.01, 0.91, 0.01)
 
     y_q = posterior_quantiles(y_pred, bins, quantiles)
 
-    assert np.isclose(y_q[0], 2.0)
+    assert np.isclose(y_q[0], 1.1)
     assert np.isclose(y_q[-1], 10.0)
+
 
     #
     # 2D predictions
@@ -110,19 +112,20 @@ def test_posterior_quantiles(xp):
 
     y_q = posterior_quantiles(y_pred, bins, quantiles)
 
-    assert np.all(np.isclose(y_q[:, 0], 2.0))
+    print(y_q)
+    assert np.all(np.isclose(y_q[:, 0], 1.1))
     assert np.all(np.isclose(y_q[:, -1], 10.0))
     assert y_q.shape[0] == 10
-    assert y_q.shape[1] == 9
+    assert y_q.shape[1] == 90
 
     y_pred = 0.1 * xp.ones(100)
     y_pred = eo.repeat(y_pred, 'q -> q w', w=10)
 
     y_q = posterior_quantiles(y_pred, bins, quantiles, bin_axis=0)
 
-    assert np.all(np.isclose(y_q[0, :], 2.0))
+    assert np.all(np.isclose(y_q[0, :], 1.1))
     assert np.all(np.isclose(y_q[-1, :], 10.0))
-    assert y_q.shape[0] == 9
+    assert y_q.shape[0] == 90
     assert y_q.shape[1] == 10
 
     #
@@ -134,19 +137,19 @@ def test_posterior_quantiles(xp):
 
     y_q = posterior_quantiles(y_pred, bins, quantiles, bin_axis=-1)
 
-    assert np.all(np.isclose(y_q[:, :, 0], 2.0))
+    assert np.all(np.isclose(y_q[:, :, 0], 1.1))
     assert np.all(np.isclose(y_q[:, :, -1], 10.0))
     assert y_q.shape[0] == 10
-    assert y_q.shape[-1] == 9
+    assert y_q.shape[-1] == 90
 
     y_pred = 0.1 * xp.ones(100)
     y_pred = eo.repeat(y_pred, 'q -> q v w', v=10, w=10)
 
     y_q = posterior_quantiles(y_pred, bins, quantiles, bin_axis=0)
 
-    assert np.all(np.isclose(y_q[0, :, :], 2.0))
+    assert np.all(np.isclose(y_q[0, :, :], 1.1))
     assert np.all(np.isclose(y_q[-1, :, :], 10.0))
-    assert y_q.shape[0] == 9
+    assert y_q.shape[0] == 90
     assert y_q.shape[-1] == 10
 
 @pytest.mark.parametrize("xp", pytest.backends)
@@ -307,3 +310,28 @@ def test_sample_posterior(xp):
 
     samples = sample_posterior(y_pred, bins, n_samples=1000, bin_axis=-1)
     assert np.isclose(samples.mean(), 6.0, rtol=1e-1)
+
+@pytest.mark.parametrize("xp", pytest.backends)
+def test_quantile_function(xp):
+
+    #
+    # 1D predictions
+    #
+
+    bins = arange(xp, 0.0, 10.1, 1.0)
+    y_pred = xp.ones(10)
+    y_true = arange(xp, 0.0, 0.1, 1.0) + 0.001
+
+    qf = quantile_function(y_pred, y_true, bins)
+    print(qf)
+
+    #
+    # 1D predictions
+    #
+
+    bins = arange(xp, 0.0, 10.1, 1.0)
+    y_pred = xp.ones((21, 10))
+    y_true = arange(xp, 0.0, 10.1, 0.5)
+
+    qf = quantile_function(y_pred, y_true, bins)
+    print(qf)

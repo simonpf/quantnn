@@ -472,7 +472,6 @@ class PytorchModel:
             else:
                 y_k_t = transform_k(y_k)
                 y_pred_k_t = transform_k.invert(y_pred_k)
-            y_k_t = y_k_t.reshape(shape)
 
             if k == "__loss__":
                 l = loss(y_pred_k, y_k_t)
@@ -601,6 +600,8 @@ class PytorchModel:
                             y[k] = y[k].to(device)
                     else:
                         y = y.to(device)
+                    if adversarial_training is not None:
+                        x.requires_grad = True
 
                     total_loss, losses = self._train_step(
                         x, y, loss, adversarial_training,
@@ -622,11 +623,12 @@ class PytorchModel:
                     epoch_error += total_loss.item() * n
 
                     # Perform adversarial training step if required.
-                    if adversarial_training is not None:
-                        x_adv = self._make_adversarial_samples(x)
+                    if adversarial_training is not None and x.requires_grad:
+                        x_adv = self._make_adversarial_samples(x, adversarial_training)
                         self.optimizer.zero_grad(**_ZERO_GRAD_ARGS)
                         total_loss, _ = self._train_step(
-                            x_adv, y, loss, adversarial_training, transformation
+                            x_adv, y, loss, adversarial_training,
+                            transformation=transformation
                         )
                         total_loss.backward()
                         optimizer.step()

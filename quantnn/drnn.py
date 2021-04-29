@@ -94,12 +94,16 @@ class DRNN(NeuralNetworkModel):
         if bins is not None:
             bins = to_array(module, bins, like=y_pred)
         else:
-            bins = to_array(module, self.bins[key], like=y_pred)
+            if isinstance(self.bins, dict):
+                bins = to_array(module, self.bins[key], like=y_pred)
+            else:
+                bins = to_array(module, self.bins, like=y_pred)
+
         module = get_array_module(y_pred)
         y_pred = softmax(module, y_pred, axis=1)
         bins = to_array(module, bins, like=y_pred)
         y_pred = qd.normalize(y_pred, bins, bin_axis=self.bin_axis)
-        return (y_pred)
+        return y_pred
 
     def predict(self, x):
         y_pred = self.model.predict(x)
@@ -131,7 +135,10 @@ class DRNN(NeuralNetworkModel):
         if key is None:
             bins = to_array(module, self.bins, like=y_pred)
         else:
-            bins = to_array(module, self.bins[key], like=y_pred)
+            if isinstance(self.bins, dict):
+                bins = to_array(module, self.bins[key], like=y_pred)
+            else:
+                bins = to_array(module, self.bins, like=y_pred)
         return qd.posterior_mean(y_pred,
                                  bins,
                                  bin_axis=self.bin_axis)
@@ -168,7 +175,10 @@ class DRNN(NeuralNetworkModel):
         if key is None:
             bins = to_array(module, self.bins, like=y_pred)
         else:
-            bins = to_array(module, self.bins[key], like=y_pred)
+            if isinstance(self.bins, dict):
+                bins = to_array(module, self.bins[key], like=y_pred)
+            else:
+                bins = to_array(module, self.bins, like=y_pred)
         return qd.posterior_quantiles(y_pred,
                                       bins,
                                       quantiles,
@@ -205,7 +215,10 @@ class DRNN(NeuralNetworkModel):
         if key is None:
             bins = to_array(module, self.bins, like=y_pred)
         else:
-            bins = to_array(module, self.bins[key], like=y_pred)
+            if isinstance(self.bins, dict):
+                bins = to_array(module, self.bins[key], like=y_pred)
+            else:
+                bins = to_array(module, self.bins, like=y_pred)
         return qd.probability_larger_than(y_pred,
                                           bins,
                                           y,
@@ -242,8 +255,51 @@ class DRNN(NeuralNetworkModel):
         if key is None:
             bins = to_array(module, self.bins, like=y_pred)
         else:
-            bins = to_array(module, self.bins[key], like=y_pred)
+            if isinstance(self.bins, dict):
+                bins = to_array(module, self.bins[key], like=y_pred)
+            else:
+                bins = to_array(module, self.bins, like=y_pred)
         return qd.sample_posterior(y_pred,
                                    bins,
                                    n_samples=n_samples,
                                    bin_axis=self.bin_axis)
+
+    def quantile_function(self, x=None, y_pred=None, y_true=None, key=None):
+        r"""
+        Generates :code:`n` samples from the predicted posterior distribution
+        for the input vector :code:`x`. The sampling is performed by the
+        inverse CDF method using the predicted CDF obtained from the
+        :code:`cdf` member function.
+
+        Arguments:
+
+            x: Rank-k tensor containing the input data with
+                the input channels (or features) for each sample located
+                along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
+            n: The number of samples to generate.
+
+        Returns:
+
+            Rank-k tensor containing the random samples for each input sample
+            along the first dimension.
+        """
+        if y_pred is None:
+            if x is None:
+                raise ValueError("One of the input arguments x or y_pred must be "
+                                 " provided.")
+            y_pred = self.predict(x)
+        module = get_array_module(y_pred)
+        if key is None:
+            bins = to_array(module, self.bins, like=y_pred)
+        else:
+            if isinstance(self.bins, dict):
+                bins = to_array(module, self.bins[key], like=y_pred)
+            else:
+                bins = to_array(module, self.bins, like=y_pred)
+        return qd.quantile_function(y_pred,
+                                    y_true,
+                                    bins,
+                                    bin_axis=self.bin_axis)

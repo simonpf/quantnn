@@ -38,7 +38,7 @@ class Log:
             self.xp = xp
         else:
             xp = self.xp
-        return xp.log(x)
+        return xp.log(x.double()).float()
 
     def invert(self, y):
         if self.xp is None:
@@ -46,4 +46,17 @@ class Log:
             self.xp = xp
         else:
             xp = self.xp
-        return xp.exp(y)
+        return xp.exp(y.double()).float()
+
+class Id:
+    """
+    Transforms values to log space.
+    """
+    def __init__(self):
+        self.xp = None
+
+    def __call__(self, x):
+        return x
+
+    def invert(self, y):
+        return y

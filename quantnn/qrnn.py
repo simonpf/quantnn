@@ -200,7 +200,9 @@ class QRNN(NeuralNetworkModel):
             sample along its first dimension
         """
         def transform(x, t):
-            return t
+            if t is None:
+                return x
+            return t.invert(x)
         if self.transformation is None:
             return self.model.predict(x)
         return apply(transform, self.model.predict(x), self.transformation)
@@ -247,7 +249,6 @@ class QRNN(NeuralNetworkModel):
             y_pred = self.predict(x)
 
         def calculate_cdf(y_pred):
-            print(y_pred.shape)
             module = get_array_module(y_pred)
             quantiles = to_array(module, self.quantiles, like=y_pred)
             return qq.cdf(y_pred,

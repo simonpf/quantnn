@@ -250,8 +250,10 @@ def test_training_metrics_multi():
     ]
 
     model = MultipleOutputModel()
-    qrnn = QRNN(np.linspace(0.05, 0.95, 11), model=model)
-    metrics = ["Bias", "CRPS", "MeanSquaredError", "ScatterPlot", "CalibrationPlot"]
+    bins = np.linspace(0, 1, 12)
+    bins = {"y_1": bins, "y_2": bins}
+    qrnn = DRNN(bins=bins, model=model)
+    metrics = ["Bias", "MeanSquaredError", "ScatterPlot", "QuantileFunction"]
     qrnn.train(batched_data,
                validation_data=batched_data,
                n_epochs=5, keys=("x", "y"),

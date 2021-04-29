@@ -63,7 +63,7 @@ def normalize(y_pred,
     shape[bin_axis] = -1
     dx = reshape(xp, dx, shape)
 
-    return y_pred / dx
+    return y_pred / norm / dx
 
 def posterior_cdf(y_pdf,
                   bins,
@@ -177,6 +177,8 @@ def posterior_quantiles(y_pdf,
         bin_axis = 0
     n_y = y_pdf.shape[bin_axis]
     n_b = len(bins)
+    n_dims = len(y_pdf.shape)
+
     _check_dimensions(n_y, n_b)
     xp = get_array_module(y_pdf)
 
@@ -189,12 +191,36 @@ def posterior_quantiles(y_pdf,
     dx = pad_zeros_left(xp, dx, 1, 0)
     dx = reshape(xp, dx, x_shape)
 
+    selection = [slice(0, None)] * n_dims
+    selection[bin_axis] = slice(0, -1)
+    selection_l = tuple(selection)
+    selection[bin_axis] = slice(1, None)
+    selection_r = tuple(selection)
+    cdf_l = y_cdf[selection_l]
+    cdf_r = y_cdf[selection_r]
+    d_cdf = cdf_r - cdf_l
+
+    shape = [1] * n_dims
+    shape[bin_axis] = -1
+    bins_l = bins.reshape(shape)[selection_l]
+    bins_r = bins.reshape(shape)[selection_r]
+
     y_qs = []
     for q in quantiles:
-        mask = as_type(xp, y_cdf <= q, y_cdf)
-        y_q = bins[0] + xp.sum(mask * dx, bin_axis)
-        y_q = expand_dims(xp, y_q, bin_axis)
-        y_qs.append(y_q)
+        mask_l = as_type(xp, cdf_l <= q, cdf_l)
+        mask_r = as_type(xp, cdf_r > q, cdf_l)
+        mask = mask_l * mask_r
+
+        d_q = q - expand_dims(xp, (cdf_l * mask).sum(bin_axis), bin_axis)
+
+        result = (d_q * bins_r + (d_cdf - d_q) * bins_l) * mask
+        result = result / (d_cdf + as_type(xp, d_cdf < 1e-6, d_cdf))
+        result = result.sum(bin_axis)
+        result = result + bins[-1] * (1.0 - as_type(xp, mask_r.sum(bin_axis) > 0, mask))
+        result = result + bins[0] * (1.0 - as_type(xp, mask_l.sum(bin_axis) > 0, mask))
+        result = expand_dims(xp, result, bin_axis)
+
+        y_qs.append(result)
 
     y_q = concatenate(xp, y_qs, bin_axis)
     return y_q
@@ -373,9 +399,58 @@ def crps(y_pdf,
     x = x.reshape(shape)
 
     if len(y_true.shape) < len(y_pdf.shape):
-        y_true = y_true.unsqueeze(bins_axis)
+        y_true = y_true.unsqueeze(bin_axis)
 
     i = as_type(xp, x > y_true, y_cdf)
     crps = trapz(xp, (y_cdf - i) ** 2, x)
     return crps
+
+def quantile_function(y_pdf,
+                      y_true,
+                      bins,
+                      bin_axis=1):
+    """
+    Evaluates the quantile function at given y values.
+    """
+    if len(y_pdf.shape) == 1:
+        bin_axis = 0
+    n_y = y_pdf.shape[bin_axis]
+    n_b = len(bins)
+    n_dims = len(y_pdf.shape)
+    _check_dimensions(n_y, n_b)
+    xp = get_array_module(y_pdf)
+    n = len(y_pdf.shape)
+
+    y_cdf = posterior_cdf(y_pdf, bins, bin_axis=bin_axis)
+    selection = [slice(0, None)] * n_dims
+    selection[bin_axis] = slice(0, -1)
+    selection_l = tuple(selection)
+    selection[bin_axis] = slice(1, None)
+    selection_r = tuple(selection)
+    cdf_l = y_cdf[selection_l]
+    cdf_r = y_cdf[selection_r]
+
+    shape = [1] * n_dims
+    shape[bin_axis] = -1
+    bins_l = bins.reshape(shape)[selection_l]
+    bins_r = bins.reshape(shape)[selection_r]
+    d_bins = bins_r - bins_l
+
+    if len(y_true.shape) < len(y_pdf.shape):
+        y_true = expand_dims(xp, y_true, bin_axis)
+
+    mask_l = as_type(xp, bins_l <= y_true, y_true)
+    mask_r = as_type(xp, bins_r > y_true, y_true)
+    mask = mask_l * mask_r
+
+    dy = y_true - expand_dims(xp, (bins_l * mask).sum(bin_axis), bin_axis)
+
+    result = (dy * cdf_r + (d_bins - dy) * cdf_l) * mask
+    result = result / d_bins
+    result = result.sum(bin_axis)
+    result = result + 1.0 - as_type(xp, mask_r.sum(bin_axis) > 0, mask)
+
+    return result
+
+
 
