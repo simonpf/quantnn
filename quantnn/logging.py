@@ -27,13 +27,22 @@ import xarray as xr
 _TRAINING = "training"
 _VALIDATION = "validation"
 
+
 class Progress(rich.progress.Progress):
     """
-    Custom progress bar that automatically enters the progress
-    bar context on construction.
+    Specialization of the rich progress bar (``rich.progress.Progress``) that
+    adds the training history table and a title to the progress bar.
     """
     def __init__(self, *args, **kwargs):
+        """
+        Create progress bar.
+
+        Args:
+             args: Passed on to ``rich.progress.Progress``
+             kwargs: Passed on to ``rich.progress.Progress``
+        """
         self.table = None
+        self.mode = "Training"
         try:
             super().__init__(*args, refresh_per_second=2, **kwargs)
             super().start()
@@ -53,14 +62,14 @@ class Progress(rich.progress.Progress):
 
         Args:
             epoch: The current epoch
-            time: The time that the epoch took
             total_loss_training: The training loss summed for all outputs.
             total_loss_validation: The validation loss summed for all outputs.
-            losses_training: dict containing the training losses for each output.
+            losses_training: dict containing the training losses for each
+                output.
             losses_validation: dict containing the validation losses for each
                 output.
+            metrics: dict containing the metrics for each output.
             learning_rate: The learning rate during the epoch.
-            header: Whether or not to print the header.
         """
         col_width = 9
         multi_target = losses_training is not None and len(losses_training) > 1
@@ -159,6 +168,19 @@ class Progress(rich.progress.Progress):
                      losses_validation=None,
                      metrics=None,
                      learning_rate=None):
+        """
+        Adds a new row to the table.
+
+        Args:
+            epoch: The current epoch
+            total_loss_training: The training loss summed for all outputs.
+            total_loss_validation: The validation loss summed for all outputs.
+            losses_training: dict containing the training losses for each output.
+            losses_validation: dict containing the validation losses for each
+                output.
+            metrics: dict containing the metrics for each output.
+            learning_rate: The learning rate during the epoch.
+        """
         if self.table is None:
             self._make_table(epoch,
                              total_loss_training,
@@ -221,6 +243,19 @@ class Progress(rich.progress.Progress):
 
         self.table.add_row(*make_columns())
 
+    def update(self, *args, mode="", total=None, **kwargs):
+        if mode.lower() == "training":
+            if self.mode != "Training":
+                self.mode = "Training"
+                super().update(*args, total=total, **kwargs)
+            else:
+                super().update(*args, **kwargs)
+        else:
+            if self.mode != "Validation":
+                self.mode = "Validation"
+                super().update(*args, total=total, **kwargs)
+            else:
+                super().update(*args, **kwargs)
 
     def get_renderables(self):
         """
@@ -231,11 +266,14 @@ class Progress(rich.progress.Progress):
             yield self.table
 
         table = self.make_tasks_table(self.tasks)
-        table.title = "\n Training progress:"
+        table.title = f"\n {self.mode} progress:"
         table.width = 90
         yield table
 
     def stop(self):
+        """
+        Stop the progress bar.
+        """
         self.live.update(self.table, refresh=True)
         super().stop()
 
@@ -257,6 +295,7 @@ class TrainingLogger:
         self.i_train_batch = 0
         self.i_val_batch = 0
         self.n_epochs = n_epochs
+        self.n_batches_last = None
 
         self.train_loss = 0.0
         self.train_samples = 0
@@ -301,7 +340,10 @@ class TrainingLogger:
                   if that is unknown.
         """
         if of is None:
-            of = 0
+            if self.n_batches_last is None:
+                of = 0
+            else:
+                of = self.n_batches_last
         if self.progress is None:
             self.progress = Progress(
                 TextColumn("Epoch {task.fields[epoch]}"),
@@ -331,7 +373,8 @@ class TrainingLogger:
         self.progress.update(self.task,
                              completed=0,
                              total=of,
-                             epoch=self.i_epoch + 1)
+                             epoch=self.i_epoch + 1,
+                             mode="training")
 
 
     def set_attributes(self, attributes):
@@ -389,14 +432,19 @@ class TrainingLogger:
                 self.train_losses[k] += n_samples * losses[k]
 
         if of is None:
-            of = 0
+            if self.n_batches_last is None:
+                of = 0
+            else:
+                of = self.n_batches_last
         self.progress.update(
             task_id=self.task,
             completed=self.i_train_batch,
+            total=of,
             running_mean=self.train_loss / self.train_samples,
             batch=self.i_train_batch,
             of=of,
-            batch_loss=total_loss
+            batch_loss=total_loss,
+            mode="training",
         )
         if (self.i_train_batch % self.log_rate) == 0:
             self.progress.refresh()
@@ -433,14 +481,19 @@ class TrainingLogger:
                 self.val_losses[k] += n_samples * losses[k]
 
         if of is None:
-            of = 0
+            if self.n_batches_last is None:
+                of = 0
+            else:
+                of = self.n_batches_last
         self.progress.update(
             task_id=self.task,
             completed=self.i_val_batch,
             running_mean=self.val_loss / self.val_samples,
             batch=self.i_val_batch,
             of=of,
-            batch_loss=total_loss
+            batch_loss=total_loss,
+            mode="validation",
+            total=of
         )
         if (self.i_val_batch % self.log_rate) == 0:
             self.progress.refresh()
@@ -463,6 +516,7 @@ class TrainingLogger:
             val_loss = None
             val_losses = None
 
+        self.n_batches_last = self.i_train_batch
         self.i_epoch += 1
         self.i_train_batch = 0
         self.i_val_batch = 0
@@ -521,6 +575,3 @@ class TrainingLogger:
         """
         if self.attributes is not None:
             self.history.attrs.update(self.attributes)
-
-
-
