@@ -513,7 +513,7 @@ class ScatterPlot(Metric):
         self.y_pred = {}
         self.y = {}
 
-    def make_scatter_plot(self, key):
+    def make_scatter_plot(self, key, add_title=False):
         """
         Plots a 2D histogram of the predictions against the
         target values.
@@ -530,13 +530,33 @@ class ScatterPlot(Metric):
         y_pred = np.concatenate(self.y_pred[key])
         y = np.concatenate(self.y[key])
 
-        img, x_edges, y_edges = np.histogram2d(y, y_pred, bins=self.bins)
+        if isinstance(self.bins, dict):
+            bins = dict[key]
+        else:
+            bins = self.bins
+        if bins is None:
+            y_min = min(y.min(), y.min())
+            y_max = min(y.max(), y.max())
+            if self.log_scale:
+                y_max = np.log10(y_max)
+                if y_min <= 0:
+                    y_min = y_max - 4
+                else:
+                    y_min = np.log10(y_min)
+                bins = np.logspace(y_min, y_max, 41)
+            else:
+                bins = np.linspace(y_min, y_max, 41)
+
+        img, x_edges, y_edges = np.histogram2d(y, y_pred, bins=bins)
 
         plt.ioff()
         f, ax = plt.subplots(1, 1, dpi=100)
 
-        ax.pcolormesh(x_edges, y_edges, img.T)
+        m = ax.pcolormesh(x_edges, y_edges, img.T)
         ax.plot(x_edges, y_edges, ls="--", c="grey")
+        plt.colorbar(m, label="Counts")
+        if add_title:
+            ax.set_title(key)
 
         ax.set_xlim([x_edges[0], x_edges[-1]])
         ax.set_ylim([y_edges[0], y_edges[-1]])
@@ -557,7 +577,12 @@ class ScatterPlot(Metric):
              matplotlib figure containing the calibration plot. In the
              case of a multi-target model returns a dict of figures.
         """
-        figures = {k: self.make_scatter_plot(k) for k in self.y_pred}
+        add_title = False
+        if len(self.y_pred) > 1:
+            add_title = True
+        figures = {
+            k: self.make_scatter_plot(k, add_title) for k in self.y_pred
+        }
         if len(figures) == 1:
             return next(iter(figures.items()))[1]
         return figures
@@ -591,7 +616,7 @@ class QuantileFunction(Metric):
 
 
         qf = self.model.quantile_function(y_pred=y_pred,
-                                          y_true=y,
+                                          y=y,
                                           key=key)
 
         if self.tensor_backend is None:
