@@ -46,12 +46,14 @@ def test_cross_entropy_loss():
     y_pred = np.random.rand(10, 10, 10).astype(np.float32)
     y = np.ones((10, 10, 1), dtype=np.float32)
     bins = np.linspace(0, 1, 11)
-    y[:, :, 0] = 5
+    y[:, :, 0] = 0.55
 
     loss = CrossEntropyLoss(bins, mask=-1.0)
-    ref = -y_pred[:, :, 5] + np.log(np.exp(y_pred).sum(-1))
+    ref = -y_pred[:, :, 5] + np.log(np.exp(y_pred).sum(1))
+    print(loss(y, y_pred), ref.mean())
     assert np.all(np.isclose(loss(y, y_pred),
-                             ref.mean()))
+                             ref.mean(),
+                             rtol=1e-3))
 
 
     y[5:, :, :] = -1.0
