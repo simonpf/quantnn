@@ -375,15 +375,6 @@ class PytorchModel:
             return -1
         return 1
 
-    def __init__(self):
-        """
-        Arguments:
-            input_dimension(int): The number of input features.
-            quantiles(array): Array of the quantiles to predict.
-        """
-        self.training_losses = []
-        self.validation_losses = []
-
     def _make_adversarial_samples(self, x, eps):
         """
         Recycles current gradients to perform an adversarial training
@@ -692,10 +683,6 @@ class PytorchModel:
         logger.training_end()
 
         self.eval()
-        return {
-            "training_losses": self.training_losses,
-            "validation_losses": self.validation_losses,
-        }
 
     def predict(self, x, device="cpu"):
         """

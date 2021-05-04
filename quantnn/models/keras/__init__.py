@@ -89,16 +89,10 @@ class CrossEntropyLoss(SparseCategoricalCrossentropy):
         super().__init__(reduction="none", from_logits=True)
 
     def __call__(self, y_true, y_pred, sample_weight=None):
-        y_true = tf.raw_ops.Bucketize(input=y_true,
+        y_b = tf.raw_ops.Bucketize(input=y_true,
                                       boundaries=self.bins[1:-1],
                                       name=None)
-        if self.mask is not None:
-            y_m = tf.where(y_true > self.mask,
-                           y_true,
-                           tf.zeros_like(y_true))
-        else:
-            y_m = y_true
-        l = super().__call__(y_m,
+        l = super().__call__(y_b,
                              y_pred,
                              sample_weight=sample_weight)
         if self.mask is None:

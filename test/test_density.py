@@ -5,13 +5,18 @@ import einops as eo
 import numpy as np
 import pytest
 
-from quantnn.generic import sample_uniform, to_array, arange, reshape
+from quantnn.generic import (sample_uniform,
+                             to_array,
+                             arange,
+                             reshape,
+                             concatenate)
 from quantnn.density import (posterior_quantiles,
                              posterior_cdf,
                              posterior_mean,
                              probability_larger_than,
                              probability_less_than,
                              sample_posterior,
+                             crps,
                              quantile_function)
 
 @pytest.mark.parametrize("xp", pytest.backends)
@@ -312,7 +317,65 @@ def test_sample_posterior(xp):
     assert np.isclose(samples.mean(), 6.0, rtol=1e-1)
 
 @pytest.mark.parametrize("xp", pytest.backends)
+def test_crps(xp):
+    """
+    Ensure that calculation of the CRPS score for a uniform PDF
+    match expected values.
+    """
+
+    #
+    # 1D predictions
+    #
+
+    bins = arange(xp, 0.0, 10.001, 0.01)
+
+    y_pred = xp.ones(len(bins) - 1)
+    y_true = 5.0 * xp.ones(1)
+
+    c = crps(y_pred, y_true, bins)
+    c_ref = 10.0 * 2.0 * 0.5 ** 3 / 3.0
+
+    assert np.isclose(c, c_ref, rtol=1e-3)
+
+    #
+    # 2D predictions
+    #
+
+    bins = arange(xp, 0.0, 10.001, 0.01)
+    y_pred = xp.ones((21, len(bins) - 1))
+    y_true = 5.0 * xp.ones((21, 1))
+
+    c = crps(y_pred, y_true, bins)
+    c_ref = 10.0 * 2.0 * 0.5 ** 3 / 3.0
+    assert np.isclose(c[0], c_ref, rtol=1e-3)
+
+    #
+    # 3D predictions
+    #
+
+    bins = arange(xp, 0.0, 10.001, 0.01)
+    y_pred = xp.ones((21, len(bins) - 1, 10))
+    y_true = 5.0 * xp.ones((21, 1, 10))
+
+    c = crps(y_pred, y_true, bins)
+    c_ref = 10.0 * 2.0 * 0.5 ** 3 / 3.0
+    assert np.isclose(c[0, 0], c_ref, rtol=1e-3)
+
+    bins = arange(xp, 0.0, 10.001, 0.01)
+    y_pred = xp.ones((21, 10, len(bins) - 1))
+    y_true = 5.0 * xp.ones((21, 10, 1))
+
+    c = crps(y_pred, y_true, bins, bin_axis=-1)
+    c_ref = 10.0 * 2.0 * 0.5 ** 3 / 3.0
+    assert np.isclose(c[0, 0], c_ref, rtol=1e-3)
+
+
+@pytest.mark.parametrize("xp", pytest.backends)
 def test_quantile_function(xp):
+    """
+    Ensure that prediction of the quantile functions match expected
+    values.
+    """
 
     #
     # 1D predictions
@@ -323,10 +386,11 @@ def test_quantile_function(xp):
     y_true = arange(xp, 0.0, 0.1, 1.0) + 0.001
 
     qf = quantile_function(y_pred, y_true, bins)
-    print(qf)
+
+    assert np.isclose(qf, 0.0001, rtol=1e-3)
 
     #
-    # 1D predictions
+    # 2D predictions
     #
 
     bins = arange(xp, 0.0, 10.1, 1.0)
@@ -334,4 +398,30 @@ def test_quantile_function(xp):
     y_true = arange(xp, 0.0, 10.1, 0.5)
 
     qf = quantile_function(y_pred, y_true, bins)
-    print(qf)
+
+    assert np.isclose(qf[0], 0.0, rtol=1e-3)
+    assert np.isclose(qf[-1], 1.0, rtol=1e-3)
+
+    #
+    # 3D predictions
+    #
+
+    bins = arange(xp, 0.0, 10.1, 1.0)
+    y_pred = xp.ones((21, 10, 10))
+    y_true = arange(xp, 0.0, 10.1, 0.5)
+    y_true = eo.repeat(y_true, 'q -> q h', h=10)
+
+    qf = quantile_function(y_pred, y_true, bins)
+
+    assert np.isclose(qf[0, 0], 0.0, rtol=1e-3)
+    assert np.isclose(qf[-1, -1], 1.0, rtol=1e-3)
+
+    bins = arange(xp, 0.0, 10.1, 1.0)
+    y_pred = xp.ones((21, 10, 10))
+    y_true = arange(xp, 0.0, 10.1, 0.5)
+    y_true = eo.repeat(y_true, 'q -> q h', h=10)
+
+    qf = quantile_function(y_pred, y_true, bins, bin_axis=-1)
+
+    assert np.isclose(qf[0, 0], 0.0, rtol=1e-3)
+    assert np.isclose(qf[-1, -1], 1.0, rtol=1e-3)

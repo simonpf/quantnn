@@ -392,17 +392,18 @@ def crps(y_pdf,
     xp = get_array_module(y_pdf)
     n = len(y_pdf.shape)
 
-    y_cdf = cdf(y_pdf, bins, bins_axis=bin_axis)
+    y_cdf = posterior_cdf(y_pdf, bins, bin_axis=bin_axis)
 
-    x = 0.5 * (bins[1:] + bins[:-1])
+    x = bins
     shape = [1] * n_dims
+    shape[bin_axis] = -1
     x = x.reshape(shape)
 
     if len(y_true.shape) < len(y_pdf.shape):
         y_true = y_true.unsqueeze(bin_axis)
 
     i = as_type(xp, x > y_true, y_cdf)
-    crps = trapz(xp, (y_cdf - i) ** 2, x)
+    crps = trapz(xp, (y_cdf - i) ** 2, x, bin_axis)
     return crps
 
 def quantile_function(y_pdf,

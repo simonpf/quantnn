@@ -66,15 +66,6 @@ class DRNN(NeuralNetworkModel):
               logger=None,
               metrics=None,
               keys=None):
-        if type(training_data) == tuple:
-            x_train, y_train = training_data
-            y_train = _to_categorical(y_train, self.bins[:-1])
-            training_data = (x_train, y_train)
-            if (validation_data):
-                x_val, y_val = validation_data
-                y_val = _to_categorical(y_val, self.bins[:-1])
-                validation_data = x_val, y_val
-
         loss = self.backend.CrossEntropyLoss(self.bins, mask=mask)
         return super().train(training_data,
                              loss,
@@ -131,17 +122,21 @@ class DRNN(NeuralNetworkModel):
                                  " provided.")
             y_pred = self.predict(x)
 
-        module = get_array_module(y_pred)
         if key is None:
-            bins = to_array(module, self.bins, like=y_pred)
+            bins = self.bins
         else:
             if isinstance(self.bins, dict):
-                bins = to_array(module, self.bins[key], like=y_pred)
+                bins = self.bins[key]
             else:
-                bins = to_array(module, self.bins, like=y_pred)
-        return qd.posterior_mean(y_pred,
-                                 bins,
-                                 bin_axis=self.bin_axis)
+                bins = self.bins
+
+        def calculate_mean(y_pred, bins):
+            module = get_array_module(y_pred)
+            bins = to_array(module, bins, like=y_pred)
+            return qd.posterior_mean(y_pred,
+                                     bins,
+                                     bin_axis=self.bin_axis)
+        return apply(calculate_mean, y_pred, bins)
 
     def posterior_quantiles(self, x=None, y_pred=None, quantiles=None,
                             key=None):
@@ -171,18 +166,22 @@ class DRNN(NeuralNetworkModel):
             raise ValueError("The 'quantiles' keyword argument must be provided to"
                              "calculate the posterior quantiles.")
 
-        module = get_array_module(y_pred)
         if key is None:
-            bins = to_array(module, self.bins, like=y_pred)
+            bins = self.bins
         else:
             if isinstance(self.bins, dict):
-                bins = to_array(module, self.bins[key], like=y_pred)
+                bins = self.bins[key]
             else:
-                bins = to_array(module, self.bins, like=y_pred)
-        return qd.posterior_quantiles(y_pred,
-                                      bins,
-                                      quantiles,
-                                      bin_axis=self.bin_axis)
+                bins = self.bins
+
+        def calculate_quantiles(y_pred, bins):
+            module = get_array_module(y_pred)
+            bins = to_array(module, bins, like=y_pred)
+            return qd.posterior_quantiles(y_pred,
+                                          bins,
+                                          quantiles,
+                                          bin_axis=self.bin_axis)
+        return apply(calculate_quantiles, y_pred, bins)
 
     def probability_larger_than(self, x=None, y=None, y_pred=None, key=None):
         """
@@ -211,18 +210,23 @@ class DRNN(NeuralNetworkModel):
         if y is None:
             raise ValueError("The y argument must be provided to compute the "
                              " probability.")
-        module = get_array_module(y_pred)
+
         if key is None:
-            bins = to_array(module, self.bins, like=y_pred)
+            bins = self.bins
         else:
             if isinstance(self.bins, dict):
-                bins = to_array(module, self.bins[key], like=y_pred)
+                bins = self.bins[key]
             else:
-                bins = to_array(module, self.bins, like=y_pred)
-        return qd.probability_larger_than(y_pred,
-                                          bins,
-                                          y,
-                                          bin_axis=self.bin_axis)
+                bins = self.bins
+
+        def calculate_probability(y_pred, bins):
+            module = get_array_module(y_pred)
+            bins = to_array(module, bins, like=y_pred)
+            return qd.probability_larger_than(y_pred,
+                                            bins,
+                                            y,
+                                            bin_axis=self.bin_axis)
+        return apply(calculate_probability, y_pred, bins)
 
     def sample_posterior(self, x=None, y_pred=None, n_samples=1, key=None):
         r"""
@@ -251,35 +255,39 @@ class DRNN(NeuralNetworkModel):
                 raise ValueError("One of the input arguments x or y_pred must be "
                                  " provided.")
             y_pred = self.predict(x)
-        module = get_array_module(y_pred)
+
         if key is None:
-            bins = to_array(module, self.bins, like=y_pred)
+            bins = self.bins
         else:
             if isinstance(self.bins, dict):
-                bins = to_array(module, self.bins[key], like=y_pred)
+                bins = self.bins[key]
             else:
-                bins = to_array(module, self.bins, like=y_pred)
-        return qd.sample_posterior(y_pred,
-                                   bins,
-                                   n_samples=n_samples,
-                                   bin_axis=self.bin_axis)
+                bins = self.bins
 
-    def quantile_function(self, x=None, y_pred=None, y_true=None, key=None):
+        def calculate_samples(y_pred, bins):
+            module = get_array_module(y_pred)
+            bins = to_array(module, bins, like=y_pred)
+            return qd.sample_posterior(y_pred,
+                                       bins,
+                                       n_samples=n_samples,
+                                       bin_axis=self.bin_axis)
+        return apply(calculate_samples, y_pred, bins)
+
+
+    def quantile_function(self, x=None, y_pred=None, y=None, key=None):
         r"""
-        Generates :code:`n` samples from the predicted posterior distribution
-        for the input vector :code:`x`. The sampling is performed by the
-        inverse CDF method using the predicted CDF obtained from the
-        :code:`cdf` member function.
+        Evaluate the quantile function a given y values.
 
         Arguments:
 
             x: Rank-k tensor containing the input data with
                 the input channels (or features) for each sample located
                 along its first dimension.
-            y_pred: Optional pre-computed quantile predictions, which, when
+            y_pred: Optional pre-computed predicted pdf, which, when
                  provided, will be used to avoid repeated propagation of the
                  the inputs through the network.
-            n: The number of samples to generate.
+            y: Rank-k tensor containing the values at which to evaluate the
+                quantile function for each of the inputs in ``x``.
 
         Returns:
 
@@ -291,15 +299,21 @@ class DRNN(NeuralNetworkModel):
                 raise ValueError("One of the input arguments x or y_pred must be "
                                  " provided.")
             y_pred = self.predict(x)
-        module = get_array_module(y_pred)
+
         if key is None:
-            bins = to_array(module, self.bins, like=y_pred)
+            bins = self.bins
         else:
             if isinstance(self.bins, dict):
-                bins = to_array(module, self.bins[key], like=y_pred)
+                bins = self.bins[key]
             else:
-                bins = to_array(module, self.bins, like=y_pred)
-        return qd.quantile_function(y_pred,
-                                    y_true,
-                                    bins,
-                                    bin_axis=self.bin_axis)
+                bins = self.bins
+
+        def calculate_quantile_function(y_pred, bins):
+            module = get_array_module(y_pred)
+            bins = to_array(module, bins, like=y_pred)
+            return qd.quantile_function(y_pred,
+                                        y,
+                                        bins,
+                                        bin_axis=self.bin_axis)
+        return apply(calculate_quantile_function, y_pred, bins)
+
