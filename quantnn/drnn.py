@@ -317,3 +317,43 @@ class DRNN(NeuralNetworkModel):
                                         bin_axis=self.bin_axis)
         return apply(calculate_quantile_function, y_pred, bins)
 
+    def crps(self, x=None, y_pred=None, y=None, key=None):
+        r"""
+        Calculate CRPS score for given reference values.
+
+        Arguments:
+
+            x: Rank-k tensor containing the input data with
+                the input channels (or features) for each sample located
+                along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
+            y: Rank-k tensor containing the true y values.
+
+        Returns:
+
+            Rank-k tensor containing crps values for all samples in x.
+        """
+        if y_pred is None:
+            if x is None:
+                raise ValueError("One of the input arguments x or y_pred must be "
+                                 " provided.")
+            y_pred = self.predict(x)
+
+        if key is None:
+            bins = self.bins
+        else:
+            if isinstance(self.bins, dict):
+                bins = self.bins[key]
+            else:
+                bins = self.bins
+
+        def calculate_crps(y_pred, bins):
+            module = get_array_module(y_pred)
+            bins = to_array(module, bins, like=y_pred)
+            return qd.crps(y_pred,
+                           y,
+                           bins,
+                           bin_axis=self.bin_axis)
+        return apply(calculate_crps, y_pred, bins)
