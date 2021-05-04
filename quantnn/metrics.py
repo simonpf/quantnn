@@ -548,6 +548,8 @@ class ScatterPlot(Metric):
                 bins = np.linspace(y_min, y_max, 41)
 
         img, x_edges, y_edges = np.histogram2d(y, y_pred, bins=bins)
+        norm = img.sum(axis=-1, keepdims=True)
+        img /= norm
 
         plt.ioff()
         f, ax = plt.subplots(1, 1, dpi=100)

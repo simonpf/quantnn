@@ -90,8 +90,8 @@ class CrossEntropyLoss(SparseCategoricalCrossentropy):
 
     def __call__(self, y_true, y_pred, sample_weight=None):
         y_b = tf.raw_ops.Bucketize(input=y_true,
-                                      boundaries=self.bins[1:-1],
-                                      name=None)
+                                   boundaries=self.bins[1:-1],
+                                   name=None)
         l = super().__call__(y_b,
                              y_pred,
                              sample_weight=sample_weight)
