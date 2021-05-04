@@ -274,8 +274,6 @@ class MinMaxNormalizer(NormalizerBase):
         d_x = x_max - x_min
 
         l = -1.0
-        if self.replace_nan:
-            l = -0.9
         r = 1.0
 
         if np.isclose(d_x, 0.0):
@@ -284,7 +282,7 @@ class MinMaxNormalizer(NormalizerBase):
             x_normed = (l + (r - l) * (x_slice - x_min) / d_x)
 
         if self.replace_nan:
-            x_normed[np.isnan(x_normed)] = -1.0
+            x_normed[np.isnan(x_slice)] = -1.5
 
         return x_normed
 
