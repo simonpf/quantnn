@@ -15,7 +15,7 @@ class Log10:
             self.xp = xp
         else:
             xp = self.xp
-        return xp.log(x) / np.log(10)
+        return xp.log(x.double()).float() / np.log(10)
 
     def invert(self, y):
         if self.xp is None:
@@ -23,7 +23,7 @@ class Log10:
             self.xp = xp
         else:
             xp = self.xp
-        return xp.exp(np.log(10) * y)
+        return xp.exp(np.log(10) * y.double()).float()
 
 class Log:
     """
