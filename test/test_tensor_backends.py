@@ -169,3 +169,17 @@ def test_softmax(backend):
     x_sf_np = sp.special.softmax(x_np, 1)
 
     assert np.all(np.isclose(x_sf, x_sf_np))
+
+@pytest.mark.parametrize("backend", TENSOR_BACKENDS)
+def test_where(backend):
+    x = backend.ones((10, 10))
+    y = backend.zeros((10, 10))
+    z = backend.where(x > 0, y, x)
+    z_np = backend.to_numpy(z)
+    assert np.all(np.isclose(z_np, 0.0))
+
+    x = backend.ones((10, 10))
+    y = backend.zeros((10, 10))
+    z = backend.where(x > 1, y, x)
+    z_np = backend.to_numpy(z)
+    assert np.all(np.isclose(z_np, 1.0))

@@ -391,3 +391,20 @@ class TensorBackend(ABC):
         Return:
             softmax(x)
         """
+
+    @abstractclassmethod
+    def where(module, condition, x, y):
+        """
+        Select from tensor 'x' or 'y' based on condition.
+
+        Args:
+            module: The backend array corresponding to the given array.
+            condition: Rank-k bool tensor.
+            x: Elements to pick from when condition is True.
+            y: Elements to pick from when condition is False.
+
+        Return:
+            Rank-k tensor containing elements from 'x' where 'condition' is True
+            and elements from 'y' everywhere else.
+        """
+

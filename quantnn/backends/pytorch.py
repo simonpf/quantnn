@@ -177,3 +177,8 @@ class PyTorch(TensorBackend):
     def softmax(cls, x, axis=None):
         import torch
         return torch.nn.functional.softmax(x, dim=axis)
+
+    @classmethod
+    def where(cls, condition, x, y):
+        import torch
+        return torch.where(condition, x, y)
