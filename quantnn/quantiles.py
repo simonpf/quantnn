@@ -11,27 +11,27 @@ import numpy as np
 from scipy.stats import norm
 
 from quantnn.common import InvalidDimensionException
-from quantnn.generic import (arange,
-                             get_array_module,
-                             to_array,
-                             sample_uniform,
-                             sample_gaussian,
-                             numel,
-                             expand_dims,
-                             concatenate,
-                             pad_zeros,
-                             as_type,
-                             cumtrapz,
-                             trapz,
-                             reshape,
-                             zeros,
-                             ones,
-                             cumsum)
+from quantnn.generic import (
+    arange,
+    get_array_module,
+    to_array,
+    sample_uniform,
+    sample_gaussian,
+    numel,
+    expand_dims,
+    concatenate,
+    pad_zeros,
+    as_type,
+    cumtrapz,
+    trapz,
+    reshape,
+    zeros,
+    ones,
+    cumsum,
+)
 
 
-def cdf(y_pred,
-        quantiles,
-        quantile_axis=1):
+def cdf(y_pred, quantiles, quantile_axis=1):
     """
     Calculates the cumulative distribution function (CDF) from predicted
     quantiles.
@@ -70,9 +70,9 @@ def cdf(y_pred,
 
     y_cdf = quantiles
 
-    y_cdf = concatenate(xp, [zeros(xp, 1, like=y_cdf),
-                             y_cdf,
-                             ones(xp, 1, like=y_cdf)], 0)
+    y_cdf = concatenate(
+        xp, [zeros(xp, 1, like=y_cdf), y_cdf, ones(xp, 1, like=y_cdf)], 0
+    )
 
     selection = [slice(0, None)] * len(y_pred.shape)
     selection_c = copy(selection)
@@ -81,9 +81,9 @@ def cdf(y_pred,
     selection_r = copy(selection)
     selection_r[quantile_axis] = 1
     selection_r = tuple(selection_r)
-    dy = (y_pred[selection_r] - y_pred[selection_c])
-    dy /= (quantiles[1] - quantiles[0])
-    x_cdf_l = y_pred[selection_c] - 2.0 * quantiles[0] * dy
+    dx = y_pred[selection_r] - y_pred[selection_c]
+    dx /= quantiles[1] - quantiles[0]
+    x_cdf_l = y_pred[selection_c] - 2.0 * quantiles[0] * dx
     x_cdf_l = expand_dims(xp, x_cdf_l, quantile_axis)
 
     selection_l = copy(selection)
@@ -92,9 +92,9 @@ def cdf(y_pred,
     selection_c = copy(selection)
     selection_c[quantile_axis] = -1
     selection_c = tuple(selection_c)
-    dy = (y_pred[selection_c] - y_pred[selection_l])
-    dy /= (quantiles[-1] - quantiles[-2])
-    x_cdf_r = y_pred[selection_c] + 2.0 * (1.0 - quantiles[-1]) * dy
+    dx = y_pred[selection_c] - y_pred[selection_l]
+    dx /= quantiles[-1] - quantiles[-2]
+    x_cdf_r = y_pred[selection_c] + 2.0 * (1.0 - quantiles[-1]) * dx
     x_cdf_r = expand_dims(xp, x_cdf_r, quantile_axis)
 
     x_cdf = concatenate(xp, [x_cdf_l, y_pred, x_cdf_r], quantile_axis)
@@ -102,9 +102,7 @@ def cdf(y_pred,
     return x_cdf, y_cdf
 
 
-def pdf(y_pred,
-        quantiles,
-        quantile_axis=1):
+def pdf(y_pred, quantiles, quantile_axis=1):
     """
     Calculate probability density function (PDF) of the posterior distribution
     defined by predicted quantiles.
@@ -172,10 +170,8 @@ def pdf(y_pred,
 
     return x_pdf, y_pdf
 
-def pdf_binned(y_pred,
-               quantiles,
-               bins,
-               quantile_axis=1):
+
+def pdf_binned(y_pred, quantiles, bins, quantile_axis=1):
     """
     Calculate binned representation of the posterior probability density
     function (PDF).
@@ -243,11 +239,12 @@ def pdf_binned(y_pred,
     w_cdf_l = (x_cdf_r - b_l) / d
     w_cdf_r = (b_l - x_cdf_l) / d
 
-    y_cdf_l = (xp.sum(mask * y_cdf[selection_l] * mask, quantile_axis) * w_cdf_l
-               + xp.sum(mask * y_cdf[selection_r] * mask, quantile_axis) * w_cdf_r
-               + mask_xl * y_cdf[selection_le]
-               + mask_xr * y_cdf[selection_re])
-
+    y_cdf_l = (
+        xp.sum(mask * y_cdf[selection_l] * mask, quantile_axis) * w_cdf_l
+        + xp.sum(mask * y_cdf[selection_r] * mask, quantile_axis) * w_cdf_r
+        + mask_xl * y_cdf[selection_le]
+        + mask_xr * y_cdf[selection_re]
+    )
 
     for i in range(len(bins) - 1):
 
@@ -263,17 +260,18 @@ def pdf_binned(y_pred,
         mask_xr = as_type(xp, xp.sum(mask_r, quantile_axis) == 0.0, mask_r)
         mask_xl = as_type(xp, xp.sum(mask_l, quantile_axis) == 0.0, mask_l)
 
-
         x_cdf_l = xp.sum(x_cdf[selection_l] * mask, quantile_axis)
         x_cdf_r = xp.sum(x_cdf[selection_r] * mask, quantile_axis)
         d = (x_cdf_r - x_cdf_l) + (1.0 - xp.sum(mask, quantile_axis))
         w_cdf_l = (x_cdf_r - b_r) / d
         w_cdf_r = (b_r - x_cdf_l) / d
 
-        y_cdf_r = (xp.sum(mask * y_cdf[selection_l] * mask, quantile_axis) * w_cdf_l
-                   + xp.sum(mask * y_cdf[selection_r] * mask, quantile_axis) * w_cdf_r
-                   + mask_xl * y_cdf[selection_le]
-                   + mask_xr * y_cdf[selection_re])
+        y_cdf_r = (
+            xp.sum(mask * y_cdf[selection_l] * mask, quantile_axis) * w_cdf_l
+            + xp.sum(mask * y_cdf[selection_r] * mask, quantile_axis) * w_cdf_r
+            + mask_xl * y_cdf[selection_le]
+            + mask_xr * y_cdf[selection_re]
+        )
 
         dy_cdf = expand_dims(xp, y_cdf_r - y_cdf_l, quantile_axis)
         y_pdf_binned.append(dy_cdf / (b_r - b_l))
@@ -305,6 +303,7 @@ def posterior_mean(y_pred, quantiles, quantile_axis=1):
 
     x_cdf, y_cdf = cdf(y_pred, quantiles, quantile_axis=quantile_axis)
     return trapz(xp, x_cdf, y_cdf, quantile_axis)
+
 
 def posterior_median(y_pred, quantiles, quantile_axis=1):
     r"""
@@ -355,6 +354,7 @@ def posterior_median(y_pred, quantiles, quantile_axis=1):
     selection_r = tuple(selection)
 
     return w_l * y_pred[selection_l] + w_r * y_pred[selection_r]
+
 
 def posterior_quantiles(y_pred, quantiles, new_quantiles, quantile_axis=1):
     r"""
@@ -419,6 +419,7 @@ def posterior_quantiles(y_pred, quantiles, new_quantiles, quantile_axis=1):
         y_qs.append(y_q)
 
     return concatenate(xp, y_qs, quantile_axis)
+
 
 def crps(y_pred, quantiles, y_true, quantile_axis=1):
     r"""
@@ -541,7 +542,7 @@ def probability_less_than(y_pred, quantiles, y, quantile_axis=1):
         mask = as_type(xp, (x_l < y) * (x_r >= y), x_l)
         probabilities += y_l * (x_r - y) * mask
         probabilities += y_r * (y - x_l) * mask
-        probabilities /= (mask * (x_r - x_l) + (1.0 - mask))
+        probabilities /= mask * (x_r - x_l) + (1.0 - mask)
 
         y_l = y_r
         x_l = x_r
@@ -550,10 +551,8 @@ def probability_less_than(y_pred, quantiles, y, quantile_axis=1):
     probabilities += mask
     return probabilities
 
-def probability_larger_than(y_pred,
-                            quantiles,
-                            y,
-                            quantile_axis=1):
+
+def probability_larger_than(y_pred, quantiles, y, quantile_axis=1):
     """
     Calculate the probability that the predicted value is larger
     than a given threshold value ``y`` given a tensor of predicted
@@ -575,16 +574,12 @@ def probability_larger_than(y_pred,
          estimated probability of the true value being larger than the given
          threshold.
     """
-    return 1.0 - probability_less_than(y_pred,
-                                       quantiles,
-                                       y,
-                                       quantile_axis=quantile_axis)
+    return 1.0 - probability_less_than(
+        y_pred, quantiles, y, quantile_axis=quantile_axis
+    )
 
 
-def sample_posterior(y_pred,
-                     quantiles,
-                     n_samples=1,
-                     quantile_axis=1):
+def sample_posterior(y_pred, quantiles, n_samples=1, quantile_axis=1):
     """
     Sample the posterior distribution described by the predicted quantiles.
 
@@ -629,12 +624,13 @@ def sample_posterior(y_pred,
         mask = as_type(xp, (samples > y_l) * (samples <= y_r), y_l)
         results += (x_l * (y_r - samples)) * mask
         results += (x_r * (samples - y_l)) * mask
-        results /= (mask * (y_r - y_l) + (1.0 - mask))
+        results /= mask * (y_r - y_l) + (1.0 - mask)
 
         y_l = y_r
         x_l = x_r
 
     return results
+
 
 def fit_gaussian_to_quantiles(y_pred, quantiles, quantile_axis=1):
     """
@@ -660,7 +656,9 @@ def fit_gaussian_to_quantiles(y_pred, quantiles, quantile_axis=1):
     xp = get_array_module(y_pred)
     x = to_array(xp, norm.ppf(quantiles))
     n_dims = len(y_pred.shape)
-    x_shape = [1,] * n_dims
+    x_shape = [
+        1,
+    ] * n_dims
     x_shape[quantile_axis] = -1
     x_shape = tuple(x_shape)
     x = reshape(xp, x, x_shape)
@@ -689,10 +687,8 @@ def fit_gaussian_to_quantiles(y_pred, quantiles, quantile_axis=1):
 
     return mu, sigma
 
-def sample_posterior_gaussian(y_pred,
-                              quantiles,
-                              n_samples=1,
-                              quantile_axis=1):
+
+def sample_posterior_gaussian(y_pred, quantiles, n_samples=1, quantile_axis=1):
     """
     Sample the posterior distribution described by the predicted quantiles.
 
@@ -715,19 +711,17 @@ def sample_posterior_gaussian(y_pred,
     if len(y_pred.shape) == 1:
         quantile_axis = 0
     xp = get_array_module(y_pred)
-    mu, sigma = fit_gaussian_to_quantiles(y_pred,
-                                          quantiles,
-                                          quantile_axis=quantile_axis)
+    mu, sigma = fit_gaussian_to_quantiles(
+        y_pred, quantiles, quantile_axis=quantile_axis
+    )
 
     output_shape = list(y_pred.shape)
     output_shape[quantile_axis] = n_samples
     samples = sample_gaussian(xp, tuple(output_shape))
     return mu + sigma * samples
 
-def quantile_loss(y_pred,
-                  quantiles,
-                  y_true,
-                  quantile_axis=1):
+
+def quantile_loss(y_pred, quantiles, y_true, quantile_axis=1):
     """
     Calculate the quantile loss for all predicted quantiles.
 
@@ -768,6 +762,7 @@ def quantile_loss(y_pred,
     loss += -(1.0 - mask) * (quantiles * dy)
     return loss
 
+
 def correct_a_priori(y_pred, quantiles, r, quantile_axis=1):
     """
     Correct predicted quantiles for a priori.
@@ -794,8 +789,8 @@ def correct_a_priori(y_pred, quantiles, r, quantile_axis=1):
     selection_r = copy(selection)
     selection_r[quantile_axis] = 1
     selection_r = tuple(selection_r)
-    dy = (y_pred[selection_r] - y_pred[selection_c])
-    dy /= (quantiles[1] - quantiles[0])
+    dy = y_pred[selection_r] - y_pred[selection_c]
+    dy /= quantiles[1] - quantiles[0]
     x_cdf_l = y_pred[selection_c] - 2.0 * quantiles[0] * dy
     x_cdf_l = expand_dims(xp, x_cdf_l, quantile_axis)
 
@@ -805,8 +800,8 @@ def correct_a_priori(y_pred, quantiles, r, quantile_axis=1):
     selection_c = copy(selection)
     selection_c[quantile_axis] = -1
     selection_c = tuple(selection_c)
-    dy = (y_pred[selection_c] - y_pred[selection_l])
-    dy /= (quantiles[-1] - quantiles[-2])
+    dy = y_pred[selection_c] - y_pred[selection_l]
+    dy /= quantiles[-1] - quantiles[-2]
     x_cdf_r = y_pred[selection_c] + 2.0 * (1.0 - quantiles[-1]) * dy
     x_cdf_r = expand_dims(xp, x_cdf_r, quantile_axis)
 
@@ -844,10 +839,10 @@ def correct_a_priori(y_pred, quantiles, r, quantile_axis=1):
     for i in range(0, len(quantiles)):
         q = quantiles[i]
 
-        mask = as_type(xp, (y_cdf_new_l < q) * (y_cdf_new_r  >= q), x_cdf_l)
+        mask = as_type(xp, (y_cdf_new_l < q) * (y_cdf_new_r >= q), x_cdf_l)
         y_new = x_cdf_l * (y_cdf_new_r - q) * mask
         y_new += x_cdf_r * (q - y_cdf_new_l) * mask
-        y_new /= (mask * (y_cdf_new_r - y_cdf_new_l) + (1.0 - mask))
+        y_new /= mask * (y_cdf_new_r - y_cdf_new_l) + (1.0 - mask)
         y_new = expand_dims(xp, y_new.sum(quantile_axis), quantile_axis)
 
         print(y_cdf_new_r.shape, y_cdf_new_l.shape)

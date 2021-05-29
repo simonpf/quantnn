@@ -27,7 +27,6 @@ def set_style(latex=False):
     rc("text", usetex=latex)
 
 
-
 def plot_confidence_intervals(ax, x, y_pred, quantiles, color="C0"):
     """
     Plots symmetric confidence intervals using transparency to display uncertainty.
@@ -66,6 +65,7 @@ def plot_confidence_intervals(ax, x, y_pred, quantiles, color="C0"):
         color = to_rgba(color, alpha)
         ax.fill_between(x, c, y_pred[:, i], edgecolor=None, facecolor=color)
 
+
 def plot_quantiles(ax, x, y_pred, quantiles, cmap="magma"):
     """
     Plots symmetric confidence intervals using transparency to display uncertainty.
@@ -96,4 +96,3 @@ def plot_quantiles(ax, x, y_pred, quantiles, cmap="magma"):
         ax.fill_between(x, y_low, y_high, edgecolor=None, facecolor=color)
 
     return mappable
-

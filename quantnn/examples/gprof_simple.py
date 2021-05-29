@@ -15,16 +15,14 @@ import torch
 
 from quantnn.normalizer import Normalizer
 
+
 class GPROFDataset:
     """
     This class provides an interface for the training and test data for the GPROF GMI rain
     rate retrieval. It implements the torch.data.Dataset interface.
     """
-    def __init__(self,
-                 path,
-                 batch_size=None,
-                 shuffle=True,
-                 normalizer=None):
+
+    def __init__(self, path, batch_size=None, shuffle=True, normalizer=None):
         """
         Arguments:
             path(``str``): Path of the NetCDF file containing the data to load.
@@ -82,15 +80,16 @@ class GPROFDataset:
             self.y = self.y[indices]
 
         if self.batch_size is None:
-            return (torch.tensor(self.x[[i], :]),
-                    torch.tensor(self.y[[i]]))
+            return (torch.tensor(self.x[[i], :]), torch.tensor(self.y[[i]]))
 
         i_start = self.batch_size * i
         i_end = self.batch_size * (i + 1)
         if i >= len(self):
             raise IndexError()
-        return (torch.tensor(self.x[i_start:i_end, :]),
-                torch.tensor(self.y[i_start:i_end]))
+        return (
+            torch.tensor(self.x[i_start:i_end, :]),
+            torch.tensor(self.y[i_start:i_end]),
+        )
 
     def _load_data(self, path):
         """
@@ -114,7 +113,7 @@ class GPROFDataset:
         chunk_size = 1024
         while index_start < m:
             index_end = index_start + chunk_size
-            bt[index_start: index_end, :] = v_bt[index_start: index_end, :].data
+            bt[index_start:index_end, :] = v_bt[index_start:index_end, :].data
             index_start += chunk_size
         self.y = file["surface_precipitation"][:].data
         self.y = self.y.reshape(-1, 1)
@@ -132,11 +131,11 @@ class GPROFDataset:
         surface_type_min = 1
         surface_type_max = 15
         n_classes = int(surface_type_max - surface_type_min)
-        surface_type_1h = np.zeros((surface_type_data.size, n_classes),
-                                   dtype=np.float32)
+        surface_type_1h = np.zeros(
+            (surface_type_data.size, n_classes), dtype=np.float32
+        )
         indices = (surface_type_data - surface_type_min).astype(int)
-        surface_type_1h[np.arange(surface_type_1h.shape[0]),
-                        indices.ravel()] = 1.0
+        surface_type_1h[np.arange(surface_type_1h.shape[0]), indices.ravel()] = 1.0
 
         bt = bt[inds]
 
@@ -168,11 +167,8 @@ class GPROFTestset(GPROFDataset):
     temperatures and as output vector the surface precipitation.
 
     """
-    def __init__(self,
-                 path,
-                 batch_size=None,
-                 normalizer=None,
-                 shuffle=True):
+
+    def __init__(self, path, batch_size=None, normalizer=None, shuffle=True):
         """
         Create instance of the dataset from a given file path.
 
@@ -190,10 +186,9 @@ class GPROFTestset(GPROFDataset):
                 output rain rates to turn them into binary non-raining /
                 raining labels.
         """
-        super().__init__(path,
-                         batch_size=batch_size,
-                         normalizer=normalizer,
-                         shuffle=shuffle)
+        super().__init__(
+            path, batch_size=batch_size, normalizer=normalizer, shuffle=shuffle
+        )
 
     def _load_data(self, path):
 
@@ -213,7 +208,7 @@ class GPROFTestset(GPROFDataset):
         chunk_size = 1024
         while index_start < m:
             index_end = index_start + chunk_size
-            bt[index_start: index_end, :] = v_bt[index_start: index_end, :].data
+            bt[index_start:index_end, :] = v_bt[index_start:index_end, :].data
             index_start += chunk_size
         self.y_true = file["surface_precipitation"][:].data.astype(np.float32)
         self.y_true = self.y_true.reshape(-1, 1)
@@ -222,7 +217,6 @@ class GPROFTestset(GPROFDataset):
         self.y_1st_tercile = gprof["1st_tertial"][:].data.astype(np.float32)
         self.y_3rd_tercile = gprof["2nd_tertial"][:].data.astype(np.float32)
         self.y_pop = gprof["probability_of_precipitation"][:].data.astype(np.float32)
-
 
         valid = surface_type_data > 0
         valid *= t2m > 0
@@ -239,11 +233,11 @@ class GPROFTestset(GPROFDataset):
         surface_type_min = 1
         surface_type_max = 15
         n_classes = int(surface_type_max - surface_type_min)
-        surface_type_1h = np.zeros((surface_type_data.size, n_classes),
-                                   dtype=np.float32)
+        surface_type_1h = np.zeros(
+            (surface_type_data.size, n_classes), dtype=np.float32
+        )
         indices = (surface_type_data - surface_type_min).astype(int)
-        surface_type_1h[np.arange(surface_type_1h.shape[0]),
-                        indices.ravel()] = 1.0
+        surface_type_1h[np.arange(surface_type_1h.shape[0]), indices.ravel()] = 1.0
 
         bt = bt[inds]
 
@@ -259,6 +253,7 @@ class GPROFTestset(GPROFDataset):
         self.y_1st_tercile = self.y_1st_tercile[inds]
         self.y_3rd_tercile = self.y_3rd_tercile[inds]
 
+
 def download_data(destination="data"):
     """
     Downloads training and evaluation data for the CTP retrieval.
@@ -269,7 +264,7 @@ def download_data(destination="data"):
     datasets = [
         "training_data_gmi_small.nc",
         "test_data_gmi_small.nc",
-        "validation_data_gmi_small.nc"
+        "validation_data_gmi_small.nc",
     ]
 
     Path(destination).mkdir(exist_ok=True)

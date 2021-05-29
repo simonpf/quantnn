@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 from matplotlib.cm import magma
 from matplotlib.colors import Normalize
 
+
 def create_training_data(n=1_000_000):
     """
     Create training data by randomly sampling the range :math:`[-\pi, \pi]`
@@ -53,6 +54,7 @@ def create_validation_data(x):
     y = np.sin(x) + 1.0 * np.cos(x) * np.random.randn(*x.shape)
     return y
 
+
 def plot_histogram(x, y):
     """
     Plot 2D histogram of data.
@@ -76,12 +78,7 @@ def plot_histogram(x, y):
     plt.legend()
 
 
-def plot_results(x_train,
-                 y_train,
-                 x_val,
-                 y_pred,
-                 y_mean,
-                 quantiles):
+def plot_results(x_train, y_train, x_val, y_pred, y_mean, quantiles):
     """
     Plots the predicted quantiles against empirical quantiles.
     """
@@ -89,25 +86,26 @@ def plot_results(x_train,
     bins_x = np.linspace(-np.pi, np.pi, 201)
     bins_y = np.linspace(-4, 4, 201)
     x_img, y_img = np.meshgrid(bins_x, bins_y)
-    img, _, _ = np.histogram2d(x_train, y_train, bins=(bins_x, bins_y),
-                               density=True)
+    img, _, _ = np.histogram2d(x_train, y_train, bins=(bins_x, bins_y), density=True)
     norm = np.trapz(img, x=0.5 * (bins_y[1:] + bins_y[:-1]), axis=1)
     img_normed = img / norm.reshape(-1, 1)
-    img_cdf = sp.integrate.cumtrapz(img_normed,
-                                    x=0.5 * (bins_y[1:] + bins_y[:-1]),
-                                    axis=1)
+    img_cdf = sp.integrate.cumtrapz(
+        img_normed, x=0.5 * (bins_y[1:] + bins_y[:-1]), axis=1
+    )
 
     x_centers = 0.5 * (bins_x[1:] + bins_x[:-1])
     y_centers = 0.5 * (bins_y[2:] + bins_y[:-2])
 
     norm = Normalize(0, 1)
     plt.figure(figsize=(10, 6))
-    img = plt.contourf(x_centers,
-                       y_centers,
-                       img_cdf.T,
-                       levels=quantiles,
-                       norm=norm,
-                       cmap="magma",)
+    img = plt.contourf(
+        x_centers,
+        y_centers,
+        img_cdf.T,
+        levels=quantiles,
+        norm=norm,
+        cmap="magma",
+    )
     for i in range(0, 13, 1):
         l_q = plt.plot(x_val, y_pred[:, i], lw=2, ls="--", color="grey")
     handles = l_q
@@ -122,5 +120,3 @@ def plot_results(x_train,
     plt.ylabel("y")
     plt.grid(False)
     plt.colorbar(img, label=r"Empirical quantiles")
-
-

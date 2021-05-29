@@ -16,6 +16,7 @@ class Log10:
     """
     Transforms values to log space.
     """
+
     def __init__(self):
         self.xp = None
 
@@ -60,6 +61,7 @@ class Log:
     """
     Transforms values to log space.
     """
+
     def __init__(self):
         self.xp = None
 
@@ -105,6 +107,7 @@ class Softplus:
     """
     Applies softplus transform to values.
     """
+
     def __init__(self):
         self.xp = None
 
@@ -151,6 +154,7 @@ class LogLinear:
     Composition of natural logarithm transformation and for
     x > 1 and identity transformation for x <= 1.
     """
+
     def __init__(self):
         self.xp = None
 
@@ -192,10 +196,12 @@ class LogLinear:
             xp = self.xp
         return xp.where(y > 0, y + 1.0, xp.exp(y))
 
+
 class Id:
     """
     Identity transform for testing.
     """
+
     def __init__(self):
         self.xp = None
 

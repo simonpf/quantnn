@@ -65,8 +65,7 @@ def get_sftp_connection(host):
     sftp = None
     try:
         transport = paramiko.Transport(host)
-        transport.connect(username=user_name,
-                          password=password)
+        transport.connect(username=user_name, password=password)
         sftp = paramiko.SFTPClient.from_transport(transport)
         yield sftp
     finally:
@@ -95,8 +94,7 @@ def list_files(host, path):
 
 
 @contextmanager
-def download_file(host,
-                  path):
+def download_file(host, path):
     """
     Downloads file from host to a temporary directory and
     return the path of this file.
@@ -139,6 +137,7 @@ class SFTPCache:
         files: Dictionary mapping tuples ``(host, path)`` to temporary
             file object.
     """
+
     def __init__(self):
         self._owner = True
         self.files = {}

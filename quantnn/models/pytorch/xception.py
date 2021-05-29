@@ -8,6 +8,7 @@ PyTorch implementation of models using the Xception architecture.
 import torch
 from torch import nn
 
+
 class SymmetricPadding(nn.Module):
     def __init__(self, amount):
         super().__init__()
@@ -19,13 +20,20 @@ class SymmetricPadding(nn.Module):
     def forward(self, x):
         return nn.functional.pad(x, self.amount, "replicate")
 
+
 def sconv3x3(channels_in, channels_out):
     return nn.Sequential(
-        nn.Conv2d(channels_in, channels_in, kernel_size=3,
-                  groups=channels_in, padding=1,
-                  padding_mode="replicate"),
-        nn.Conv2d(channels_in, channels_out, kernel_size=1)
+        nn.Conv2d(
+            channels_in,
+            channels_in,
+            kernel_size=3,
+            groups=channels_in,
+            padding=1,
+            padding_mode="replicate",
+        ),
+        nn.Conv2d(channels_in, channels_out, kernel_size=1),
     )
+
 
 class XceptionBlock(nn.Module):
     def __init__(self, channels_in, channels_out, downsample=False):
@@ -36,25 +44,24 @@ class XceptionBlock(nn.Module):
                 nn.BatchNorm2d(channels_out),
                 SymmetricPadding(1),
                 nn.MaxPool2d(kernel_size=3, stride=2),
-                nn.ReLU()
-                )
+                nn.ReLU(),
+            )
         else:
             self.block_1 = nn.Sequential(
                 sconv3x3(channels_in, channels_out),
                 nn.BatchNorm2d(channels_out),
-                nn.ReLU()
-                )
+                nn.ReLU(),
+            )
 
         self.block_2 = nn.Sequential(
             sconv3x3(channels_out, channels_out),
             nn.BatchNorm2d(channels_out),
-            nn.ReLU()
-            )
+            nn.ReLU(),
+        )
 
         if channels_in != channels_out or downsample:
             if downsample:
-                self.projection = nn.Conv2d(channels_in, channels_out, 1,
-                                            stride=2)
+                self.projection = nn.Conv2d(channels_in, channels_out, 1, stride=2)
             else:
                 self.projection = nn.Conv2d(channels_in, channels_out, 1)
         else:
@@ -68,6 +75,7 @@ class XceptionBlock(nn.Module):
         y = self.block_2(self.block_1(x))
         return x_proj + y
 
+
 class DownsamplingBlock(nn.Sequential):
     def __init__(self, n_channels, n_blocks):
         blocks = [XceptionBlock(n_channels, n_channels, downsample=True)]
@@ -75,14 +83,13 @@ class DownsamplingBlock(nn.Sequential):
             blocks.append(XceptionBlock(n_channels, n_channels))
         super().__init__(*blocks)
 
+
 class UpsamplingBlock(nn.Module):
     def __init__(self, n_channels):
         super().__init__()
         self.upsample = nn.Upsample(mode="bilinear", scale_factor=2)
         self.block = nn.Sequential(
-            sconv3x3(n_channels * 2, n_channels),
-            nn.BatchNorm2d(n_channels),
-            nn.ReLU()
+            sconv3x3(n_channels * 2, n_channels), nn.BatchNorm2d(n_channels), nn.ReLU()
         )
 
     def forward(self, x, x_skip):
@@ -92,11 +99,7 @@ class UpsamplingBlock(nn.Module):
 
 
 class XceptionFpn(nn.Module):
-    def __init__(self,
-                 n_inputs,
-                 n_outputs,
-                 n_features=128,
-                 blocks=2):
+    def __init__(self, n_inputs, n_outputs, n_features=128, blocks=2):
 
         super().__init__()
 
@@ -124,9 +127,8 @@ class XceptionFpn(nn.Module):
             nn.Conv2d(n_features, n_features, 1),
             nn.BatchNorm2d(n_features),
             nn.ReLU(),
-            nn.Conv2d(n_features, n_outputs, 1)
+            nn.Conv2d(n_features, n_outputs, 1),
         )
-
 
     def forward(self, x):
         x_in = self.in_block(x)
@@ -146,5 +148,3 @@ class XceptionFpn(nn.Module):
 
 
 model = XceptionFpn(1, 1)
-
-

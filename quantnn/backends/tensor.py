@@ -8,8 +8,8 @@ for tensor backend module.
 """
 from abc import ABC, abstractclassmethod
 
-class TensorBackend(ABC):
 
+class TensorBackend(ABC):
     @abstractclassmethod
     def available(cls):
         """
@@ -18,7 +18,6 @@ class TensorBackend(ABC):
         Returns:
             ``True`` if the backend is available, ``False`` otherwise.
         """
-
 
     @abstractclassmethod
     def matches_tensor(cls, tensor):
@@ -33,7 +32,6 @@ class TensorBackend(ABC):
         Returns:
             ``True`` when the given tensor belongs to the tensor backend.
         """
-
 
     @abstractclassmethod
     def from_numpy(cls, array, like=None):
@@ -108,7 +106,6 @@ class TensorBackend(ABC):
                 return tensor
         array = backend.to_numpy(tensor)
         return cls.from_numpy(array, like)
-
 
     @abstractclassmethod
     def sample_uniform(cs, shape=None, like=None):
@@ -268,17 +265,16 @@ class TensorBackend(ABC):
     @abstractclassmethod
     def reshape(cls, tensor, shape):
         """
-        Reshape a tensor.
+            Reshape a tensor.
 
-        Arguments:
-            tensor: The tensor to reshape.
-            shape: Tuple containing the target shape to which to reshape
-                the tensor.
+            Arguments:
+                tensor: The tensor to reshape.
+                shape: Tuple containing the target shape to which to reshape
+                    the tensor.
 
-    Returns:
-        The input ``tensor`` reshape into the requested shape.
-    """
-
+        Returns:
+            The input ``tensor`` reshape into the requested shape.
+        """
 
     @abstractclassmethod
     def trapz(cls, x, y, dimension):
@@ -299,7 +295,6 @@ class TensorBackend(ABC):
             Rank k - 1 tensor containing the data in ``y`` integrated over
             ``x``.
         """
-
 
     @abstractclassmethod
     def integrate(cls, x, y, dimension):
@@ -363,7 +358,6 @@ class TensorBackend(ABC):
             A tensor containing zeros of given shape.
         """
 
-
     @abstractclassmethod
     def ones(module, shape=None, like=None):
         """
@@ -407,4 +401,3 @@ class TensorBackend(ABC):
             Rank-k tensor containing elements from 'x' where 'condition' is True
             and elements from 'y' everywhere else.
         """
-

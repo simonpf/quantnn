@@ -9,6 +9,7 @@ This module provides download functions and dataset classes for the
 from pathlib import Path
 from urllib.request import urlretrieve
 
+
 def download_data(destination="data"):
     """
     Downloads training and evaluation data for the CTP retrieval.

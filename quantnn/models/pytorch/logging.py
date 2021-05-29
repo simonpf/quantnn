@@ -14,6 +14,7 @@ import xarray as xr
 
 from quantnn.logging import TrainingLogger
 
+
 class SummaryWriter(SummaryWriter):
     """
     Specialization of torch original SummaryWriter that overrides 'add_params'
@@ -21,10 +22,11 @@ class SummaryWriter(SummaryWriter):
 
     Source: https://github.com/pytorch/pytorch/issues/32651
     """
+
     def add_hparams(self, hparam_dict, metric_dict, epoch):
         torch._C._log_api_usage_once("tensorboard.logging.add_hparams")
         if type(hparam_dict) is not dict or type(metric_dict) is not dict:
-            raise TypeError('hparam_dict and metric_dict should be dictionary.')
+            raise TypeError("hparam_dict and metric_dict should be dictionary.")
         exp, ssi, sei = hparams(hparam_dict, metric_dict)
 
         logdir = self._get_file_writer().get_logdir()
@@ -36,15 +38,15 @@ class SummaryWriter(SummaryWriter):
             for k, v in metric_dict.items():
                 w_hp.add_scalar(k, v, epoch)
 
+
 class TensorBoardLogger(TrainingLogger):
     """
     Logger that also logs information to tensor board.
     """
-    def __init__(self,
-                 n_epochs,
-                 log_rate=100,
-                 log_directory=None,
-                 epoch_begin_callback=None):
+
+    def __init__(
+        self, n_epochs, log_rate=100, log_directory=None, epoch_begin_callback=None
+    ):
         """
         Create a new logger instance.
 
@@ -98,11 +100,7 @@ class TensorBoardLogger(TrainingLogger):
         """
         super().training_step(loss, n_samples, of=of, losses=losses)
 
-    def validation_step(self,
-                        loss,
-                        n_samples,
-                        of=None,
-                        losses=None):
+    def validation_step(self, loss, n_samples, of=None, losses=None):
         """
         Log processing of a validation batch.
 
@@ -138,13 +136,11 @@ class TensorBoardLogger(TrainingLogger):
                     if isinstance(figures, dict):
                         for target in figures.keys():
                             f = figures[target]
-                            self.writer.add_figure(f"{m.name} ({target})",
-                                                   f,
-                                                   self.i_epoch)
+                            self.writer.add_figure(
+                                f"{m.name} ({target})", f, self.i_epoch
+                            )
                     else:
-                        self.writer.add_figure(f"{m.name}",
-                                               figures,
-                                               self.i_epoch)
+                        self.writer.add_figure(f"{m.name}", figures, self.i_epoch)
 
     def training_end(self):
         """
@@ -160,7 +156,6 @@ class TensorBoardLogger(TrainingLogger):
                         metrics[name + "_final"] = v.data[-1]
                 self.writer.add_hparams(self.attributes, {}, self.i_epoch)
                 self.writer.flush()
-
 
     def __del__(self):
         # Extract metric values for hyper parameters.

@@ -11,27 +11,33 @@ This module provides an implementation of a fully-covolutional
 import torch
 import torch.nn as nn
 
+
 def _conv2(channels_in, channels_out, kernel_size):
     """
     Convolution with reflective padding to keep image size constant.
     """
-    return nn.Conv2d(channels_in,
-                     channels_out,
-                     kernel_size=kernel_size,
-                     padding=kernel_size // 2,
-                     padding_mode="reflect")
+    return nn.Conv2d(
+        channels_in,
+        channels_out,
+        kernel_size=kernel_size,
+        padding=kernel_size // 2,
+        padding_mode="reflect",
+    )
+
 
 def _conv2_down(channels_in, channels_out, kernel_size):
     """
     Convolution combined with downsampling and reflective padding to
     decrease input size by a factor of 2.
     """
-    return nn.Conv2d(channels_in,
-                     channels_out,
-                     kernel_size=kernel_size,
-                     padding=kernel_size // 2,
-                     stride=2,
-                     padding_mode="reflect")
+    return nn.Conv2d(
+        channels_in,
+        channels_out,
+        kernel_size=kernel_size,
+        padding=kernel_size // 2,
+        stride=2,
+        padding_mode="reflect",
+    )
 
 
 class ResidualBlock(nn.Module):
@@ -41,11 +47,8 @@ class ResidualBlock(nn.Module):
     mapping connecting the input and the activation feeding into the
     last ReLU layer.
     """
-    def __init__(self,
-                 channels_in,
-                 channels_out,
-                 bottleneck=None,
-                 downsample=False):
+
+    def __init__(self, channels_in, channels_out, bottleneck=None, downsample=False):
         """
         Create new convolution block.
 
@@ -64,9 +67,12 @@ class ResidualBlock(nn.Module):
                 _conv2(channels_in, channels_out, 3),
                 nn.BatchNorm2d(channels_out),
                 nn.ReLU(inplace=True),
-                (_conv2_down(channels_out, channels_out, 3) if downsample
-                 else _conv2(channels_out, channels_out, 3)),
-                nn.BatchNorm2d(channels_out)
+                (
+                    _conv2_down(channels_out, channels_out, 3)
+                    if downsample
+                    else _conv2(channels_out, channels_out, 3)
+                ),
+                nn.BatchNorm2d(channels_out),
             )
         else:
             self.block = nn.Sequential(
@@ -76,9 +82,12 @@ class ResidualBlock(nn.Module):
                 _conv2(bottleneck, bottleneck, 3),
                 nn.BatchNorm2d(bottleneck),
                 nn.ReLU(inplace=True),
-                (_conv2_down(bottleneck, channels_out, 1) if downsample
-                 else _conv2(bottleneck, channels_out, 1)),
-                nn.BatchNorm2d(channels_out)
+                (
+                    _conv2_down(bottleneck, channels_out, 1)
+                    if downsample
+                    else _conv2(bottleneck, channels_out, 1)
+                ),
+                nn.BatchNorm2d(channels_out),
             )
         self.activation = nn.ReLU(inplace=True)
 
@@ -104,17 +113,17 @@ class DownSamplingBlock(nn.Module):
     UNet downsampling block consisting of strided convolution followed
     by given number of residual blocks.
     """
-    def __init__(self,
-                 channels_in,
-                 channels_out,
-                 n_blocks,
-                 bottleneck=None):
+
+    def __init__(self, channels_in, channels_out, n_blocks, bottleneck=None):
         super().__init__()
-        modules = ([ResidualBlock(channels_in, channels_out,
-                                 bottleneck=bottleneck, downsample=True)]
-                   * (n_blocks - 1))
-        modules += [ResidualBlock(channels_out, channels_out,
-                                  bottleneck=bottleneck)] * (n_blocks - 1)
+        modules = [
+            ResidualBlock(
+                channels_in, channels_out, bottleneck=bottleneck, downsample=True
+            )
+        ] * (n_blocks - 1)
+        modules += [
+            ResidualBlock(channels_out, channels_out, bottleneck=bottleneck)
+        ] * (n_blocks - 1)
         self.block = nn.Sequential(*modules)
 
     def forward(self, x):
@@ -127,22 +136,24 @@ class UpSamplingBlock(nn.Module):
     ResNet upsampling block consisting of linear interpolation
     followed by given number of residual blocks.
     """
-    def __init__(self,
-                 channels_in,
-                 channels_skip,
-                 channels_out,
-                 n_blocks,
-                 bottleneck=None):
+
+    def __init__(
+        self, channels_in, channels_skip, channels_out, n_blocks, bottleneck=None
+    ):
         super().__init__()
-        self.upscaling = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.upscaling = nn.Upsample(
+            scale_factor=2, mode="bilinear", align_corners=True
+        )
 
-
-        modules = [ResidualBlock(channels_in + channels_skip, channels_out,
-                                 bottleneck=bottleneck)]
-        modules += ([ResidualBlock(channels_out, channels_out,
-                                  bottleneck=bottleneck)] * (n_blocks - 1))
+        modules = [
+            ResidualBlock(
+                channels_in + channels_skip, channels_out, bottleneck=bottleneck
+            )
+        ]
+        modules += [
+            ResidualBlock(channels_out, channels_out, bottleneck=bottleneck)
+        ] * (n_blocks - 1)
         self.block = nn.Sequential(*modules)
-
 
     def forward(self, x, x_skip):
         """Propagate input through block."""
@@ -164,18 +175,16 @@ class ResNet(nn.Module):
     norm and ReLU activation. All following block are residual blocks
     with bottlenecks.
     """
-    def __init__(self,
-                 n_inputs,
-                 n_outputs,
-                 blocks=2):
+
+    def __init__(self, n_inputs, n_outputs, blocks=2):
 
         super().__init__()
         self.n_inputs = n_inputs
         self.n_outputs = n_outputs
 
-        self.in_block = nn.Sequential(_conv2_down(n_inputs, 128, 7),
-                                      nn.BatchNorm2d(128),
-                                      nn.ReLU())
+        self.in_block = nn.Sequential(
+            _conv2_down(n_inputs, 128, 7), nn.BatchNorm2d(128), nn.ReLU()
+        )
 
         if type(blocks) is int:
             blocks = 4 * [blocks]
@@ -191,10 +200,12 @@ class ResNet(nn.Module):
         self.up_block_4 = UpSamplingBlock(256, 128, n_outputs, blocks[0])
         self.up_block_5 = UpSamplingBlock(n_outputs, n_inputs, n_outputs, blocks[0])
 
-        self.out_block = nn.Sequential(_conv2(n_outputs, n_outputs, 1),
-                                       nn.BatchNorm2d(n_outputs),
-                                       nn.ReLU(),
-                                       _conv2(n_outputs, n_outputs, 1))
+        self.out_block = nn.Sequential(
+            _conv2(n_outputs, n_outputs, 1),
+            nn.BatchNorm2d(n_outputs),
+            nn.ReLU(),
+            _conv2(n_outputs, n_outputs, 1),
+        )
 
     def forward(self, x):
         """Propagate input through resnet."""

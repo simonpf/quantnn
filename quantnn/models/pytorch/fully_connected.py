@@ -19,11 +19,8 @@ class FullyConnectedBlock(nn.Sequential):
     Building block for fully-connected network. Consists of fully-connected
     layer followed by an optional batch norm layer and the activation.
     """
-    def __init__(self,
-                 n_inputs,
-                 n_outputs,
-                 activation,
-                 batch_norm=True):
+
+    def __init__(self, n_inputs, n_outputs, activation, batch_norm=True):
         """
         Create block.
 
@@ -45,14 +42,17 @@ class FullyConnected(PytorchModel, nn.Module):
     """
     A fully-connected neural network model.
     """
-    def __init__(self,
-                 n_inputs,
-                 n_outputs,
-                 n_layers,
-                 width,
-                 activation=nn.ReLU,
-                 batch_norm=False,
-                 skip_connections=False):
+
+    def __init__(
+        self,
+        n_inputs,
+        n_outputs,
+        n_layers,
+        width,
+        activation=nn.ReLU,
+        batch_norm=False,
+        skip_connections=False,
+    ):
         """
         Create a fully-connect neural network model.
 
@@ -83,8 +83,9 @@ class FullyConnected(PytorchModel, nn.Module):
 
         modules = []
         for i in range(n_layers):
-            modules.append(FullyConnectedBlock(n_in, n_out, activation,
-                                               batch_norm=batch_norm))
+            modules.append(
+                FullyConnectedBlock(n_in, n_out, activation, batch_norm=batch_norm)
+            )
             if self.skips:
                 if i == 0:
                     n_in = n_out + n_inputs
@@ -101,7 +102,6 @@ class FullyConnected(PytorchModel, nn.Module):
 
         y_p = []
         y_l = self.mods[0](x)
-
 
         for l in self.mods[1:]:
             if self.skips:

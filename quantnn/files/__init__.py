@@ -61,12 +61,14 @@ def read_file(path, *args, **kwargs):
 
     raise InvalidURL(f"The provided protocol '{url.scheme}' is not supported.")
 
+
 class _DummyCache:
     """
     A dummy cache for local files, which are not cached
     at all.
 
     """
+
     def __init__(self):
         """Create dummy cache."""
         pass
@@ -81,6 +83,7 @@ class _DummyCache:
     def cleanup(self):
         pass
 
+
 class CachedDataFolder:
     """
     This class provides an interface to a generic folder containing
@@ -94,10 +97,8 @@ class CachedDataFolder:
              "" if the folder is local.
         cache: Cache object used to cache data accesses.
     """
-    def __init__(self,
-                 path,
-                 pattern="*",
-                 n_files=None):
+
+    def __init__(self, path, pattern="*", n_files=None):
         """
         Create a CachedDataFolder.
 
@@ -129,8 +130,9 @@ class CachedDataFolder:
                     files = sftp.list_files(self.host, url.path)
                     self.cache = sftp.SFTPCache()
                 else:
-                    raise InvalidURL(f"The provided protocol '{url.scheme}' "
-                                    f" is not supported.")
+                    raise InvalidURL(
+                        f"The provided protocol '{url.scheme}' " f" is not supported."
+                    )
         self.files = list(filter(lambda f: f.match(pattern), files))
         if n_files:
             self.files = self.files[:n_files]

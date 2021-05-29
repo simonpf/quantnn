@@ -19,17 +19,21 @@ import copy
 import pickle
 import importlib
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-from quantnn.common import (QuantnnException,
-                            UnsupportedBackendException,
-                            ModelNotSupported,
-                            InputDataError)
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+from quantnn.common import (
+    QuantnnException,
+    UnsupportedBackendException,
+    ModelNotSupported,
+    InputDataError,
+)
 from quantnn.logging import TrainingLogger
 from quantnn.utils import serialize_dataset, deserialize_dataset
 import quantnn.metrics
 
 _DEFAULT_BACKEND = None
+
 
 def set_default_backend(name):
     """
@@ -44,19 +48,24 @@ def set_default_backend(name):
     if name.lower() == "keras":
         try:
             import quantnn.models.keras as keras
+
             _DEFAULT_BACKEND = keras
         except Exception as e:
-            raise Exception("The following error occurred while trying "
-                            " to import keras: ", e)
+            raise Exception(
+                "The following error occurred while trying " " to import keras: ", e
+            )
     elif name.lower() in ["pytorch", "torch"]:
         try:
             import quantnn.models.pytorch as pytorch
+
             _DEFAULT_BACKEND = pytorch
         except Exception as e:
-            raise Exception("The following error occurred while trying "
-                            " to import pytorch: ", e)
+            raise Exception(
+                "The following error occurred while trying " " to import pytorch: ", e
+            )
     else:
-        raise Exception("\"{}\" is not a supported backend.".format(name))
+        raise Exception('"{}" is not a supported backend.'.format(name))
+
 
 def get_default_backend():
 
@@ -67,6 +76,7 @@ def get_default_backend():
 
     try:
         import quantnn.models.pytorch as pytorch
+
         _DEFAULT_BACKEND = pytorch
         return _DEFAULT_BACKEND
     except ModuleNotFoundError:
@@ -74,6 +84,7 @@ def get_default_backend():
 
     try:
         import quantnn.models.keras as keras
+
         _DEFAULT_BACKEND = keras
         return _DEFAULT_BACKEND
     except ModuleNotFoundError:
@@ -90,12 +101,14 @@ def get_available_backends():
     backends = []
     try:
         import quantnn.models.pytorch as pytorch
+
         backends.append(pytorch)
     except ModuleNotFoundError:
         pass
 
     try:
         import quantnn.models.keras as keras
+
         backends.append(keras)
     except ModuleNotFoundError:
         pass
@@ -103,18 +116,13 @@ def get_available_backends():
 
 
 class NeuralNetworkModel:
-    def __init__(self,
-                 n_inputs,
-                 n_outputs,
-                 model):
+    def __init__(self, n_inputs, n_outputs, model):
         self._model = None
 
         # Provided model is just an architecture tuple
         if isinstance(model, tuple):
             self.backend = get_default_backend()
-            self.model = self.backend.FullyConnected(n_inputs,
-                                                     n_outputs,
-                                                     *model)
+            self.model = self.backend.FullyConnected(n_inputs, n_outputs, *model)
         else:
             self.model = model
 
@@ -135,23 +143,25 @@ class NeuralNetworkModel:
                 pass
         if not self._model:
             raise UnsupportedBackendException(
-                "The provided model is not supported by any "
-                "of the backend modules.")
+                "The provided model is not supported by any " "of the backend modules."
+            )
 
-    def train(self,
-              training_data,
-              loss,
-              validation_data=None,
-              optimizer=None,
-              scheduler=None,
-              n_epochs=None,
-              adversarial_training=None,
-              batch_size=None,
-              device='cpu',
-              logger=None,
-              metrics=None,
-              keys=None,
-              transformation=None):
+    def train(
+        self,
+        training_data,
+        loss,
+        validation_data=None,
+        optimizer=None,
+        scheduler=None,
+        n_epochs=None,
+        adversarial_training=None,
+        batch_size=None,
+        device="cpu",
+        logger=None,
+        metrics=None,
+        keys=None,
+        transformation=None,
+    ):
         """
         Train model on given training data.
 
@@ -193,10 +203,10 @@ class NeuralNetworkModel:
             for i, m in enumerate(metrics):
                 if isinstance(m, str):
                     error = InputDataError(
-                            f"The metric name '{m}' does not match any "
-                            f"trivially constructable metric classes in "
-                            f"'quantnn.metrics'."
-                        )
+                        f"The metric name '{m}' does not match any "
+                        f"trivially constructable metric classes in "
+                        f"'quantnn.metrics'."
+                    )
                     try:
                         m = getattr(quantnn.metrics, m)()
                     except AttributeError:
@@ -210,19 +220,21 @@ class NeuralNetworkModel:
         if logger is None:
             logger = TrainingLogger(n_epochs)
 
-        training_results = self.model.train(training_data,
-                                            validation_data=validation_data,
-                                            loss=loss,
-                                            optimizer=optimizer,
-                                            scheduler=scheduler,
-                                            n_epochs=n_epochs,
-                                            adversarial_training=adversarial_training,
-                                            batch_size=batch_size,
-                                            device=device,
-                                            logger=logger,
-                                            metrics=metrics,
-                                            keys=keys,
-                                            transformation=transformation)
+        training_results = self.model.train(
+            training_data,
+            validation_data=validation_data,
+            loss=loss,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            n_epochs=n_epochs,
+            adversarial_training=adversarial_training,
+            batch_size=batch_size,
+            device=device,
+            logger=logger,
+            metrics=metrics,
+            keys=keys,
+            transformation=transformation,
+        )
         if hasattr(logger, "history"):
             self.training_history = logger.history
 
@@ -244,7 +256,7 @@ class NeuralNetworkModel:
 
             The loaded QRNN object.
         """
-        with open(path, 'rb') as file:
+        with open(path, "rb") as file:
             qrnn = pickle.load(file)
             backend = importlib.import_module(qrnn.backend)
             qrnn.backend = backend

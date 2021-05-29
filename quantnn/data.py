@@ -42,15 +42,12 @@ def iterate_dataset(dataset):
         for i in range(len(dataset)):
             yield dataset[i]
     else:
-        raise DatasetError("The provided dataset is neither iterable nor "
-                           "a sequence.")
+        raise DatasetError(
+            "The provided dataset is neither iterable nor " "a sequence."
+        )
 
 
-def open_dataset(folder,
-                 path,
-                 dataset_factory,
-                 args=None,
-                 kwargs=None):
+def open_dataset(folder, path, dataset_factory, args=None, kwargs=None):
     """
     Open a dataset.
 
@@ -72,13 +69,13 @@ def open_dataset(folder,
     if args is None:
         args = []
     if not isinstance(args, Iterable):
-        raise ValueError("Provided postitional arguments 'args' must be "
-                         "iterable.")
+        raise ValueError("Provided postitional arguments 'args' must be " "iterable.")
     if kwargs is None:
         kwargs = {}
     if not isinstance(kwargs, Mapping):
-        raise ValueError("Provided postitional arguments 'kwargs' must be "
-                         "a mapping.")
+        raise ValueError(
+            "Provided postitional arguments 'kwargs' must be " "a mapping."
+        )
 
     _LOGGER.info("Opening dataset: %s", path)
 
@@ -92,14 +89,17 @@ class DataFolder:
     Interface to load and iterate over multiple dataset files in a
     folder.
     """
-    def __init__(self,
-                 path,
-                 dataset_factory,
-                 args=None,
-                 kwargs=None,
-                 n_workers=4,
-                 n_files=None,
-                 iterations_per_file=1):
+
+    def __init__(
+        self,
+        path,
+        dataset_factory,
+        args=None,
+        kwargs=None,
+        n_workers=4,
+        n_files=None,
+        iterations_per_file=1,
+    ):
         """
         Create new DataFolder object.
 
@@ -151,13 +151,14 @@ class DataFolder:
                 else:
                     if len(self.cache) > self.n_workers:
                         self.cache.popitem(last=False)
-                    arguments = [self.folder,
-                                 file,
-                                 self.dataset_factory,
-                                 self.args,
-                                 self.kwargs]
-                    self.cache[file] = self.pool.submit(open_dataset,
-                                                        *arguments)
+                    arguments = [
+                        self.folder,
+                        file,
+                        self.dataset_factory,
+                        self.args,
+                        self.kwargs,
+                    ]
+                    self.cache[file] = self.pool.submit(open_dataset, *arguments)
 
     def get_next_dataset(self):
         """
@@ -185,10 +186,14 @@ class DataFolder:
         else:
             if len(self.cache) > self.n_workers:
                 self.cache.popitem(last=False)
-            arguments = [self.folder, file, self.dataset_factory,
-                         self.args, self.kwargs]
-            self.cache[file] = self.pool.submit(open_dataset,
-                                                *arguments)
+            arguments = [
+                self.folder,
+                file,
+                self.dataset_factory,
+                self.args,
+                self.kwargs,
+            ]
+            self.cache[file] = self.pool.submit(open_dataset, *arguments)
 
         #
         # Return current file.
@@ -199,7 +204,6 @@ class DataFolder:
 
         return dataset
 
-
     def __iter__(self):
         """
         Iterate over all batches in all remote files.
@@ -209,18 +213,22 @@ class DataFolder:
             for i in range(self.iterations_per_file):
                 yield from iterate_dataset(dataset)
 
+
 class LazyDataFolder:
     """
     A data folder loader for lazy datasets.
     """
-    def __init__(self,
-                 path,
-                 dataset_factory,
-                 args=None,
-                 kwargs=None,
-                 n_workers=4,
-                 n_files=None,
-                 batch_queue_size=32):
+
+    def __init__(
+        self,
+        path,
+        dataset_factory,
+        args=None,
+        kwargs=None,
+        n_workers=4,
+        n_files=None,
+        batch_queue_size=32,
+    ):
         """
         Create new DataFolder object.
 
@@ -250,9 +258,7 @@ class LazyDataFolder:
         self.batch_queue = Queue(maxsize=batch_queue_size)
         self.pool = ProcessPoolExecutor(max_workers=self.n_workers)
         self.folder.download(self.pool)
-        files = [
-            self.folder.get(f) for f in np.random.permutation(self.folder.files)
-        ]
+        files = [self.folder.get(f) for f in np.random.permutation(self.folder.files)]
 
         if args is None:
             args = []
@@ -269,7 +275,7 @@ class LazyDataFolder:
     def __iter__(self):
         counters = {id(d): 0 for d in self.datasets}
         num_active = len(self.datasets)
-        while (num_active > 0):
+        while num_active > 0:
             for d in self.datasets:
                 i = counters[id(d)]
                 if i >= len(d):
@@ -281,13 +287,12 @@ class LazyDataFolder:
                     yield self.batch_queue.get().result()
 
                 # Put next batch on queue.
-                self.batch_queue.put(
-                    self.pool.submit(d.__getitem__, i)
-                )
+                self.batch_queue.put(self.pool.submit(d.__getitem__, i))
                 counters[id(d)] += 1
 
         while not self.batch_queue.empty():
             yield self.batch_queue.get().result()
+
 
 class BatchedDataset:
     """
@@ -295,13 +300,16 @@ class BatchedDataset:
     dataset providing tensors of
 
     """
-    def __init__(self,
-                 x,
-                 y,
-                 batch_size=None,
-                 discard_last=False,
-                 tensor_backend=None,
-                 shuffle=True):
+
+    def __init__(
+        self,
+        x,
+        y,
+        batch_size=None,
+        discard_last=False,
+        tensor_backend=None,
+        shuffle=True,
+    ):
         self.x = x
         self.y = y
         self.n_samples = x.shape[0]
@@ -310,7 +318,7 @@ class BatchedDataset:
         else:
             self.batch_size = batch_size
 
-        self.discard_last = False,
+        self.discard_last = (False,)
         self.tensor_backend = tensor_backend
         self.shuffle = shuffle
 

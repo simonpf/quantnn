@@ -14,6 +14,7 @@ import numpy as np
 from quantnn.backends import get_tensor_backend
 from quantnn.common import InvalidDimensionException
 
+
 def _check_input_dimensions(y_pred, y):
     """
     Ensures that input to a metric's 'process_batch' method have the same rank.
@@ -32,11 +33,13 @@ def _check_input_dimensions(y_pred, y):
             "be of identical rank."
         )
 
+
 class Metric(ABC):
     """
     The Metric abstract base class defines the basic interface for metric
     objects.
     """
+
     @abstractproperty
     def name(self):
         """
@@ -72,12 +75,13 @@ class Metric(ABC):
                 values between metrics.
         """
 
+
 ################################################################################
 # Scalar metrics
 ################################################################################
 
-class ScalarMetric(Metric):
 
+class ScalarMetric(Metric):
     def __init__(self):
         self._model = None
         self.keys = set()
@@ -98,6 +102,7 @@ class ScalarMetric(Metric):
         Args:
              key: The key identifying the target.
         """
+
     def get_values(self):
         """
         The values of the metric.
@@ -118,10 +123,12 @@ class ScalarMetric(Metric):
             results[key] = self.get_value(key)
         return results
 
+
 class Bias(ScalarMetric):
     """
     Calculates the bias (mean error).
     """
+
     def __init__(self):
         super().__init__()
         self.error = {}
@@ -140,7 +147,6 @@ class Bias(ScalarMetric):
     @model.setter
     def model(self, model):
         self._model = model
-
 
     def process_batch(self, key, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
@@ -193,10 +199,12 @@ class Bias(ScalarMetric):
             return 0.0
         return xp.to_numpy(self.error[key] / self.n_samples[key])
 
+
 class MeanSquaredError(ScalarMetric):
     """
     Mean squared error metric computed using the posterior mean.
     """
+
     def __init__(self):
         super().__init__()
         self.squared_error = {}
@@ -240,7 +248,7 @@ class MeanSquaredError(ScalarMetric):
         if self.mask is not None:
             mask = xp.as_type(y > self.mask, y)
             se = self.squared_error.get(key, 0.0)
-            self.squared_error[key] = se + ((mask * dy)**2).sum()
+            self.squared_error[key] = se + ((mask * dy) ** 2).sum()
             n = self.n_samples.get(key, 0.0)
             self.n_samples[key] = n + mask.sum()
         else:
@@ -260,10 +268,12 @@ class MeanSquaredError(ScalarMetric):
 
         return xp.to_numpy(self.squared_error[key] / self.n_samples[key])
 
+
 class CRPS(ScalarMetric):
     """
     Mean squared error metric computed using the posterior mean.
     """
+
     def __init__(self):
         super().__init__()
         self.crps = {}
@@ -316,11 +326,13 @@ class CRPS(ScalarMetric):
 # Calibration plot
 ################################################################################
 
+
 class CalibrationPlot(Metric):
     """
     Produces a plot of  the calibration of the predicted quantiles of a QRNN.
     Currently only works in combination with the tensor board logger.
     """
+
     def __init__(self, quantiles=None):
         self.calibration = {}
         self.n_samples = {}
@@ -352,9 +364,9 @@ class CalibrationPlot(Metric):
             quantiles = self.quantiles
             if quantiles is None:
                 quantiles = np.linspace(0.05, 0.95, 10)
-            y_pred = self.model.posterior_quantiles(y_pred=y_pred,
-                                                    quantiles=quantiles,
-                                                    key=key)
+            y_pred = self.model.posterior_quantiles(
+                y_pred=y_pred, quantiles=quantiles, key=key
+            )
 
         if self.tensor_backend is None:
             self.tensor_backend = get_tensor_backend(y_pred)
@@ -447,10 +459,12 @@ class CalibrationPlot(Metric):
 # HeatMap
 ################################################################################
 
+
 class ScatterPlot(Metric):
     """
     Produces a scatter plot of the posterior mean against the target value.
     """
+
     def __init__(self, bins=None, log_scale=False):
         self.bins = bins
         self.log_scale = log_scale
@@ -582,17 +596,17 @@ class ScatterPlot(Metric):
         add_title = False
         if len(self.y_pred) > 1:
             add_title = True
-        figures = {
-            k: self.make_scatter_plot(k, add_title) for k in self.y_pred
-        }
+        figures = {k: self.make_scatter_plot(k, add_title) for k in self.y_pred}
         if len(figures) == 1:
             return next(iter(figures.items()))[1]
         return figures
+
 
 class QuantileFunction(Metric):
     """
     Produces a plot of the distribution of the quantile function for true predictions.
     """
+
     def __init__(self):
         self.qfs = {}
         self._model = None
@@ -616,10 +630,7 @@ class QuantileFunction(Metric):
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
-
-        qf = self.model.quantile_function(y_pred=y_pred,
-                                          y=y,
-                                          key=key)
+        qf = self.model.quantile_function(y_pred=y_pred, y=y, key=key)
 
         if self.tensor_backend is None:
             self.tensor_backend = get_tensor_backend(y_pred)
@@ -662,10 +673,10 @@ class QuantileFunction(Metric):
 
         x = 0.5 * (bins[1:] + bins[:-1])
         ax.plot(x, y)
-        #ax.plot(x, 1.0 * np.ones(x.size), ls="--", c="k")
+        # ax.plot(x, 1.0 * np.ones(x.size), ls="--", c="k")
 
-        #ax.set_xlim([0, 1])
-        #ax.set_ylim([0, 2])
+        # ax.set_xlim([0, 1])
+        # ax.set_ylim([0, 2])
         ax.set_xlabel("F^{-1}(y_true)")
         ax.set_ylabel("p(F(y_true))")
 

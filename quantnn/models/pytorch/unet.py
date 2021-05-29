@@ -12,13 +12,16 @@ Comput.-Assist. Intervent. (MICCAI), pp. 234-241, 2015.
 import torch
 import torch.nn as nn
 
+
 def _conv2(channels_in, channels_out, kernel_size):
     """2D convolution with padding to keep image size constant. """
-    return nn.Conv2d(channels_in,
-                     channels_out,
-                     kernel_size=kernel_size,
-                     padding=kernel_size // 2,
-                     padding_mode="reflect")
+    return nn.Conv2d(
+        channels_in,
+        channels_out,
+        kernel_size=kernel_size,
+        padding=kernel_size // 2,
+        padding_mode="reflect",
+    )
 
 
 class ConvolutionBlock(nn.Module):
@@ -27,9 +30,8 @@ class ConvolutionBlock(nn.Module):
     convolutions followed by a batch normalization layer and
     ReLU activaitons.
     """
-    def __init__(self,
-                 channels_in,
-                 channels_out):
+
+    def __init__(self, channels_in, channels_out):
         """
         Create new convolution block.
 
@@ -44,7 +46,7 @@ class ConvolutionBlock(nn.Module):
             nn.ReLU(inplace=True),
             _conv2(channels_out, channels_out, 3),
             nn.BatchNorm2d(channels_out),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
         )
 
     def forward(self, x):
@@ -57,13 +59,11 @@ class DownsamplingBlock(nn.Module):
     UNet downsampling block consisting of 2x2 max-pooling followed
     by a convolution block.
     """
-    def __init__(self,
-                 channels_in,
-                 channels_out):
+
+    def __init__(self, channels_in, channels_out):
         super().__init__()
         self.block = nn.Sequential(
-            nn.MaxPool2d(2),
-            ConvolutionBlock(channels_in, channels_out)
+            nn.MaxPool2d(2), ConvolutionBlock(channels_in, channels_out)
         )
 
     def forward(self, x):
@@ -77,12 +77,14 @@ class UpsamplingBlock(nn.Module):
     by a 1x1 convolution to decrease the channel dimensions and followed
     by a UNet convolution block.
     """
+
     def __init__(self, channels_in, channels_out):
         super().__init__()
-        self.upscaling = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.upscaling = nn.Upsample(
+            scale_factor=2, mode="bilinear", align_corners=True
+        )
         self.reduce = _conv2(channels_in, channels_in // 2, 3)
         self.conv = ConvolutionBlock(channels_in, channels_out)
-
 
     def forward(self, x, x_skip):
         """Propagate input through block."""
@@ -101,9 +103,8 @@ class UNet(nn.Module):
     2D 3x3 convolution followed by batch norm and ReLU activation
     functions.
     """
-    def __init__(self,
-                 n_inputs,
-                 n_outputs):
+
+    def __init__(self, n_inputs, n_outputs):
         """
         Args:
             n_input: The number of input channels.
@@ -126,7 +127,6 @@ class UNet(nn.Module):
         self.up_block_4 = UpsamplingBlock(128, n_outputs)
 
         self.out_block = _conv2(n_outputs, n_outputs, 1)
-
 
     def forward(self, x):
         """Propagate input through network."""

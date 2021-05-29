@@ -8,9 +8,11 @@ import numpy as np
 import numpy.ma as ma
 import scipy as sp
 
-from quantnn.common import (UnknownArrayTypeException,
-                            UnknownModuleException,
-                            InvalidDimensionException)
+from quantnn.common import (
+    UnknownArrayTypeException,
+    UnknownModuleException,
+    InvalidDimensionException,
+)
 
 # Placeholders for modules.
 torch = None
@@ -18,6 +20,7 @@ jnp = None
 jax = None
 _JAX_KEY = None
 tf = None
+
 
 def _get_backend_module(name):
     """
@@ -31,20 +34,25 @@ def _get_backend_module(name):
     """
     if name == "numpy":
         import numpy as np
+
         return np
     if name == "numpy.ma":
         import numpy as np
+
         return np.ma
     if name == "torch":
         import torch
+
         return torch
     if name == "jax":
         import jax
         import jax.numpy as jnp
+
         _JAX_KEY = jax.random.PRNGKey(0)
         return jnp
     if name == "tensorflow":
         import tensorflow as tf
+
         return tf
 
 
@@ -59,6 +67,7 @@ def _import_modules():
     try:
         import jax
         import jax.numpy as jnp
+
         _JAX_KEY = jax.random.PRNGKey(0)
     except ModuleNotFoundError:
         pass
@@ -90,8 +99,9 @@ def get_array_module(x):
         return _get_backend_module("jax")
     if base_module == "tensorflow":
         return _get_backend_module("tensorflow")
-    raise UnknownArrayTypeException(f"The provided input of type {type(x)} is"
-                                    "not a supported array type.")
+    raise UnknownArrayTypeException(
+        f"The provided input of type {type(x)} is" "not a supported array type."
+    )
 
 
 def to_array(module, array, like=None):
@@ -118,19 +128,18 @@ def to_array(module, array, like=None):
             if like is None:
                 return array
             else:
-                t = array.to(
-                    device=like.device,
-                    dtype=like.dtype
-                )
+                t = array.to(device=like.device, dtype=like.dtype)
                 if like.requires_grad:
                     t.requires_grad = True
                 return t
 
         if like is not None:
-            return module.tensor(array,
-                                 dtype=like.dtype,
-                                 device=like.device,
-                                 requires_grad=like.requires_grad)
+            return module.tensor(
+                array,
+                dtype=like.dtype,
+                device=like.device,
+                requires_grad=like.requires_grad,
+            )
         else:
             return module.tensor(array)
     elif module == jnp:
@@ -214,8 +223,9 @@ def numel(array):
         return array.size
     elif module_name.split(".")[0] == "tensorflow":
         return tf.size(array)
-    raise UnknownArrayTypeException(f"The provided input of type {type(x)} is"
-                                    "not a supported array type.")
+    raise UnknownArrayTypeException(
+        f"The provided input of type {type(x)} is" "not a supported array type."
+    )
 
 
 def concatenate(module, arrays, dimension):
@@ -293,6 +303,7 @@ def pad_zeros(module, array, n, dimension):
         pad[2 * n_dims - 1 - 2 * dimension] = n
         return module.nn.functional.pad(array, pad, "constant", 0.0)
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
 
 def pad_zeros_left(module, array, n, dimension):
     """
@@ -416,7 +427,9 @@ def _trapz(module, y, x, dimension):
     selection_r[dimension] = slice(1, None)
 
     dx = x[selection_r] - x[selection_l]
-    return module.math.reduce_sum(0.5 * (dx * y[selection_l] + dx * y[selection_r]), axis=dimension)
+    return module.math.reduce_sum(
+        0.5 * (dx * y[selection_l] + dx * y[selection_r]), axis=dimension
+    )
 
 
 def trapz(module, y, x, dimension):
@@ -442,10 +455,11 @@ def trapz(module, y, x, dimension):
         return module.sum(y * dx, dimension)
 
     if module in [np, ma, torch, jnp]:
-        return module.trapz(y, x=x,  axis=dimension)
+        return module.trapz(y, x=x, axis=dimension)
     elif module == tf:
         return _trapz(module, y, x, dimension)
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
 
 def cumsum(module, y, dimension):
     """
@@ -464,6 +478,7 @@ def cumsum(module, y, dimension):
         return module.cumsum(y, axis=dimension)
     elif module == tf:
         return tf.math.cumsum(y, dimension)
+
 
 def cumtrapz(module, y, x, dimension):
     """
@@ -502,7 +517,9 @@ def cumtrapz(module, y, x, dimension):
     if dx.shape[dimension] == y.shape[dimension]:
         y_int = cumsum(module, dx * y, dimension)
     elif dx.shape[dimension] == y.shape[dimension] - 1:
-        y_int = cumsum(module, 0.5 * (dx * y[selection_l] + dx * y[selection_r]), dimension)
+        y_int = cumsum(
+            module, 0.5 * (dx * y[selection_l] + dx * y[selection_r]), dimension
+        )
     else:
         raise InvalidDimensionException(
             "To integrate y over x, x must have exactly as many or one more "
@@ -510,6 +527,7 @@ def cumtrapz(module, y, x, dimension):
         )
 
     return pad_zeros_left(module, y_int, 1, dimension)
+
 
 def zeros(module, shape, like=None):
     """
@@ -617,6 +635,7 @@ def exp(module, x):
     elif module == tf:
         return tf.math.exp(x)
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
 
 def tensordot(module, x, y, axes):
     """
