@@ -443,6 +443,8 @@ class PytorchModel:
 
         losses = {}
 
+        mask = torch.tensor(loss.mask).to(dtype=x.dtype, device=x.device)
+
         total_loss = None
         # Loop over keys in prediction.
         for k in y_pred:
@@ -466,6 +468,7 @@ class PytorchModel:
                 y_pred_k_t = y_pred_k
             else:
                 y_k_t = transform_k(y_k)
+                y_k_t = torch.where(y_k > mask, y_k_t, mask)
                 y_pred_k_t = transform_k.invert(y_pred_k)
 
             if k == "__loss__":
