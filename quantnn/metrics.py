@@ -285,7 +285,7 @@ class CRPS(ScalarMetric):
         xp = self.tensor_backend
 
         crps_batches = self.crps.setdefault(key, [])
-        crps = xp.to_numpy(self.model.crps(y_pred=y_pred, y_true=y))
+        crps = xp.to_numpy(self.model.crps(y_pred=y_pred, y_true=y, key=key))
         y = xp.to_numpy(y)
 
         if self.mask is not None:

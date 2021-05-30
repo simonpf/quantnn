@@ -317,7 +317,7 @@ class DRNN(NeuralNetworkModel):
                                         bin_axis=self.bin_axis)
         return apply(calculate_quantile_function, y_pred, bins)
 
-    def crps(self, x=None, y_pred=None, y=None, key=None):
+    def crps(self, x=None, y_pred=None, y_true=None, key=None):
         r"""
         Calculate CRPS score for given reference values.
 
@@ -349,11 +349,11 @@ class DRNN(NeuralNetworkModel):
             else:
                 bins = self.bins
 
-        def calculate_crps(y_pred, bins):
+        def calculate_crps(y_pred, y_true, bins):
             module = get_array_module(y_pred)
             bins = to_array(module, bins, like=y_pred)
             return qd.crps(y_pred,
-                           y,
+                           y_true,
                            bins,
                            bin_axis=self.bin_axis)
-        return apply(calculate_crps, y_pred, bins)
+        return apply(calculate_crps, y_pred, y_true, bins)
