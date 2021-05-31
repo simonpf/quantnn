@@ -1,13 +1,10 @@
 from quantnn.backends.pytorch import PyTorch
 from quantnn.common import UnsupportedTensorType
 
-_TENSOR_BACKEND_CLASSES = [
-    PyTorch
-]
+_TENSOR_BACKEND_CLASSES = [PyTorch]
 
-TENSOR_BACKENDS = [
-    b for b in _TENSOR_BACKEND_CLASSES if b.available()
-]
+TENSOR_BACKENDS = [b for b in _TENSOR_BACKEND_CLASSES if b.available()]
+
 
 def get_tensor_backend(tensor):
     """

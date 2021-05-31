@@ -10,7 +10,8 @@ from quantnn.models.pytorch.common import (
     QuantileLoss,
     BatchedDataset,
     save_model,
-    load_model)
+    load_model,
+)
 from quantnn.models.pytorch.common import PytorchModel as Model
 from quantnn.models.pytorch.fully_connected import FullyConnected
 from quantnn.models.pytorch.unet import UNet

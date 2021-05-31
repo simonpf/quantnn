@@ -8,18 +8,21 @@ from probabilistic predictions in the form of discretized probability density
 functions as produced by DRNNs.
 """
 from quantnn.common import InvalidDimensionException
-from quantnn.generic import (get_array_module,
-                             numel,
-                             expand_dims,
-                             concatenate,
-                             trapz,
-                             cumtrapz,
-                             cumsum,
-                             reshape,
-                             pad_zeros_left,
-                             as_type,
-                             zeros,
-                             sample_uniform)
+from quantnn.generic import (
+    get_array_module,
+    numel,
+    expand_dims,
+    concatenate,
+    trapz,
+    cumtrapz,
+    cumsum,
+    reshape,
+    pad_zeros_left,
+    as_type,
+    zeros,
+    sample_uniform,
+)
+
 
 def _check_dimensions(n_y, n_b):
     if n_y != n_b - 1:
@@ -29,9 +32,8 @@ def _check_dimensions(n_y, n_b):
             f" one more bin edge than bin values in 'y_pred'."
         )
 
-def normalize(y_pred,
-              bins,
-              bin_axis=1):
+
+def normalize(y_pred, bins, bin_axis=1):
     """
     Converts the raw DRNN output to a PDF.
 
@@ -65,9 +67,8 @@ def normalize(y_pred,
 
     return y_pred / norm / dx
 
-def posterior_cdf(y_pdf,
-                  bins,
-                  bin_axis=1):
+
+def posterior_cdf(y_pdf, bins, bin_axis=1):
     """
     Calculate CDF from predicted probability density function.
 
@@ -97,9 +98,8 @@ def posterior_cdf(y_pdf,
     y_cdf = y_cdf / y_cdf[tuple(selection)]
     return y_cdf
 
-def posterior_mean(y_pdf,
-                   bins,
-                   bin_axis=1):
+
+def posterior_mean(y_pdf, bins, bin_axis=1):
     """
     Calculate posterior mean from predicted PDFs.
 
@@ -129,9 +129,7 @@ def posterior_mean(y_pdf,
     return trapz(xp, bins_r * y_pdf, bins, bin_axis)
 
 
-def posterior_median(y_pred,
-                     bins,
-                     bin_axis=1):
+def posterior_median(y_pred, bins, bin_axis=1):
     """
     Calculate the posterior median from predicted PDFs.
 
@@ -153,10 +151,7 @@ def posterior_median(y_pred,
     return quantiles[tuple(selection)]
 
 
-def posterior_quantiles(y_pdf,
-                        bins,
-                        quantiles,
-                        bin_axis=1):
+def posterior_quantiles(y_pdf, bins, quantiles, bin_axis=1):
     """
     Calculate posterior quantiles from predicted PDFs.
 
@@ -225,10 +220,8 @@ def posterior_quantiles(y_pdf,
     y_q = concatenate(xp, y_qs, bin_axis)
     return y_q
 
-def probability_less_than(y_pdf,
-                          bins,
-                          y,
-                          bin_axis=1):
+
+def probability_less_than(y_pdf, bins, y, bin_axis=1):
     """
     Calculate the probability of a sample being less than a given
     value for a tensor of predicted PDFs.
@@ -258,15 +251,12 @@ def probability_less_than(y_pdf,
     mask = x < y
     shape = [1] * n
     shape[bin_axis] = -1
-    mask = as_type(xp, reshape(xp, mask , shape), y_pdf)
+    mask = as_type(xp, reshape(xp, mask, shape), y_pdf)
 
     return trapz(xp, mask * y_pdf, bins, bin_axis)
 
 
-def probability_larger_than(y_pred,
-                            bins,
-                            quantiles,
-                            bin_axis=1):
+def probability_larger_than(y_pred, bins, quantiles, bin_axis=1):
     """
     Calculate the probability of a sample being larger than a given
     value for a tensor of predicted PDFs.
@@ -284,15 +274,10 @@ def probability_larger_than(y_pred,
         probability that a sample of the distribution is larger than
         the given value ``y``.
     """
-    return 1.0 - probability_less_than(y_pred,
-                                       bins,
-                                       quantiles,
-                                       bin_axis=bin_axis)
+    return 1.0 - probability_less_than(y_pred, bins, quantiles, bin_axis=bin_axis)
 
-def sample_posterior(y_pred,
-                     bins,
-                     n_samples=1,
-                     bin_axis=1):
+
+def sample_posterior(y_pred, bins, n_samples=1, bin_axis=1):
     """
     Sample the posterior distribution described by the predicted PDF.
 
@@ -320,13 +305,12 @@ def sample_posterior(y_pred,
 
     n_bins = len(bins)
 
-
     output_shape = list(y_cdf.shape)
     output_shape[bin_axis] = n_samples
     results = zeros(xp, output_shape, like=y_pred)
 
     y_index = [slice(0, None)] * n_dims
-    y_index[bin_axis] = slice(0, 1) 
+    y_index[bin_axis] = slice(0, 1)
     y_l = y_cdf[tuple(y_index)]
     b_l = bins[0]
 
@@ -334,27 +318,24 @@ def sample_posterior(y_pred,
 
     for i in range(1, n_bins):
         y_index = [slice(0, None)] * n_dims
-        y_index[bin_axis] = slice(i, i+1)
+        y_index[bin_axis] = slice(i, i + 1)
         y_r = y_cdf[tuple(y_index)]
         b_r = bins[i]
 
         mask = as_type(xp, (y_l < samples) * (y_r >= samples), y_l)
         results += b_l * (y_r - samples) * mask
         results += b_r * (samples - y_l) * mask
-        results /= (mask * (y_r - y_l) + (1.0 - mask))
+        results /= mask * (y_r - y_l) + (1.0 - mask)
 
         b_l = b_r
         y_l = y_r
-
 
     mask = as_type(xp, y_r < samples, y_r)
     results += mask * b_r
     return results
 
-def crps(y_pdf,
-         y_true,
-         bins,
-         bin_axis=1):
+
+def crps(y_pdf, y_true, bins, bin_axis=1):
     r"""
     Compute the Continuous Ranked Probability Score (CRPS) for a given
     discrete probability density.
@@ -406,10 +387,8 @@ def crps(y_pdf,
     crps = trapz(xp, (y_cdf - i) ** 2, x, bin_axis)
     return crps
 
-def quantile_function(y_pdf,
-                      y_true,
-                      bins,
-                      bin_axis=1):
+
+def quantile_function(y_pdf, y_true, bins, bin_axis=1):
     """
     Evaluates the quantile function at given y values.
     """
@@ -452,6 +431,3 @@ def quantile_function(y_pdf,
     result = result + 1.0 - as_type(xp, mask_r.sum(bin_axis) > 0, mask)
 
     return result
-
-
-

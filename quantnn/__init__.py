@@ -18,23 +18,21 @@ import logging as _logging
 import os
 
 from rich.logging import RichHandler
-from quantnn.neural_network_model import (set_default_backend,
-                                          get_default_backend)
+from quantnn.neural_network_model import set_default_backend, get_default_backend
 from quantnn.qrnn import QRNN
 from quantnn.drnn import DRNN
-from quantnn.quantiles import (cdf,
-                               pdf,
-                               posterior_mean,
-                               probability_less_than,
-                               probability_larger_than,
-                               sample_posterior,
-                               sample_posterior_gaussian,
-                               quantile_loss)
+from quantnn.quantiles import (
+    cdf,
+    pdf,
+    posterior_mean,
+    probability_less_than,
+    probability_larger_than,
+    sample_posterior,
+    sample_posterior_gaussian,
+    quantile_loss,
+)
 
-_LOG_LEVEL = os.environ.get('QUANTNN_LOG_LEVEL', 'WARNING').upper()
+_LOG_LEVEL = os.environ.get("QUANTNN_LOG_LEVEL", "WARNING").upper()
 _logging.basicConfig(
-    level=_LOG_LEVEL,
-    format="%(message)s",
-    datefmt="[%X]",
-    handlers=[RichHandler()]
+    level=_LOG_LEVEL, format="%(message)s", datefmt="[%X]", handlers=[RichHandler()]
 )

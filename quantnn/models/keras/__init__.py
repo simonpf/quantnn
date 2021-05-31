@@ -22,11 +22,14 @@ from tensorflow.keras.layers import Dense, Activation, deserialize
 from tensorflow.keras.optimizers import SGD
 from tensorflow.keras.losses import SparseCategoricalCrossentropy
 
-from quantnn.common import (QuantnnException,
-                            ModelNotSupported,
-                            InputDataError,
-                            DatasetError)
+from quantnn.common import (
+    QuantnnException,
+    ModelNotSupported,
+    InputDataError,
+    DatasetError,
+)
 from quantnn.logging import TrainingLogger
+
 
 def save_model(f, model):
     """
@@ -44,6 +47,7 @@ def save_model(f, model):
     archive.add(filename, arcname="keras_model")
     archive.close()
     shutil.rmtree(path)
+
 
 def load_model(file):
     """
@@ -77,11 +81,13 @@ def load_model(file):
 
 LOGGER = logging.getLogger(__name__)
 
+
 class CrossEntropyLoss(SparseCategoricalCrossentropy):
     """
-    Wrapper class around Keras' SparseCategoricalCrossEntropy class to support 
+    Wrapper class around Keras' SparseCategoricalCrossEntropy class to support
     masking of input values.
     """
+
     def __init__(self, bins, mask=None):
         self.__name__ = "CrossEntropyLoss"
         self.bins = [b for b in bins]
@@ -89,12 +95,8 @@ class CrossEntropyLoss(SparseCategoricalCrossentropy):
         super().__init__(reduction="none", from_logits=True)
 
     def __call__(self, y_true, y_pred, sample_weight=None):
-        y_b = tf.raw_ops.Bucketize(input=y_true,
-                                   boundaries=self.bins[1:-1],
-                                   name=None)
-        l = super().__call__(y_b,
-                             y_pred,
-                             sample_weight=sample_weight)
+        y_b = tf.raw_ops.Bucketize(input=y_true, boundaries=self.bins[1:-1], name=None)
+        l = super().__call__(y_b, y_pred, sample_weight=sample_weight)
         if self.mask is None:
             return tf.math.reduce_mean(l)
         mask = tf.cast(y_true > self.mask, tf.float32)
@@ -146,14 +148,18 @@ class QuantileLoss:
 
         if self.mask is not None:
             mask = tf.cast(y_true > self.mask, tf.float32)
-            return tf.math.reduce_sum(mask * l) / (tf.math.reduce_sum(mask) * n_quantiles)
+            return tf.math.reduce_sum(mask * l) / (
+                tf.math.reduce_sum(mask) * n_quantiles
+            )
 
         return tf.math.reduce_mean(l)
 
     def get_config(self):
-        return {"quantiles": self.quantiles,
-                "mask": self.mask,
-                "quantile_axis": self.quantile_axis}
+        return {
+            "quantiles": self.quantiles,
+            "mask": self.mask,
+            "quantile_axis": self.quantile_axis,
+        }
 
     @classmethod
     def from_config(cls, config):
@@ -161,6 +167,7 @@ class QuantileLoss:
 
     def __repr__(self):
         return "QuantileLoss(" + repr(self.quantiles) + ")"
+
 
 ###############################################################################
 # Keras data generators
@@ -204,8 +211,7 @@ class BatchedDataset:
             raise StopIteration()
 
         inds = self.indices[
-            np.arange(self.i * self.bs, (self.i + 1) * self.bs)
-            % self.indices.size
+            np.arange(self.i * self.bs, (self.i + 1) * self.bs) % self.indices.size
         ]
         x_batch = np.copy(self.x[inds])
         y_batch = self.y[inds]
@@ -228,10 +234,7 @@ class TrainingGenerator:
                  component.
     """
 
-    def __init__(self,
-                 training_data,
-                 keys=None,
-                 sigma_noise=None):
+    def __init__(self, training_data, keys=None, sigma_noise=None):
         """
         Args:
             training_data: Data generator providing the original (noise-free)
@@ -281,7 +284,7 @@ class TrainingGenerator:
                         "The following error was encountered when trying to "
                         f"retrieve the keys '{x_key}' and '{y_key} from a batch of  "
                         f"training data.: {e}"
-                        )
+                    )
             else:
                 x_batch, y_batch = batch_data
 
@@ -366,7 +369,7 @@ class ValidationGenerator:
     def __iter__(self):
         return self
 
-    #def __len__(self):
+    # def __len__(self):
     #    if hasattr(self.validation_data, "__len__"):
     #        return len(self.validation_data)
     #    return 1
@@ -441,6 +444,7 @@ class CosineAnnealing(keras.callbacks.Callback):
     """
     Cosine annealing learning rate schedule.
     """
+
     def __init__(self, eta_max, eta_min, t_tot):
         """
         Args:
@@ -457,8 +461,9 @@ class CosineAnnealing(keras.callbacks.Callback):
         self.t = 0
 
     def on_epoch_end(self, epoch, logs={}):
-        lr = (self.eta_min + 0.5 * (self.eta_max - self.eta_min)
-              * (1.0 + np.cos(self.t / self.t_tot * np.pi)))
+        lr = self.eta_min + 0.5 * (self.eta_max - self.eta_min) * (
+            1.0 + np.cos(self.t / self.t_tot * np.pi)
+        )
         keras.backend.set_value(self.model.optimizer.lr, lr)
         if lr < self.eta_min:
             self.model.stop_training = True
@@ -469,6 +474,7 @@ class LogCallback(keras.callbacks.Callback):
     """
     Adapter class to use generic quantnn logging interface with Keras model.
     """
+
     def __init__(self, logger, training_data, validation_data):
         """
         Create log callback.
@@ -494,13 +500,11 @@ class LogCallback(keras.callbacks.Callback):
 
     def on_train_batch_end(self, batch, logs=None):
         """Log training batch end."""
-        self.logger.training_step(logs["loss"], 1,
-                                  of=self.n_training_samples)
+        self.logger.training_step(logs["loss"], 1, of=self.n_training_samples)
 
     def on_test_batch_end(self, batch, logs=None):
         """Log validation batch end."""
-        self.logger.validation_step(logs["loss"], 1,
-                                    of=self.n_validation_samples)
+        self.logger.validation_step(logs["loss"], 1, of=self.n_validation_samples)
 
     def on_epoch_begin(self, epoch, logs=None):
         """Log epoch beginning."""
@@ -508,8 +512,9 @@ class LogCallback(keras.callbacks.Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         """Log epoch end."""
-        lr = self.model.optimizer._decayed_lr('float32').numpy()
+        lr = self.model.optimizer._decayed_lr("float32").numpy()
         self.logger.epoch(lr)
+
 
 ################################################################################
 # Default scheduler and optimizer
@@ -533,6 +538,7 @@ def _get_default_scheduler(model):
 ################################################################################
 # QRNN
 ################################################################################
+
 
 class KerasModel:
     r"""
@@ -561,6 +567,7 @@ class KerasModel:
             The ensemble of Keras neural networks used for the quantile regression
             neural network.
     """
+
     def __init__(self, *args, **kwargs):
         """
         Forwards call to super to support multiple inheritance.
@@ -571,8 +578,8 @@ class KerasModel:
     def create(model):
         if not isinstance(model, keras.Model):
             raise ModelNotSupported(
-                f"The provided model ({model}) is not supported by the Keras"
-                "backend")
+                f"The provided model ({model}) is not supported by the Keras" "backend"
+            )
         if not isinstance(model, KerasModel):
             model.__class__ = type("__QuantnnMixin__", (KerasModel, type(model)), {})
         return model
@@ -594,20 +601,22 @@ class KerasModel:
         """
         self.reset_states()
 
-    def train(self,
-              training_data,
-              validation_data=None,
-              loss=None,
-              optimizer=None,
-              scheduler=None,
-              n_epochs=None,
-              adversarial_training=None,
-              batch_size=None,
-              device='cpu',
-              logger=None,
-              metrics=None,
-              keys=None,
-              transformation=None):
+    def train(
+        self,
+        training_data,
+        validation_data=None,
+        loss=None,
+        optimizer=None,
+        scheduler=None,
+        n_epochs=None,
+        adversarial_training=None,
+        batch_size=None,
+        device="cpu",
+        logger=None,
+        metrics=None,
+        keys=None,
+        transformation=None,
+    ):
 
         # Input data.
         if type(training_data) == tuple:
@@ -627,8 +636,7 @@ class KerasModel:
             scheduler = _get_default_scheduler(self)
         if not optimizer:
             optimizer = _get_default_optimizer(scheduler)
-        self.compile(loss=loss,
-                     optimizer=optimizer)
+        self.compile(loss=loss, optimizer=optimizer)
 
         #
         # Setup training generator
@@ -660,11 +668,13 @@ class KerasModel:
                     validation_data=validation_generator,
                     validation_steps=1,
                     callbacks=[scheduler, log],
-                    verbose=False)
+                    verbose=False,
+                )
         logger.training_end()
 
         def predict(self, *args, device="cpu", **kwargs):
             return keras.Model.predict(self, *args, **kwargs)
+
 
 Model = KerasModel
 
@@ -677,14 +687,17 @@ class FullyConnected(KerasModel, keras.Model):
     """
     A fully-connected network with a given depth and width.
     """
-    def __init__(self,
-                 n_inputs=None,
-                 n_outputs=None,
-                 n_layers=None,
-                 width=None,
-                 activation=None,
-                 convolutional=False,
-                 **kwargs):
+
+    def __init__(
+        self,
+        n_inputs=None,
+        n_outputs=None,
+        n_layers=None,
+        width=None,
+        activation=None,
+        convolutional=False,
+        **kwargs,
+    ):
         """
         Create a fully-connected neural network.
 
@@ -714,13 +727,13 @@ class FullyConnected(KerasModel, keras.Model):
         n_out = width
 
         if isinstance(activation, str):
-            activation = layers.Activation(getattr(keras.activations,
-                                                   activation))
+            activation = layers.Activation(getattr(keras.activations, activation))
 
         if convolutional:
             for i in range(n_layers - 1):
-                self.sequential.add(layers.Conv2D(width, 1,
-                                                  input_shape=(None, None, n_in)))
+                self.sequential.add(
+                    layers.Conv2D(width, 1, input_shape=(None, None, n_in))
+                )
                 self.sequential.add(layers.BatchNormalization())
                 self.sequential.add(activation)
                 n_in = n_out
@@ -745,16 +758,10 @@ class FullyConnected(KerasModel, keras.Model):
             "n_outputs": self.n_outputs,
             "n_layers": self.n_layers,
             "activation": self.activation,
-            "convolutional": self.convolutional
-            }
+            "convolutional": self.convolutional,
+        }
         return {**base_config, **config}
 
     @classmethod
     def from_config(cls, config):
         return cls(**config)
-
-
-
-
-
-

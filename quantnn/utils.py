@@ -11,6 +11,7 @@ from tempfile import mkstemp
 
 import xarray as xr
 
+
 def apply(f, *args):
     """
     Applies a function to sequence values or dicts of values.
@@ -27,10 +28,9 @@ def apply(f, *args):
         whether ``x_1, ...`` are a dicts or not.
     """
     if all([isinstance(x, dict) for x in args]):
-        return {
-            k: f(*[x[k] for x in args]) for k in args[0]
-        }
+        return {k: f(*[x[k] for x in args]) for k in args[0]}
     return f(*args)
+
 
 def serialize_dataset(dataset):
     """
@@ -50,6 +50,7 @@ def serialize_dataset(dataset):
     finally:
         Path(filename).unlink()
     return buffer
+
 
 def deserialize_dataset(data):
     """

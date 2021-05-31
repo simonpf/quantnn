@@ -9,12 +9,15 @@ from pathlib import Path
 from urllib.request import urlretrieve
 
 _DATA_PATH = "/home/simonpf/src/pansat/notebooks/products/data/"
-_MODIS_FILES = [_DATA_PATH + "MODIS/MYD021KM.A2016286.1750.061.2018062214718.hdf",
-                _DATA_PATH + "MODIS/MYD03.A2016286.1750.061.2018062032022.hdf"]
+_MODIS_FILES = [
+    _DATA_PATH + "MODIS/MYD021KM.A2016286.1750.061.2018062214718.hdf",
+    _DATA_PATH + "MODIS/MYD03.A2016286.1750.061.2018062032022.hdf",
+]
 
 modis_files = _MODIS_FILES
 pad_along_orbit = 200
 pad_across_orbit = 300
+
 
 def prepare_input_data(modis_files):
     """
@@ -45,7 +48,7 @@ def prepare_input_data(modis_files):
     # Prepare MODIS data.
     #
 
-    scene = Scene(filenames=modis_files, reader='modis_l1b')
+    scene = Scene(filenames=modis_files, reader="modis_l1b")
     scene.load(["true_color", "31", "32", "latitude", "longitude"], resolution=1000)
 
     scene["true_color_small"] = scene["true_color"][:, ::4, ::4]
@@ -103,14 +106,16 @@ def prepare_input_data(modis_files):
     ctp_c = dataset["layer_top_pressure"]
     cth_c = dataset["layer_top_altitude"]
 
-    indices = np.where((lats_c > lat_min) * (lats_c <= lat_max) *
-                       (lons_c > lon_min) * (lons_c <= lon_max))
-    points = np.hstack([lats_r.data.reshape(-1, 1),
-                        lons_r.data.reshape(-1, 1)])
+    indices = np.where(
+        (lats_c > lat_min)
+        * (lats_c <= lat_max)
+        * (lons_c > lon_min)
+        * (lons_c <= lon_max)
+    )
+    points = np.hstack([lats_r.data.reshape(-1, 1), lons_r.data.reshape(-1, 1)])
     kd_tree = KDTree(points)
 
-    points_c = np.hstack([lats_c.reshape(-1, 1),
-                        lons_c.reshape(-1, 1)])
+    points_c = np.hstack([lats_c.reshape(-1, 1), lons_c.reshape(-1, 1)])
     d, indices = kd_tree.query(points_c)
     valid = d < 0.01
     indices = indices[valid]
@@ -138,17 +143,11 @@ def prepare_input_data(modis_files):
 
     surface_variables = ["surface_pressure", "2m_temperature", "tcwv"]
     domain = [lat_min - 2, lat_max + 2, lon_min - 2, lon_max + 2]
-    surface_product = ERA5Product('hourly',
-                                    'surface',
-                                    surface_variables,
-                                    domain)
+    surface_product = ERA5Product("hourly", "surface", surface_variables, domain)
     era_surface_files = surface_product.download(t_0, t_1)
 
     pressure_variables = ["temperature"]
-    pressure_product = ERA5Product('hourly',
-                                    'pressure',
-                                    pressure_variables,
-                                    domain)
+    pressure_product = ERA5Product("hourly", "pressure", pressure_variables, domain)
     era_pressure_files = pressure_product.download(t_0, t_1)
 
     # interpolate pressure data.
@@ -160,17 +159,25 @@ def prepare_input_data(modis_files):
     p_inds = [np.where(p_era == p)[0] for p in [950, 850, 700, 500, 250]]
     pressures = []
     for ind in p_inds:
-        p_interp = RegularGridInterpolator([lats_era, lons_era], era5_data["t"].data[0, ind[0], ::-1, :])
+        p_interp = RegularGridInterpolator(
+            [lats_era, lons_era], era5_data["t"].data[0, ind[0], ::-1, :]
+        )
         pressures.append(p_interp((lats_r, lons_r)))
 
     era5_data = xarray.open_dataset(era_surface_files[0])
     lats_era = era5_data["latitude"][::-1]
     lons_era = era5_data["longitude"]
-    t_interp = RegularGridInterpolator([lats_era, lons_era], era5_data["t2m"].data[0, ::-1, :])
+    t_interp = RegularGridInterpolator(
+        [lats_era, lons_era], era5_data["t2m"].data[0, ::-1, :]
+    )
     t_surf = t_interp((lats_r, lons_r))
-    p_interp = RegularGridInterpolator([lats_era, lons_era], era5_data["sp"].data[0, ::-1, :])
+    p_interp = RegularGridInterpolator(
+        [lats_era, lons_era], era5_data["sp"].data[0, ::-1, :]
+    )
     p_surf = p_interp((lats_r, lons_r))
-    tcwv_interp = RegularGridInterpolator([lats_era, lons_era], era5_data["tcwv"].data[0, ::-1, :])
+    tcwv_interp = RegularGridInterpolator(
+        [lats_era, lons_era], era5_data["tcwv"].data[0, ::-1, :]
+    )
     tcwv = tcwv_interp((lats_r, lons_r))
 
     #
@@ -194,16 +201,19 @@ def prepare_input_data(modis_files):
     x[:, 14] = bt_11_s
     x[:, 15] = bt_1112_s
 
-    output_data = {"input_data": x,
-                   "ctp": ctp_c,
-                   "latitude": lats_r,
-                   "longitude": lons_r,
-                   "latitude_rgb": lats_rgb,
-                   "longitude_rgb": lons_rgb,
-                   "modis_rgb": modis_rgb,
-                   "bt_11_rgb": bt_11_rgb,
-                   "bt_12_rgb": bt_12_rgb}
+    output_data = {
+        "input_data": x,
+        "ctp": ctp_c,
+        "latitude": lats_r,
+        "longitude": lons_r,
+        "latitude_rgb": lats_rgb,
+        "longitude_rgb": lons_rgb,
+        "modis_rgb": modis_rgb,
+        "bt_11_rgb": bt_11_rgb,
+        "bt_12_rgb": bt_12_rgb,
+    }
     return output_data
+
 
 def download_data(destination="data"):
     """
@@ -212,10 +222,7 @@ def download_data(destination="data"):
     Args:
         destination: Where to store the downloaded data.
     """
-    datasets = [
-        "ctp_training_data.npz",
-        "ctp_validation_data.npz"
-    ]
+    datasets = ["ctp_training_data.npz", "ctp_validation_data.npz"]
 
     Path(destination).mkdir(exist_ok=True)
 

@@ -15,6 +15,7 @@ from quantnn.generic import softmax, to_array, get_array_module
 from quantnn.neural_network_model import NeuralNetworkModel
 from quantnn.utils import apply
 
+
 def _to_categorical(y, bins):
     """
     Converts scalar values to categorical representation where each value
@@ -33,6 +34,7 @@ def _to_categorical(y, bins):
     """
     return np.digitize(y, bins[1:-1])
 
+
 class DRNN(NeuralNetworkModel):
     r"""
     Density regression neural network (DRNN).
@@ -40,10 +42,8 @@ class DRNN(NeuralNetworkModel):
     This class provider an high-level implementation of density regression
     neural networks aiming to provider a similar interface as the QRNN class.
     """
-    def __init__(self,
-                 bins,
-                 n_inputs=None,
-                 model=(3, 128, "relu")):
+
+    def __init__(self, bins, n_inputs=None, model=(3, 128, "relu")):
         self.bins = bins
         if isinstance(self.bins, dict):
             n_bins = next(iter(self.bins.items()))[1].size
@@ -52,33 +52,36 @@ class DRNN(NeuralNetworkModel):
         super().__init__(n_inputs, n_bins - 1, model)
         self.bin_axis = self.model.channel_axis
 
-
-    def train(self,
-              training_data,
-              validation_data=None,
-              optimizer=None,
-              scheduler=None,
-              n_epochs=None,
-              adversarial_training=None,
-              batch_size=None,
-              device='cpu',
-              mask=None,
-              logger=None,
-              metrics=None,
-              keys=None):
+    def train(
+        self,
+        training_data,
+        validation_data=None,
+        optimizer=None,
+        scheduler=None,
+        n_epochs=None,
+        adversarial_training=None,
+        batch_size=None,
+        device="cpu",
+        mask=None,
+        logger=None,
+        metrics=None,
+        keys=None,
+    ):
         loss = self.backend.CrossEntropyLoss(self.bins, mask=mask)
-        return super().train(training_data,
-                             loss,
-                             validation_data=validation_data,
-                             optimizer=optimizer,
-                             scheduler=scheduler,
-                             n_epochs=n_epochs,
-                             adversarial_training=adversarial_training,
-                             batch_size=batch_size,
-                             device=device,
-                             logger=logger,
-                             metrics=metrics,
-                             keys=keys)
+        return super().train(
+            training_data,
+            loss,
+            validation_data=validation_data,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            n_epochs=n_epochs,
+            adversarial_training=adversarial_training,
+            batch_size=batch_size,
+            device=device,
+            logger=logger,
+            metrics=metrics,
+            keys=keys,
+        )
 
     def _post_process_prediction(self, y_pred, bins=None, key=None):
         module = get_array_module(y_pred)
@@ -118,8 +121,9 @@ class DRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the input arguments x or y_pred must be "
-                                 " provided.")
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
             y_pred = self.predict(x)
 
         if key is None:
@@ -133,13 +137,11 @@ class DRNN(NeuralNetworkModel):
         def calculate_mean(y_pred, bins):
             module = get_array_module(y_pred)
             bins = to_array(module, bins, like=y_pred)
-            return qd.posterior_mean(y_pred,
-                                     bins,
-                                     bin_axis=self.bin_axis)
+            return qd.posterior_mean(y_pred, bins, bin_axis=self.bin_axis)
+
         return apply(calculate_mean, y_pred, bins)
 
-    def posterior_quantiles(self, x=None, y_pred=None, quantiles=None,
-                            key=None):
+    def posterior_quantiles(self, x=None, y_pred=None, quantiles=None, key=None):
         r"""
         Compute the posterior quantiles.
 
@@ -158,13 +160,16 @@ class DRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the keyword arguments 'x' or 'y_pred'"
-                                 " must be provided.")
+                raise ValueError(
+                    "One of the keyword arguments 'x' or 'y_pred'" " must be provided."
+                )
             y_pred = self.predict(x)
 
         if quantiles is None:
-            raise ValueError("The 'quantiles' keyword argument must be provided to"
-                             "calculate the posterior quantiles.")
+            raise ValueError(
+                "The 'quantiles' keyword argument must be provided to"
+                "calculate the posterior quantiles."
+            )
 
         if key is None:
             bins = self.bins
@@ -177,10 +182,10 @@ class DRNN(NeuralNetworkModel):
         def calculate_quantiles(y_pred, bins):
             module = get_array_module(y_pred)
             bins = to_array(module, bins, like=y_pred)
-            return qd.posterior_quantiles(y_pred,
-                                          bins,
-                                          quantiles,
-                                          bin_axis=self.bin_axis)
+            return qd.posterior_quantiles(
+                y_pred, bins, quantiles, bin_axis=self.bin_axis
+            )
+
         return apply(calculate_quantiles, y_pred, bins)
 
     def probability_larger_than(self, x=None, y=None, y_pred=None, key=None):
@@ -204,12 +209,14 @@ class DRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the input arguments x or y_pred must be "
-                                 " provided.")
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
             y_pred = self.predict(x)
         if y is None:
-            raise ValueError("The y argument must be provided to compute the "
-                             " probability.")
+            raise ValueError(
+                "The y argument must be provided to compute the " " probability."
+            )
 
         if key is None:
             bins = self.bins
@@ -222,10 +229,8 @@ class DRNN(NeuralNetworkModel):
         def calculate_probability(y_pred, bins):
             module = get_array_module(y_pred)
             bins = to_array(module, bins, like=y_pred)
-            return qd.probability_larger_than(y_pred,
-                                            bins,
-                                            y,
-                                            bin_axis=self.bin_axis)
+            return qd.probability_larger_than(y_pred, bins, y, bin_axis=self.bin_axis)
+
         return apply(calculate_probability, y_pred, bins)
 
     def sample_posterior(self, x=None, y_pred=None, n_samples=1, key=None):
@@ -252,8 +257,9 @@ class DRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the input arguments x or y_pred must be "
-                                 " provided.")
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
             y_pred = self.predict(x)
 
         if key is None:
@@ -267,12 +273,11 @@ class DRNN(NeuralNetworkModel):
         def calculate_samples(y_pred, bins):
             module = get_array_module(y_pred)
             bins = to_array(module, bins, like=y_pred)
-            return qd.sample_posterior(y_pred,
-                                       bins,
-                                       n_samples=n_samples,
-                                       bin_axis=self.bin_axis)
-        return apply(calculate_samples, y_pred, bins)
+            return qd.sample_posterior(
+                y_pred, bins, n_samples=n_samples, bin_axis=self.bin_axis
+            )
 
+        return apply(calculate_samples, y_pred, bins)
 
     def quantile_function(self, x=None, y_pred=None, y=None, key=None):
         r"""
@@ -296,8 +301,9 @@ class DRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the input arguments x or y_pred must be "
-                                 " provided.")
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
             y_pred = self.predict(x)
 
         if key is None:
@@ -311,10 +317,8 @@ class DRNN(NeuralNetworkModel):
         def calculate_quantile_function(y_pred, bins):
             module = get_array_module(y_pred)
             bins = to_array(module, bins, like=y_pred)
-            return qd.quantile_function(y_pred,
-                                        y,
-                                        bins,
-                                        bin_axis=self.bin_axis)
+            return qd.quantile_function(y_pred, y, bins, bin_axis=self.bin_axis)
+
         return apply(calculate_quantile_function, y_pred, bins)
 
     def crps(self, x=None, y_pred=None, y_true=None, key=None):
@@ -337,8 +341,9 @@ class DRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the input arguments x or y_pred must be "
-                                 " provided.")
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
             y_pred = self.predict(x)
 
         if key is None:

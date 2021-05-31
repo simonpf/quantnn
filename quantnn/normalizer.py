@@ -12,10 +12,12 @@ import pickle
 import numpy as np
 from quantnn.files import read_file
 
+
 class Identity:
     """
     A dummy normalizer that does nothing. Useful as default value.
     """
+
     def __call__(self, x):
         return x
 
@@ -30,10 +32,8 @@ class NormalizerBase(ABC):
     provided input data and stores it so that it can be applied to other
     datasets.
     """
-    def __init__(self,
-                 x,
-                 exclude_indices=None,
-                 feature_axis=1):
+
+    def __init__(self, x, exclude_indices=None, feature_axis=1):
         """
         Create Normalizer object for given input data.
 
@@ -106,7 +106,6 @@ class NormalizerBase(ABC):
            Array of the same size as ``x_normed`` containing
            the un-normalized values.
         """
-
 
     def __call__(self, x):
         """
@@ -200,10 +199,8 @@ class Normalizer(NormalizerBase):
     provided input data and stores it so that it can be applied to other
     datasets.
     """
-    def __init__(self,
-                 x,
-                 exclude_indices=None,
-                 feature_axis=1):
+
+    def __init__(self, x, exclude_indices=None, feature_axis=1):
         """
         Create Normalizer object for given input data.
 
@@ -213,9 +210,7 @@ class Normalizer(NormalizerBase):
                 that should not be normalized.
             feature_axis: The axis along which the input features are located.
         """
-        super().__init__(x,
-                         exclude_indices=exclude_indices,
-                         feature_axis=feature_axis)
+        super().__init__(x, exclude_indices=exclude_indices, feature_axis=feature_axis)
 
     def _get_stats(self, x, index):
         mean = x.mean()
@@ -227,7 +222,7 @@ class Normalizer(NormalizerBase):
         if np.isclose(std_dev, 0.0):
             x_normed = -1.0 * np.ones_like(x_slice)
         else:
-            x_normed = ((x_slice - mean) / std_dev)
+            x_normed = (x_slice - mean) / std_dev
         return x_normed
 
     def _invert(self, x_slice, stats):
@@ -235,8 +230,9 @@ class Normalizer(NormalizerBase):
         if np.isclose(std_dev, 0.0):
             x_inverted = mean * np.ones_like(x_slice)
         else:
-            x_inverted = ((x_slice * std_dev) + mean)
+            x_inverted = (x_slice * std_dev) + mean
         return x_inverted
+
 
 class MinMaxNormalizer(NormalizerBase):
     """
@@ -245,11 +241,8 @@ class MinMaxNormalizer(NormalizerBase):
     provided input data and stores it so that it can be applied to other
     datasets.
     """
-    def __init__(self,
-                 x,
-                 exclude_indices=None,
-                 feature_axis=1,
-                 replace_nan=True):
+
+    def __init__(self, x, exclude_indices=None, feature_axis=1, replace_nan=True):
         """
         Create Normalizer object for given input data.
 
@@ -259,14 +252,16 @@ class MinMaxNormalizer(NormalizerBase):
                 that should not be normalized.
             feature_axis: The axis along which the input features are located.
         """
-        super().__init__(x,
-                         exclude_indices=exclude_indices,
-                         feature_axis=feature_axis)
+        super().__init__(x, exclude_indices=exclude_indices, feature_axis=feature_axis)
         self.replace_nan = replace_nan
 
     def _get_stats(self, x, index):
-        x_min = np.nanmin(x)
-        x_max = np.nanmax(x)
+        if np.any(np.isfinite(x)):
+            x_min = np.nanmin(x)
+            x_max = np.nanmax(x)
+        else:
+            x_min = np.nan
+            x_max = np.nan
         return (x_min, x_max)
 
     def _normalize(self, x_slice, stats):
@@ -279,7 +274,7 @@ class MinMaxNormalizer(NormalizerBase):
         if np.isclose(d_x, 0.0):
             x_normed = -1.0 * np.ones_like(x_slice)
         else:
-            x_normed = (l + (r - l) * (x_slice - x_min) / d_x)
+            x_normed = l + (r - l) * (x_slice - x_min) / d_x
 
         if self.replace_nan:
             x_normed[np.isnan(x_slice)] = -1.5
@@ -299,7 +294,7 @@ class MinMaxNormalizer(NormalizerBase):
         if np.isclose(d_x, 0.0):
             x_inverted = x_min * np.ones_like(x_slice)
         else:
-            x_inverted = (((x_slice - l) / (r - l) * d_x) + x_min)
+            x_inverted = ((x_slice - l) / (r - l) * d_x) + x_min
 
         if self.replace_nan:
             x_inverted[indices] = np.nan

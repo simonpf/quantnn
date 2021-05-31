@@ -90,11 +90,10 @@ class QRNN(NeuralNetworkModel):
         model:
             The neural network regression model used to predict the quantiles.
     """
-    def __init__(self,
-                 quantiles,
-                 n_inputs=None,
-                 model=(3, 128, "relu"),
-                 transformation=None):
+
+    def __init__(
+        self, quantiles, n_inputs=None, model=(3, 128, "relu"), transformation=None
+    ):
         """
         Create a QRNN model.
 
@@ -115,25 +114,25 @@ class QRNN(NeuralNetworkModel):
         self.n_inputs = n_inputs
         self.n_outputs = len(quantiles)
         self.quantiles = np.array(quantiles)
-        super().__init__(self.n_inputs,
-                         self.n_outputs,
-                         model)
+        super().__init__(self.n_inputs, self.n_outputs, model)
         self.quantile_axis = self.model.channel_axis
         self.transformation = transformation
 
-    def train(self,
-              training_data,
-              validation_data=None,
-              batch_size=None,
-              optimizer=None,
-              scheduler=None,
-              n_epochs=None,
-              adversarial_training=None,
-              device='cpu',
-              mask=None,
-              logger=None,
-              metrics=None,
-              keys=None):
+    def train(
+        self,
+        training_data,
+        validation_data=None,
+        batch_size=None,
+        optimizer=None,
+        scheduler=None,
+        n_epochs=None,
+        adversarial_training=None,
+        device="cpu",
+        mask=None,
+        logger=None,
+        metrics=None,
+        keys=None,
+    ):
         """
         Train the underlying neural network model on given training data.
 
@@ -167,19 +166,21 @@ class QRNN(NeuralNetworkModel):
                  (``y``) when dataset elements are given as dictionaries.
         """
         loss = self.backend.QuantileLoss(self.quantiles, mask=mask)
-        return super().train(training_data,
-                             loss,
-                             validation_data=validation_data,
-                             optimizer=optimizer,
-                             scheduler=scheduler,
-                             n_epochs=n_epochs,
-                             adversarial_training=adversarial_training,
-                             batch_size=batch_size,
-                             device=device,
-                             logger=logger,
-                             metrics=metrics,
-                             keys=keys,
-                             transformation=self.transformation)
+        return super().train(
+            training_data,
+            loss,
+            validation_data=validation_data,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            n_epochs=n_epochs,
+            adversarial_training=adversarial_training,
+            batch_size=batch_size,
+            device=device,
+            logger=logger,
+            metrics=metrics,
+            keys=keys,
+            transformation=self.transformation,
+        )
 
     def predict(self, x):
         r"""
@@ -199,10 +200,12 @@ class QRNN(NeuralNetworkModel):
             Rank-k tensor ``y_pred`` containing the quantiles of each input
             sample along its first dimension
         """
+
         def transform(x, t):
             if t is None:
                 return x
             return t.invert(x)
+
         if self.transformation is None:
             return self.model.predict(x)
         return apply(transform, self.model.predict(x), self.transformation)
@@ -244,16 +247,15 @@ class QRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the input arguments x or y_pred must be "
-                                 " provided.")
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
             y_pred = self.predict(x)
 
         def calculate_cdf(y_pred):
             module = get_array_module(y_pred)
             quantiles = to_array(module, self.quantiles, like=y_pred)
-            return qq.cdf(y_pred,
-                          quantiles,
-                          quantile_axis=self.quantile_axis)
+            return qq.cdf(y_pred, quantiles, quantile_axis=self.quantile_axis)
 
         return apply(calculate_cdf, y_pred)
 
@@ -283,8 +285,9 @@ class QRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the input arguments x or y_pred must be "
-                                 " provided.")
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
             y_pred = self.predict(x)
 
             def calculate_pdf(y_pred):
@@ -319,17 +322,18 @@ class QRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the input arguments x or y_pred must be "
-                                 " provided.")
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
             y_pred = self.predict(x)
 
         def calculate_samples(y_pred):
             module = get_array_module(y_pred)
             quantiles = to_array(module, self.quantiles, like=y_pred)
-            return qq.sample_posterior(y_pred,
-                                    quantiles,
-                                    n_samples=n_samples,
-                                    quantile_axis=self.quantile_axis)
+            return qq.sample_posterior(
+                y_pred, quantiles, n_samples=n_samples, quantile_axis=self.quantile_axis
+            )
+
         return apply(calculate_samples, y_pred)
 
     def sample_posterior_gaussian_fit(self, x=None, y_pred=None, n_samples=1, **kwargs):
@@ -354,16 +358,18 @@ class QRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the input arguments x or y_pred must be "
-                                 " provided.")
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
             y_pred = self.predict(x)
+
         def calculate_samples(y_pred):
             module = get_array_module(y_pred)
             quantiles = to_array(module, self.quantiles, like=y_pred)
-            return qq.sample_posterior_gaussian(y_pred,
-                                                quantiles,
-                                                n_samples=n_samples,
-                                                quantile_axis=self.quantile_axis)
+            return qq.sample_posterior_gaussian(
+                y_pred, quantiles, n_samples=n_samples, quantile_axis=self.quantile_axis
+            )
+
         return apply(calculate_samples, y_pred)
 
     def posterior_mean(self, x=None, y_pred=None, **kwargs):
@@ -384,16 +390,18 @@ class QRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the input arguments x or y_pred must be "
-                                 " provided.")
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
             y_pred = self.predict(x)
 
         def calculate_mean(y_pred):
             module = get_array_module(y_pred)
             quantiles = to_array(module, self.quantiles, like=y_pred)
-            return qq.posterior_mean(y_pred,
-                                    quantiles,
-                                    quantile_axis=self.quantile_axis)
+            return qq.posterior_mean(
+                y_pred, quantiles, quantile_axis=self.quantile_axis
+            )
+
         return apply(calculate_mean, y_pred)
 
     def crps(self, x=None, y_pred=None, y_true=None, **kwargs):
@@ -427,20 +435,20 @@ class QRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the input arguments x or y_pred must be "
-                                 " provided.")
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
             y_pred = self.predict(x)
         if y_true is None:
-            raise ValueError("The y_true argument must be provided to calculate "
-                             "the CRPS provided.")
+            raise ValueError(
+                "The y_true argument must be provided to calculate "
+                "the CRPS provided."
+            )
 
         def calculate_crps(y_pred):
             module = get_array_module(y_pred)
             quantiles = to_array(module, self.quantiles, like=y_pred)
-            return qq.crps(y_pred,
-                           quantiles,
-                           y_true,
-                           quantile_axis=self.quantile_axis)
+            return qq.crps(y_pred, quantiles, y_true, quantile_axis=self.quantile_axis)
 
         return apply(calculate_crps, y_pred)
 
@@ -465,22 +473,23 @@ class QRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the input arguments x or y_pred must be "
-                                 " provided.")
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
             y_pred = self.predict(x)
         if y is None:
-            raise ValueError("The y argument must be provided to compute the "
-                             " probability.")
+            raise ValueError(
+                "The y argument must be provided to compute the " " probability."
+            )
 
         def calculate_prob(y_pred):
             module = get_array_module(y_pred)
             quantiles = to_array(module, self.quantiles, like=y_pred)
-            return qq.probability_larger_than(y_pred,
-                                            quantiles,
-                                            y,
-                                            quantile_axis=self.quantile_axis)
-        return apply(calculate_prob, y_pred)
+            return qq.probability_larger_than(
+                y_pred, quantiles, y, quantile_axis=self.quantile_axis
+            )
 
+        return apply(calculate_prob, y_pred)
 
     def probability_less_than(self, x=None, y=None, y_pred=None, **kwargs):
         """
@@ -503,17 +512,18 @@ class QRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the input arguments x or y_pred must be "
-                                 " provided.")
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
             y_pred = self.predict(x)
 
         def calculate_prob(y_pred):
             module = get_array_module(y_pred)
             quantiles = to_array(module, self.quantiles, like=y_pred)
-            return qq.probability_less_than(y_pred,
-                                            quantiles,
-                                            y,
-                                            quantile_axis=self.quantile_axis)
+            return qq.probability_less_than(
+                y_pred, quantiles, y, quantile_axis=self.quantile_axis
+            )
+
         return apply(calculate_prob, y_pred)
 
     def posterior_quantiles(self, x=None, y_pred=None, quantiles=None, **kwargs):
@@ -535,22 +545,27 @@ class QRNN(NeuralNetworkModel):
         """
         if y_pred is None:
             if x is None:
-                raise ValueError("One of the keyword arguments 'x' or 'y_pred'"
-                                 " must be provided.")
+                raise ValueError(
+                    "One of the keyword arguments 'x' or 'y_pred'" " must be provided."
+                )
             y_pred = self.predict(x)
 
         if quantiles is None:
-            raise ValueError("The 'quantiles' keyword argument must be provided to"
-                             "calculate the posterior quantiles.")
+            raise ValueError(
+                "The 'quantiles' keyword argument must be provided to"
+                "calculate the posterior quantiles."
+            )
 
         def calculate_quantiles(y_pred):
             module = get_array_module(y_pred)
             new_quantiles = to_array(module, quantiles, like=y_pred)
             current_quantiles = to_array(module, self.quantiles, like=y_pred)
-            return qq.posterior_quantiles(y_pred,
-                                          quantiles=current_quantiles,
-                                          new_quantiles=new_quantiles,
-                                          quantile_axis=self.quantile_axis)
+            return qq.posterior_quantiles(
+                y_pred,
+                quantiles=current_quantiles,
+                new_quantiles=new_quantiles,
+                quantile_axis=self.quantile_axis,
+            )
 
         return apply(calculate_quantiles, y_pred)
 

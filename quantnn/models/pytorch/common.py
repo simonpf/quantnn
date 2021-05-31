@@ -44,6 +44,7 @@ major, minor, *_ = torch.__version__.split(".")
 if int(major) >= 1 and int(minor) > 7:
     _ZERO_GRAD_ARGS = {"set_to_none": True}
 
+
 def save_model(f, model):
     """
     Save pytorch model.
@@ -124,13 +125,16 @@ class BatchedDataset(quantnn.data.BatchedDataset):
     """
     Batches an un-batched dataset.
     """
+
     def __init__(self, training_data, batch_size=64):
         x, y = training_data
         super().__init__(x, y, batch_size, False, PyTorch)
 
+
 ################################################################################
 # Quantile loss
 ################################################################################
+
 
 class CrossEntropyLoss(nn.CrossEntropyLoss):
     """
@@ -140,6 +144,7 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
     over the given inputs but applies an optional masking to the
     inputs, in order to allow the handling of missing values.
     """
+
     def __init__(self, bins, mask=None):
         """
         Args:
@@ -168,11 +173,7 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
             y_true = y_true.squeeze(1)
 
         if self.mask is None:
-            return nn.CrossEntropyLoss.__call__(
-                self,
-                y_pred,
-                y_cat
-            )
+            return nn.CrossEntropyLoss.__call__(self, y_pred, y_cat)
         else:
             loss = nn.CrossEntropyLoss.__call__(
                 self,
@@ -206,10 +207,7 @@ class QuantileLoss(nn.Module):
     computed by taking the mean over all samples in the batch.
     """
 
-    def __init__(self,
-                 quantiles,
-                 mask=None,
-                 quantile_axis=1):
+    def __init__(self, quantiles, mask=None, quantile_axis=1):
         """
         Create an instance of the quantile loss function with the given quantiles.
 
@@ -244,7 +242,9 @@ class QuantileLoss(nn.Module):
         dy = y_pred - y_true
         n = self.quantiles.size()[0]
 
-        shape = [1,] * len(dy.size())
+        shape = [
+            1,
+        ] * len(dy.size())
         shape[self.quantile_axis] = self.n_quantiles
         qs = self.quantiles.reshape(shape)
         l = torch.where(dy >= 0.0, (1.0 - qs) * dy, (-qs) * dy)
@@ -253,9 +253,11 @@ class QuantileLoss(nn.Module):
             return (l * mask).sum() / (mask.sum() * self.n_quantiles)
         return l.mean()
 
+
 ################################################################################
 # Default scheduler and optimizer
 ################################################################################
+
 
 def _get_default_optimizer(model):
     """
@@ -264,15 +266,15 @@ def _get_default_optimizer(model):
     optimizer = optim.Adam(model.parameters(), lr=0.0005)
     return optimizer
 
+
 def _get_default_scheduler(optimizer):
     """
     The default scheduler which reduces lr when training loss reaches a
     plateau.
     """
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,
-                                                     factor=0.1,
-                                                     patience=5)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1, patience=5)
     return scheduler
+
 
 def _has_channels_last_tensor(parameters):
     """
@@ -282,13 +284,16 @@ def _has_channels_last_tensor(parameters):
     for p in parameters:
         if isinstance(p.data, torch.Tensor):
             t = p.data
-            if (t.is_contiguous(memory_format=torch.channels_last)
-                and not t.is_contiguous()):
+            if (
+                t.is_contiguous(memory_format=torch.channels_last)
+                and not t.is_contiguous()
+            ):
                 return True
             elif isinstance(t, list) or isinstance(t, tuple):
                 if _has_channels_last_tensor(list(t)):
                     return True
     return False
+
 
 def _get_x_y(batch_data, keys):
     """
@@ -337,14 +342,16 @@ def _get_x_y(batch_data, keys):
                 "The following error was encountered when trying to "
                 f"retrieve the keys '{x_key}' and '{y_key} from a batch of  "
                 f"training data.: {e}"
-                )
+            )
     else:
         x, y = batch_data
     return x, y
 
+
 ###############################################################################
 # QRNN
 ###############################################################################
+
 
 class PytorchModel:
     """
@@ -353,12 +360,14 @@ class PytorchModel:
     This class implements QRNNs as a fully-connected network with
     a given number of layers.
     """
+
     @staticmethod
     def create(model):
         if not isinstance(model, torch.nn.Module):
             raise ModelNotSupported(
                 f"The provided model ({model}) is not supported by the PyTorch"
-                "backend")
+                "backend"
+            )
         if isinstance(model, PytorchModel):
             return model
         model.__class__ = type("__QuantnnMixin__", (PytorchModel, type(model)), {})
@@ -395,19 +404,16 @@ class PytorchModel:
         """
         Reinitializes the weights of a model.
         """
+
         def reset_function(module):
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
                 m.reset_parameters()
 
         self.apply(reset_function)
 
-    def _train_step(self,
-                    x,
-                    y,
-                    loss,
-                    adversarial_training,
-                    metrics=None,
-                    transformation=None):
+    def _train_step(
+        self, x, y, loss, adversarial_training, metrics=None, transformation=None
+    ):
         """
         Performs a single training step and returns a dictionary of
         losses for every output.
@@ -437,6 +443,8 @@ class PytorchModel:
 
         losses = {}
 
+        mask = torch.tensor(loss.mask).to(dtype=x.dtype, device=x.device)
+
         total_loss = None
         # Loop over keys in prediction.
         for k in y_pred:
@@ -450,9 +458,7 @@ class PytorchModel:
             try:
                 y_k = y[k]
             except KeyError:
-                raise DatasetError(
-                    f"No targets provided for ouput '{k}'."
-                )
+                raise DatasetError(f"No targets provided for ouput '{k}'.")
             shape = y_pred_k.size()
             shape = (shape[0], 1) + shape[2:]
 
@@ -462,6 +468,7 @@ class PytorchModel:
                 y_pred_k_t = y_pred_k
             else:
                 y_k_t = transform_k(y_k)
+                y_k_t = torch.where(y_k > mask, y_k_t, mask)
                 y_pred_k_t = transform_k.invert(y_pred_k)
 
             if k == "__loss__":
@@ -483,21 +490,22 @@ class PytorchModel:
 
         return total_loss, losses
 
-
-    def train(self,
-              training_data,
-              validation_data=None,
-              loss=None,
-              optimizer=None,
-              scheduler=None,
-              n_epochs=None,
-              adversarial_training=None,
-              batch_size=None,
-              device='cpu',
-              logger=None,
-              metrics=None,
-              keys=None,
-              transformation=None):
+    def train(
+        self,
+        training_data,
+        validation_data=None,
+        loss=None,
+        optimizer=None,
+        scheduler=None,
+        n_epochs=None,
+        adversarial_training=None,
+        batch_size=None,
+        device="cpu",
+        logger=None,
+        metrics=None,
+        keys=None,
+        transformation=None,
+    ):
         """
         Train the network.
 
@@ -595,8 +603,7 @@ class PytorchModel:
                         x.requires_grad = True
 
                     total_loss, losses = self._train_step(
-                        x, y, loss, adversarial_training,
-                        transformation=transformation
+                        x, y, loss, adversarial_training, transformation=transformation
                     )
                     total_loss.backward()
                     optimizer.step()
@@ -607,7 +614,9 @@ class PytorchModel:
                     else:
                         of = None
                     n_samples = torch.numel(x) / x.size()[1]
-                    logger.training_step(total_loss.item(), n_samples, of=of, losses=losses)
+                    logger.training_step(
+                        total_loss.item(), n_samples, of=of, losses=losses
+                    )
 
                     # Track epoch error.
                     n += x.size()[0]
@@ -618,12 +627,14 @@ class PytorchModel:
                         x_adv = self._make_adversarial_samples(x, adversarial_training)
                         self.optimizer.zero_grad(**_ZERO_GRAD_ARGS)
                         total_loss, _ = self._train_step(
-                            x_adv, y, loss, adversarial_training,
-                            transformation=transformation
+                            x_adv,
+                            y,
+                            loss,
+                            adversarial_training,
+                            transformation=transformation,
                         )
                         total_loss.backward()
                         optimizer.step()
-
 
                 # Save training error
                 training_losses.append(epoch_error / n)
@@ -650,9 +661,12 @@ class PytorchModel:
                                 y = y.to(device)
 
                             total_loss, losses = self._train_step(
-                                x, y, loss, None,
+                                x,
+                                y,
+                                loss,
+                                None,
                                 metrics=metrics,
-                                transformation=transformation
+                                transformation=transformation,
                             )
 
                             # Log validation step.
@@ -661,7 +675,9 @@ class PytorchModel:
                             else:
                                 of = None
                             n_samples = torch.numel(x) / x.size()[1]
-                            logger.validation_step(total_loss.item(), n_samples, of=of, losses=losses)
+                            logger.validation_step(
+                                total_loss.item(), n_samples, of=of, losses=losses
+                            )
 
                             # Update running validation errors.
                             n += x.size()[0]

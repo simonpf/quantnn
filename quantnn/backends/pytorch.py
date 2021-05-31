@@ -1,9 +1,11 @@
 from quantnn.backends.tensor import TensorBackend
 
+
 class PyTorch(TensorBackend):
     """
     TensorBackend implementation using torch tensors.
     """
+
     @classmethod
     def available(cls):
         try:
@@ -15,6 +17,7 @@ class PyTorch(TensorBackend):
     @classmethod
     def matches_tensor(cls, tensor):
         import torch
+
         return isinstance(tensor, torch.Tensor)
 
     @classmethod
@@ -37,6 +40,7 @@ class PyTorch(TensorBackend):
     @classmethod
     def sample_uniform(cls, shape=None, like=None):
         import torch
+
         if shape is None and like is None:
             raise ValueError(
                 "'sample_uniform' requires at least one of the arguments "
@@ -55,6 +59,7 @@ class PyTorch(TensorBackend):
     @classmethod
     def sample_gaussian(cls, shape=None, like=None):
         import torch
+
         if shape is None and like is None:
             raise ValueError(
                 "'sample_uniform' requires at least one of the arguments "
@@ -77,6 +82,7 @@ class PyTorch(TensorBackend):
     @classmethod
     def concatenate(cls, tensors, dimension):
         import torch
+
         return torch.cat(tensors, dimension)
 
     @classmethod
@@ -94,6 +100,7 @@ class PyTorch(TensorBackend):
     @classmethod
     def pad_zeros(cls, tensor, n, dimension_index):
         import torch
+
         n_dims = len(tensor.shape)
         dimension_index = dimension_index % n_dims
         pad = [0] * 2 * n_dims
@@ -104,6 +111,7 @@ class PyTorch(TensorBackend):
     @classmethod
     def pad_zeros_left(cls, tensor, n, dimension_index):
         import torch
+
         n_dims = len(tensor.shape)
         dimension_index = dimension_index % n_dims
         pad = [0] * 2 * n_dims
@@ -114,6 +122,7 @@ class PyTorch(TensorBackend):
     @classmethod
     def arange(cls, start, end, step, like=None):
         import torch
+
         device = None
         dtype = torch.float32
         if like is not None:
@@ -128,11 +137,13 @@ class PyTorch(TensorBackend):
     @classmethod
     def trapz(cls, y, x, dimension):
         import torch
+
         return torch.trapz(y, x, dim=dimension)
 
     @classmethod
     def cumsum(cls, y, dimension):
         import torch
+
         return torch.cumsum(y, dimension)
 
     @classmethod
@@ -141,8 +152,7 @@ class PyTorch(TensorBackend):
 
         if shape is None and like is None:
             raise ValueError(
-                "'zeros' requires at least one of the arguments "
-                "'shape' and 'like'. "
+                "'zeros' requires at least one of the arguments " "'shape' and 'like'. "
             )
         dtype = None
         device = None
@@ -160,8 +170,7 @@ class PyTorch(TensorBackend):
 
         if shape is None and like is None:
             raise ValueError(
-                "'ones' requires at least one of the arguments "
-                "'shape' and 'like'. "
+                "'ones' requires at least one of the arguments " "'shape' and 'like'. "
             )
         dtype = None
         device = None
@@ -176,4 +185,11 @@ class PyTorch(TensorBackend):
     @classmethod
     def softmax(cls, x, axis=None):
         import torch
+
         return torch.nn.functional.softmax(x, dim=axis)
+
+    @classmethod
+    def where(cls, condition, x, y):
+        import torch
+
+        return torch.where(condition, x, y)
