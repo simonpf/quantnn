@@ -69,7 +69,7 @@ def deserialize_dataset(data):
     try:
         with open(filename, "wb") as file:
             buffer = file.write(data)
-        dataset = xr.load_dataset(filename)
+        dataset = xr.load_dataset(filename, engine="netcdf4")
     finally:
         Path(filename).unlink()
     return dataset

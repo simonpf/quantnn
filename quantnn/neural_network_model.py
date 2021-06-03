@@ -121,8 +121,15 @@ class NeuralNetworkModel:
 
         # Provided model is just an architecture tuple
         if isinstance(model, tuple):
+            if n_inputs is None:
+                raise ValueError(
+                    "The 'n_input' parameter must be provided when the 'model' "
+                    " is a tuple."
+                )
             self.backend = get_default_backend()
-            self.model = self.backend.FullyConnected(n_inputs, n_outputs, *model)
+            self.model = self.backend.FullyConnected(n_inputs,
+                                                     n_outputs,
+                                                     *model)
         else:
             self.model = model
 
