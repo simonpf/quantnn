@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 import logging
 import multiprocessing
 from queue import Queue
+import queue
 import tempfile
 
 import numpy as np
@@ -21,84 +22,85 @@ from quantnn.files import CachedDataFolder, sftp
 _LOGGER = logging.getLogger("quantnn.data")
 
 
-def iterate_dataset(dataset):
+class ActiveDataset(multiprocessing.Process):
     """
-    Turns an iterable or sequence dataset into a generator.
-
-    Returns:
-
-        Generator object providing access to the batches in the dataset.
-
-    Raises:
-
-        quantnn.DatasetError when the dataset is neither iterable nor
-        a sequence.
-
+    The active dataset class takes care of concurrent reading of
+    data from a dataset.
     """
-    _LOGGER.info("Iterating dataset: %s", dataset)
-    if isinstance(dataset, Iterable):
-        yield from dataset
-    elif hasattr(dataset, "__len__") and hasattr(dataset, "__getitem__"):
-        for i in range(len(dataset)):
-            yield dataset[i]
-    else:
-        raise DatasetError(
-            "The provided dataset is neither iterable nor " "a sequence."
-        )
+    def __init__(self,
+                 factory,
+                 filename,
+                 queue,
+                 args=None,
+                 kwargs=None):
+        """
+        Args:
+            factory: Class or factory function to use to open the dataset.
+            filename: Filename of the dataset file to open.
+            batch_queue: Queue on which to put the loaded batches.
+            args: List of positional arguments to pass to the dataset factory
+                following the dataset name.
+            kwargs: Dictionary of keyword arguments to pass to the dataset factory
+                following the dataset name.
+        """
+        super().__init__()
+        self.factory = factory
+        self.filename = filename
+        self.queue = queue
+        if args is None:
+            self.args = []
+        else:
+            self.args = args
+        if kwargs is None:
+            self.kwargs = []
+        else:
+            self.kwargs = kwargs
 
-
-def open_dataset(folder, path, dataset_factory, args=None, kwargs=None):
-    """
-    Open a dataset.
-
-    Args:
-        folder: DatasetFolder object providing cached access to data
-             files.
-        path: The path of the dataset to open.
-        dataset_class: The class used to read in the file.
-        args: List of positional arguments passed to the dataset_factory method
-              after the downloaded file.
-        kwargs: Dictionary of keyword arguments passed to the dataset
-            factory call.
-
-    Returns:
-        An object created using the provided dataset_factory
-        using the provided args and kwargs as positional and
-        keyword arguments.
-    """
-    if args is None:
-        args = []
-    if not isinstance(args, Iterable):
-        raise ValueError("Provided postitional arguments 'args' must be " "iterable.")
-    if kwargs is None:
-        kwargs = {}
-    if not isinstance(kwargs, Mapping):
-        raise ValueError(
-            "Provided postitional arguments 'kwargs' must be " "a mapping."
-        )
-
-    _LOGGER.info("Opening dataset: %s", path)
-
-    file = folder.get(path)
-    dataset = dataset_factory(file, *args, **kwargs)
-    return dataset
+    def run(self):
+        """
+        Open dataset and start loading batches.
+        """
+        dataset = self.factory(self.filename, *self.args, **self.kwargs)
+        if isinstance(dataset, Iterable):
+            for b in dataset:
+                self.queue.put(b)
+        elif hasattr(dataset, "__len__") and hasattr(dataset, "__getitem__"):
+            for i in range(len(dataset)):
+                self.queue.put(dataset[i])
+        del dataset
+        self.queue.join()
 
 
 class DataFolder:
     """
-    Interface to load and iterate over multiple dataset files in a
-    folder.
-    """
+    Utility class that iterates over a folder containing multiple files with training
+    data. Data is loaded concurrently from a given number of processes and batches
+    are returned in round robin manner from currently active processes.
 
+    Attributes:
+        path: The path of the folder containing the datasets to load.
+        folder: 'CachedDataFolder' instance providing access to the files in
+             the folder.
+        dataset_factory: The class or factory function to instantiate dataset objects
+             for the files in the folder.
+        args: List of additional positional arguments passed to 'dataset_factory'
+        kwargs: List of additional keyword arguments passed to 'dataset_factory'
+        files: List of (local) filenames of the datafiles in the folder.
+        active_datasets: List of the processes that load the data from currently active
+            datasets.
+        queue_size: The number of batches in each active datasets queue.
+        n_files: If provided, will be used to limit the loaded files to the first
+            'n_files' found in the folder.
+    """
     def __init__(
         self,
         path,
         dataset_factory,
         args=None,
         kwargs=None,
-        n_workers=4,
-        n_files=None,
-        iterations_per_file=1,
+        active_datasets=4,
+        queue_size=16,
+        n_files=None
     ):
         """
         Create new DataFolder object.
@@ -121,97 +123,87 @@ class DataFolder:
         self.dataset_factory = dataset_factory
         self.args = args
         self.kwargs = kwargs
-        self.iterations_per_file = iterations_per_file
+        self.queue_size = queue_size
 
-        self.n_workers = n_workers
-        self.files = self.folder.files
+        pool = ThreadPoolExecutor(max_workers=active_datasets)
+        self.folder.download(pool)
 
-        # Sort datasets into random order.
-        self.epoch_queue = Queue()
-        self.active_queue = Queue()
-        self.cache = OrderedDict()
-        self.pool = ThreadPoolExecutor(max_workers=self.n_workers)
-        self.folder.download(self.pool)
-        self._prefetch()
+        self.files = [self.folder.get(f) for f in self.folder.files]
+        self.active_datasets = min(active_datasets, len(self.files))
+        self.current_epoch = list(np.random.permutation(self.files))
+        self.next_epoch = list(np.random.permutation(self.files))
+        self.queues = [multiprocessing.JoinableQueue(queue_size)
+                       for i in range(active_datasets)]
+        self.datasets = []
+        for i, _ in enumerate(self.files[:active_datasets]):
+            p = ActiveDataset(self.dataset_factory,
+                              self.current_epoch.pop(),
+                              self.queues[i],
+                              args=self.args,
+                              kwargs=self.kwargs)
+            p.start()
+            self.datasets.append(p)
+        self.next_datasets = []
+        self.next_queues = []
 
-    def _prefetch(self):
-        if self.epoch_queue.empty():
-            for f in np.random.permutation(self.files):
-                self.epoch_queue.put(f)
+    def __del__(self):
+        for d in self.datasets:
+            d.terminate()
 
-        for i in range(self.n_workers):
-
-            if not self.epoch_queue.empty():
-
-                file = self.epoch_queue.get()
-                self.active_queue.put(file)
-
-                if file in self.cache:
-                    continue
-                else:
-                    if len(self.cache) > self.n_workers:
-                        self.cache.popitem(last=False)
-                    arguments = [
-                        self.folder,
-                        file,
-                        self.dataset_factory,
-                        self.args,
-                        self.kwargs,
-                    ]
-                    self.cache[file] = self.pool.submit(open_dataset, *arguments)
-
-    def get_next_dataset(self):
-        """
-        Returns the next dataset of the current epoch and issues the prefetch
-        of the following data.
-
-        Returns:
-            The dataset instance that is the next in the random sequence
-            of the current epoch.
-        """
-
-        #
-        # Prepare download of next file.
-        #
-
-        if self.epoch_queue.empty():
-            for f in np.random.permutation(self.files):
-                self.epoch_queue.put(f)
-
-        file = self.epoch_queue.get()
-        self.active_queue.put(file)
-
-        if file in self.cache:
-            self.cache.move_to_end(file)
-        else:
-            if len(self.cache) > self.n_workers:
-                self.cache.popitem(last=False)
-            arguments = [
-                self.folder,
-                file,
-                self.dataset_factory,
-                self.args,
-                self.kwargs,
-            ]
-            self.cache[file] = self.pool.submit(open_dataset, *arguments)
-
-        #
-        # Return current file.
-        #
-
-        file = self.active_queue.get()
-        dataset = self.cache[file].result()
-
-        return dataset
 
     def __iter__(self):
         """
         Iterate over all batches in all remote files.
         """
-        for _ in self.files:
-            dataset = self.get_next_dataset()
-            for i in range(self.iterations_per_file):
-                yield from iterate_dataset(dataset)
+        while True:
+            all_exhausted = True
+            all_empty = True
+            for i in range(len(self.datasets)):
+                p = self.datasets[i]
+                q = self.queues[i]
+
+                # Check if a new dataset should be loaded.
+                if not p.is_alive():
+                    if self.current_epoch:
+                        p = ActiveDataset(self.dataset_factory,
+                                          self.current_epoch.pop(),
+                                          self.queues[i],
+                                          args=self.args,
+                                          kwargs=self.kwargs)
+                        p.start()
+                        self.datasets[i] = p
+                    else:
+                        if len(self.next_datasets) < self.active_datasets:
+                            self.next_queues.append(
+                                multiprocessing.JoinableQueue(self.queue_size)
+                            )
+                            p = ActiveDataset(self.dataset_factory,
+                                              self.next_epoch.pop(),
+                                              self.next_queues[-1],
+                                              args=self.args,
+                                              kwargs=self.kwargs)
+                            p.start()
+                            self.next_datasets.append(p)
+                else:
+                    all_exhausted = False
+
+                # Get batch from queue.
+                try:
+                    b = q.get_nowait()
+                except queue.Empty:
+                    continue
+                q.task_done()
+                all_empty = False
+                yield b
+
+            if all_exhausted and all_empty:
+                self.queues = self.next_queues
+                self.datasets = self.next_datasets
+                self.current_epoch = self.next_epoch
+                self.next_epoch = list(np.random.permutation(self.files))
+                self.next_queues = []
+                self.next_datasets = []
+                break
 
 
 class LazyDataFolder:
