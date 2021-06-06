@@ -188,9 +188,8 @@ class DataFolder:
                     all_exhausted = False
 
                 # Get batch from queue.
-                try:
-                    b = q.get_nowait()
-                except queue.Empty:
+                b = q.get()
+                if b is None:
                     continue
                 q.task_done()
                 all_empty = False
