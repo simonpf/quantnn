@@ -21,16 +21,18 @@ from quantnn.files import CachedDataFolder, sftp
 
 _LOGGER = logging.getLogger("quantnn.data")
 
+def split(data, n):
+    return (data[i:i + n] for i in range(0, len(data), n))
 
-class ActiveDataset(multiprocessing.Process):
+class DatasetLoader(multiprocessing.Process):
     """
     The active dataset class takes care of concurrent reading of
     data from a dataset.
     """
     def __init__(self,
+                 filenames,
                  factory,
-                 filename,
-                 queue,
+                 queue_size,
                  args=None,
                  kwargs=None):
         """
@@ -45,8 +47,8 @@ class ActiveDataset(multiprocessing.Process):
         """
         super().__init__()
         self.factory = factory
-        self.filename = filename
-        self.queue = queue
+        self.batch_queue = multiprocessing.JoinableQueue(queue_size)
+        self.filenames = filenames
         if args is None:
             self.args = []
         else:
@@ -60,15 +62,17 @@ class ActiveDataset(multiprocessing.Process):
         """
         Open dataset and start loading batches.
         """
-        dataset = self.factory(self.filename, *self.args, **self.kwargs)
-        if isinstance(dataset, Iterable):
-            for b in dataset:
-                self.queue.put(b)
-        elif hasattr(dataset, "__len__") and hasattr(dataset, "__getitem__"):
-            for i in range(len(dataset)):
-                self.queue.put(dataset[i])
-        del dataset
-        self.queue.join()
+        for filename in self.filenames:
+            dataset = self.factory(filename, *self.args, **self.kwargs)
+            if isinstance(dataset, Iterable):
+                for b in dataset:
+                    self.batch_queue.put(b)
+            elif hasattr(dataset, "__len__") and hasattr(dataset, "__getitem__"):
+                for i in range(len(dataset)):
+                    self.batch_queue.put(dataset[i])
+            del dataset
+
+        self.batch_queue.join()
 
 
 class DataFolder:
@@ -124,86 +128,67 @@ class DataFolder:
         self.args = args
         self.kwargs = kwargs
         self.queue_size = queue_size
+        self.active_datasets = active_datasets
 
         pool = ThreadPoolExecutor(max_workers=active_datasets)
         self.folder.download(pool)
 
         self.files = [self.folder.get(f) for f in self.folder.files]
-        self.active_datasets = min(active_datasets, len(self.files))
-        self.current_epoch = list(np.random.permutation(self.files))
-        self.next_epoch = list(np.random.permutation(self.files))
-        self.queues = [multiprocessing.JoinableQueue(queue_size)
-                       for i in range(active_datasets)]
-        self.datasets = []
-        for i, _ in enumerate(self.files[:active_datasets]):
-            p = ActiveDataset(self.dataset_factory,
-                              self.current_epoch.pop(),
-                              self.queues[i],
-                              args=self.args,
-                              kwargs=self.kwargs)
-            p.start()
-            self.datasets.append(p)
-        self.next_datasets = []
-        self.next_queues = []
+        files = list(np.random.permutation(self.files))
+        n = len(files) // self.active_datasets
+        if len(files) % self.active_datasets > 0:
+            n += 1
+        self.workers = []
+        for fs in split(files, n):
+            self.workers.append(DatasetLoader(fs,
+                                              self.dataset_factory,
+                                              queue_size,
+                                              args=self.args,
+                                              kwargs=self.kwargs))
+            self.workers[-1].daemon = True
+            self.workers[-1].start()
 
     def __del__(self):
-        for d in self.datasets:
-            d.terminate()
-
+        for w in self.workers:
+            w.kill()
 
     def __iter__(self):
         """
         Iterate over all batches in all remote files.
         """
         while True:
-            all_exhausted = True
-            all_empty = True
-            for i in range(len(self.datasets)):
-                p = self.datasets[i]
-                q = self.queues[i]
+            done = not any([w.is_alive() for w in self.workers])
+            if done:
+                break
 
-                # Check if a new dataset should be loaded.
-                if not p.is_alive():
-                    if self.current_epoch:
-                        p = ActiveDataset(self.dataset_factory,
-                                          self.current_epoch.pop(),
-                                          self.queues[i],
-                                          args=self.args,
-                                          kwargs=self.kwargs)
-                        p.start()
-                        self.datasets[i] = p
-                    else:
-                        if len(self.next_datasets) < self.active_datasets:
-                            self.next_queues.append(
-                                multiprocessing.JoinableQueue(self.queue_size)
-                            )
-                            p = ActiveDataset(self.dataset_factory,
-                                              self.next_epoch.pop(),
-                                              self.next_queues[-1],
-                                              args=self.args,
-                                              kwargs=self.kwargs)
-                            p.start()
-                            self.next_datasets.append(p)
-                else:
-                    all_exhausted = False
-
+            for w in self.workers:
                 # Get batch from queue.
                 try:
-                    b = q.get_nowait()
+                    b = w.batch_queue.get_nowait()
+                    w.batch_queue.task_done()
                 except queue.Empty:
                     continue
-                q.task_done()
-                all_empty = False
+
                 yield b
 
-            if all_exhausted and all_empty:
-                self.queues = self.next_queues
-                self.datasets = self.next_datasets
-                self.current_epoch = self.next_epoch
-                self.next_epoch = list(np.random.permutation(self.files))
-                self.next_queues = []
-                self.next_datasets = []
-                break
+
+        for w in self.workers:
+            w.close()
+
+        self.workers = []
+        files = list(np.random.permutation(self.files))
+        n = len(files) // self.active_datasets
+        if len(files) % self.active_datasets > 0:
+            n += 1
+        self.workers = []
+        for fs in split(files, n):
+           self.workers.append(DatasetLoader(fs,
+                                             self.dataset_factory,
+                                             self.queue_size,
+                                             args=self.args,
+                                             kwargs=self.kwargs))
+           self.workers[-1].daemon = True
+           self.workers[-1].start()
 
 
 class LazyDataFolder:
