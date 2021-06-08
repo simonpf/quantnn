@@ -142,8 +142,8 @@ class DatasetManager(multiprocessing.Process):
             if isinstance(y, dict):
                 if ys is None:
                     ys = {}
-                    for k, y in y.items():
-                        ys.setdefault(k, []).append(y)
+                for k, y in y.items():
+                    ys.setdefault(k, []).append(y)
             else:
                 if ys is None:
                     ys = []
@@ -157,6 +157,7 @@ class DatasetManager(multiprocessing.Process):
 
         if self.shuffle:
             indices = self._rng.permutation(x.shape[0])
+            print(indices, y)
             f = lambda x: x[indices]
             x = f(x)
             utils.apply(f, y)
