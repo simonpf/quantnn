@@ -311,7 +311,7 @@ class DataFolder:
         """
         Iterate over all batches in all remote files.
         """
-        while self.manager.is_alive()
+        while self.manager.is_alive():
             try:
                 b = self.manager.batch_queue.get_nowait()
                 self.manager.batch_queue.task_done()
