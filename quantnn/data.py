@@ -62,7 +62,7 @@ class DatasetLoader(multiprocessing.Process):
         else:
             self.kwargs = kwargs
         self.done = multiprocessing.Event()
-        self.clear()
+        self.done.clear()
 
     def run(self):
         """
