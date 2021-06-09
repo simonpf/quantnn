@@ -62,6 +62,7 @@ class DatasetLoader(multiprocessing.Process):
         else:
             self.kwargs = kwargs
         self.done = multiprocessing.Event()
+        self.clear()
 
     def run(self):
         """
@@ -187,7 +188,7 @@ class DatasetManager(multiprocessing.Process):
                     self.batch_queue.put(b)
                 batches = []
             else:
-                if len(batches) >= self.aggregate:
+                while len(batches) >= self.aggregate:
                     b = self.aggregate_batches(batches[:self.aggregate])
                     batches = batches[self.aggregate:]
                     self.batch_queue.put(b)
