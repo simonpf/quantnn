@@ -157,7 +157,6 @@ class DatasetManager(multiprocessing.Process):
 
         if self.shuffle:
             indices = self._rng.permutation(x.shape[0])
-            print(indices, y)
             f = lambda x: x[indices]
             x = f(x)
             utils.apply(f, y)

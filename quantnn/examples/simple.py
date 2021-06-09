@@ -110,7 +110,6 @@ def plot_results(x_train, y_train, x_val, y_pred, y_mean, quantiles):
         l_q = plt.plot(x_val, y_pred[:, i], lw=2, ls="--", color="grey")
     handles = l_q
     handles += plt.plot(x_val, y_mean, c="k", ls="--", lw=2)
-    print(handles)
     labels = ["Predicted quantiles", "Predicted mean"]
     plt.legend(handles=handles, labels=labels)
 
