@@ -216,6 +216,9 @@ def test_aggregation():
     for x, y in stream_2:
         x_sum += x.sum()
         y_sum += y.sum()
+        assert np.all(np.isclose(x[:, 0].detach().numpy().ravel(),
+                                 y.detach().numpy().ravel()
+        ))
         assert x.shape[0] == 2
 
     x_sum = 0.0
