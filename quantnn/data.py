@@ -208,26 +208,26 @@ class DatasetManager(multiprocessing.Process):
         """
         Make sure terminate is forwarded to worker child-processes.
         """
+        multiprocessing.Process.terminate(self)
         if hasattr(self, "workers"):
             for w in self.workers:
                 w.terminate()
-        multiprocessing.Process.terminate(self)
 
     def kill(self):
         """
         Make sure kill is forwarded to worker child-processes.
         """
+        multiprocessing.Process.kill(self)
         if hasattr(self, "workers"):
             for w in self.workers:
                 w.kill()
-        multiprocessing.Process.kill(self)
 
     def close(self):
+        multiprocessing.Process.close(self)
         if hasattr(self, "workers"):
             for w in self.workers:
                 w.join()
                 w.close()
-        multiprocessing.Process.close(self)
 
 class DataFolder:
     """
