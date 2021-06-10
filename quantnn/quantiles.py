@@ -845,8 +845,6 @@ def correct_a_priori(y_pred, quantiles, r, quantile_axis=1):
         y_new /= mask * (y_cdf_new_r - y_cdf_new_l) + (1.0 - mask)
         y_new = expand_dims(xp, y_new.sum(quantile_axis), quantile_axis)
 
-        print(y_cdf_new_r.shape, y_cdf_new_l.shape)
-
         y_pred_new.append(y_new)
 
     y_pred_new = concatenate(xp, y_pred_new, quantile_axis)
