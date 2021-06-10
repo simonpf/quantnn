@@ -180,6 +180,11 @@ class DatasetManager(multiprocessing.Process):
                     b = w.batch_queue.get_nowait()
                     w.batch_queue.task_done()
                     batches.append(b)
+                except FileNotFoundError:
+                    _LOGGER.warning(
+                        "FileNotFoundError occured when retrieving batch from "
+                        "loader process."
+                    )
                 except queue.Empty:
                     continue
 
@@ -316,6 +321,11 @@ class DataFolder:
             try:
                 b = self.manager.batch_queue.get_nowait()
                 self.manager.batch_queue.task_done()
+            except FileNotFoundError:
+                _LOGGER.warning(
+                    "FileNotFoundError occured when retrieving batch from "
+                    "manager process."
+                )
             except queue.Empty:
                 continue
             yield b
