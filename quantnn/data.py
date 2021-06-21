@@ -209,6 +209,14 @@ class DatasetManager(multiprocessing.Process):
                 self.batch_queue.put(b)
         self.batch_queue.join()
 
+    def join(self):
+        """
+        Make sure terminate is forwarded to worker child-processes.
+        """
+        if hasattr(self, "workers"):
+            for w in self.workers:
+                w.join()
+        multiprocessing.Process.join(self)
 
     def terminate(self):
         """
@@ -330,6 +338,7 @@ class DataFolder:
                 continue
             yield b
 
+        self.manager.join()
         self.manager.terminate()
         self.manager = DatasetManager(self.dataset_factory,
                                       self.files,
