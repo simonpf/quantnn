@@ -286,10 +286,8 @@ class MinMaxNormalizer(NormalizerBase):
         d_x = x_max - x_min
 
         l = -1.0
-        if self.replace_nan:
-            l = -0.9
         r = 1.0
-        indices = x_slice <= -0.99
+        indices = x_slice <= -1.5
 
         if np.isclose(d_x, 0.0):
             x_inverted = x_min * np.ones_like(x_slice)

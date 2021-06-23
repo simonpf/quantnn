@@ -68,3 +68,8 @@ class InputDataError(QuantnnException):
     """
     Thrown when the training data does not match the expected format.
     """
+
+class ModelLoadError(QuantnnException):
+    """
+    Thrown when an error occurs while a model is loaded.
+    """
