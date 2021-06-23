@@ -18,7 +18,10 @@ from torch import optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import Dataset
 
-from quantnn.common import ModelNotSupported, InputDataError, DatasetError
+from quantnn.common import (ModelNotSupported,
+                            InputDataError,
+                            DatasetError,
+                            ModelLoadError)
 from quantnn.logging import TrainingLogger
 import quantnn.data
 from quantnn.backends.pytorch import PyTorch
@@ -55,10 +58,10 @@ def save_model(f, model):
         model(:code:`pytorch.nn.Moduel`): The pytorch model to save
     """
     path = tempfile.mkdtemp()
-    filename = os.path.join(path, "keras_model.h5")
+    filename = os.path.join(path, "module.h5")
     torch.save(model, filename)
     archive = tarfile.TarFile(fileobj=f, mode="w")
-    archive.add(filename, arcname="keras_model.h5")
+    archive.add(filename, arcname="module.h5")
     archive.close()
     shutil.rmtree(path)
 
@@ -78,8 +81,21 @@ def load_model(file):
     """
     path = tempfile.mkdtemp()
     tar_file = tarfile.TarFile(fileobj=file, mode="r")
-    tar_file.extract("keras_model.h5", path=path)
-    filename = os.path.join(path, "keras_model.h5")
+
+    # Check that archive contains 'module.h5' file or
+    # 'keras_model.h5' for backwards compatibility.
+    names = tar_file.getnames()
+    if "keras_model.h5" in names:
+        tar_file.extract("keras_model.h5", path=path)
+        filename = os.path.join(path, "keras_model.h5")
+    elif "module.h5" in names:
+        tar_file.extract("module.h5", path=path)
+        filename = os.path.join(path, "module.h5")
+    else:
+        raise ModelLoadError(
+            "Model archive does not contain the expected model file. It looks"
+            "like your file is corrupted."
+        )
     model = torch.load(filename, map_location=torch.device("cpu"))
     shutil.rmtree(path)
     return model
