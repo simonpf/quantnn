@@ -126,7 +126,9 @@ class UpsamplingBlock(nn.Module):
             n_channels: The number of incoming and outgoing channels.
         """
         super().__init__()
-        self.upsample = nn.Upsample(mode="bilinear", scale_factor=2)
+        self.upsample = nn.Upsample(mode="bilinear",
+                                    scale_factor=2,
+                                    align_corners=False)
         self.block = nn.Sequential(
             SeparableConv3x3(n_channels * 2, n_channels),
             nn.BatchNorm2d(n_channels),
@@ -156,7 +158,6 @@ class XceptionFpn(nn.Module):
             n_features: The number of features in the xception blocks.
             blocks: The number of blocks per stage
         """
-
         super().__init__()
 
         if isinstance(blocks, int):
