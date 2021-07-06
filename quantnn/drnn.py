@@ -321,7 +321,7 @@ class DRNN(NeuralNetworkModel):
 
         return apply(calculate_quantile_function, y_pred, bins)
 
-    def crps(self, x=None, y_pred=None, y=None, key=None):
+    def crps(self, x=None, y_pred=None, y_true=None, key=None):
         r"""
         Calculate CRPS score for given reference values.
 
@@ -333,7 +333,7 @@ class DRNN(NeuralNetworkModel):
             y_pred: Optional pre-computed quantile predictions, which, when
                  provided, will be used to avoid repeated propagation of the
                  the inputs through the network.
-            y: Rank-k tensor containing the true y values.
+            y_true: Rank-k tensor containing the true y values.
 
         Returns:
 
@@ -357,6 +357,6 @@ class DRNN(NeuralNetworkModel):
         def calculate_crps(y_pred, bins):
             module = get_array_module(y_pred)
             bins = to_array(module, bins, like=y_pred)
-            return qd.crps(y_pred, y, bins, bin_axis=self.bin_axis)
+            return qd.crps(y_pred, y_true, bins, bin_axis=self.bin_axis)
 
         return apply(calculate_crps, y_pred, bins)
