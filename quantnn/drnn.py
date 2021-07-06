@@ -342,7 +342,8 @@ class DRNN(NeuralNetworkModel):
         if y_pred is None:
             if x is None:
                 raise ValueError(
-                    "One of the input arguments x or y_pred must be " " provided."
+                    "One of the input arguments x or y_pred must be "
+                    " provided."
                 )
             y_pred = self.predict(x)
 

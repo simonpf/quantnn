@@ -27,8 +27,14 @@ def apply(f, *args):
         ``{k: f(x_1[k], x_1[k], ...) for k in x}`` or ``f(x)`` depending on
         whether ``x_1, ...`` are a dicts or not.
     """
-    if all([isinstance(x, dict) for x in args]):
-        return {k: f(*[x[k] for x in args]) for k in args[0]}
+    if any(isinstance(x, dict) for x in args):
+        results = {}
+        d = [x for x in args if isinstance(x, dict)][0]
+        for k in d:
+            args = [arg[k] if isinstance(arg, dict) else arg
+                    for arg in args]
+            results[k] = f(*args)
+        return results
     return f(*args)
 
 

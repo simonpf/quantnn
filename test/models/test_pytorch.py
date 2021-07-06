@@ -143,7 +143,7 @@ def test_qrnn_training_metrics():
     ]
 
     qrnn = QRNN(np.linspace(0.05, 0.95, 10), n_inputs=x.shape[1])
-    metrics = ["Bias", "MeanSquaredError"]
+    metrics = ["Bias", "MeanSquaredError", "CRPS"]
     qrnn.train(batched_data, n_epochs=1, keys=("x", "y"), metrics=metrics)
 
 def test_drnn_training_metrics():
@@ -166,7 +166,7 @@ def test_drnn_training_metrics():
     ]
 
     drnn = DRNN(np.linspace(0.05, 0.95, 10), n_inputs=x.shape[1])
-    metrics = ["Bias", "MeanSquaredError"]
+    metrics = ["Bias", "MeanSquaredError", "CRPS"]
     drnn.train(batched_data, n_epochs=1, keys=("x", "y"), metrics=metrics)
 
 
@@ -253,7 +253,7 @@ def test_training_metrics_multi():
     bins = np.linspace(0, 1, 12)
     bins = {"y_1": bins, "y_2": bins}
     qrnn = DRNN(bins=bins, model=model)
-    metrics = ["Bias", "MeanSquaredError", "ScatterPlot", "QuantileFunction"]
+    metrics = ["Bias", "MeanSquaredError", "CRPS", "ScatterPlot", "QuantileFunction"]
     qrnn.train(batched_data,
                validation_data=batched_data,
                n_epochs=5, keys=("x", "y"),
