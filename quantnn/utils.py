@@ -31,9 +31,9 @@ def apply(f, *args):
         results = {}
         d = [x for x in args if isinstance(x, dict)][0]
         for k in d:
-            args = [arg[k] if isinstance(arg, dict) else arg
-                    for arg in args]
-            results[k] = f(*args)
+            args_k = [arg[k] if isinstance(arg, dict) else arg
+                      for arg in args]
+            results[k] = f(*args_k)
         return results
     return f(*args)
 
