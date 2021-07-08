@@ -108,7 +108,7 @@ def test_sftp_stream():
 
     x_sum = 0.0
     y_sum = 0.0
-    for x, y in stream_2:
+    for i, (x, y) in enumerate(stream_2):
         x_sum += x.sum()
         y_sum += y.sum()
         assert x.shape[0] == 2
@@ -230,6 +230,7 @@ def test_aggregation():
 
     x_sum = 0.0
     y_sum = 0.0
+
     for x, y in stream_2:
         x_sum += x.sum()
         y_sum += y.sum()
