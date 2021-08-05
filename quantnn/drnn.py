@@ -355,7 +355,7 @@ class DRNN(NeuralNetworkModel):
             else:
                 bins = self.bins
 
-        def calculate_crps(y_pred, bins):
+        def calculate_crps(y_pred, y_true, bins):
             module = get_array_module(y_pred)
             bins = to_array(module, bins, like=y_pred)
             return qd.crps(y_pred, y_true, bins, bin_axis=self.bin_axis)
