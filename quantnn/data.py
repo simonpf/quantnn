@@ -115,7 +115,7 @@ class DatasetManager(multiprocessing.Process):
         self.dataset_factory = dataset_factory
         self.files = files
         self.n_workers = n_workers
-        self.queue_size = queue_size
+        self.queue_size = n_workers * queue_size
         self.aggregate = aggregate
         self.shuffle = shuffle
         self.args = args
@@ -204,11 +204,12 @@ class DatasetManager(multiprocessing.Process):
                         b = w.batch_queue.get_nowait()
                         w.batch_queue.task_done()
                         batches.append(b)
-                    except FileNotFoundError:
+                    except FileNotFoundError as e:
                         _LOGGER.warning(
                             "FileNotFoundError occured when retrieving batch from "
-                            "loader process."
+                            "loader process.", e
                         )
+                        continue
                     except queue.Empty:
                         continue
 
