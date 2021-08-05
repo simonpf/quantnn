@@ -15,6 +15,7 @@ import os
 from queue import Queue
 import queue
 import tempfile
+from time import sleep
 
 import numpy as np
 from quantnn.common import DatasetError
@@ -34,7 +35,6 @@ class DatasetLoader(multiprocessing.Process):
     data from a dataset.
     """
     def __init__(self,
-                 filenames,
                  factory,
                  queue_size,
                  args=None,
@@ -51,8 +51,8 @@ class DatasetLoader(multiprocessing.Process):
         """
         super().__init__()
         self.factory = factory
+        self.file_queue = multiprocessing.Queue()
         self.batch_queue = multiprocessing.JoinableQueue(queue_size)
-        self.filenames = filenames
         if args is None:
             self.args = []
         else:
@@ -61,25 +61,40 @@ class DatasetLoader(multiprocessing.Process):
             self.kwargs = []
         else:
             self.kwargs = kwargs
-        self.done = multiprocessing.Event()
-        self.done.clear()
+
+        # Initialize done flag to set indicating
+        # no work to be done.
+        self.done_flag = multiprocessing.Event()
+        self.done_flag.set()
 
     def run(self):
         """
         Open dataset and start loading batches.
         """
-        for filename in self.filenames:
-            dataset = self.factory(filename, *self.args, **self.kwargs)
-            if isinstance(dataset, Iterable):
-                for b in dataset:
-                    self.batch_queue.put(b)
-            elif hasattr(dataset, "__len__") and hasattr(dataset, "__getitem__"):
-                for i in range(len(dataset)):
-                    self.batch_queue.put(dataset[i])
-            del dataset
+        while True:
 
-        self.batch_queue.join()
-        self.done.set()
+            # Wait while done flag is set.
+            while self.done_flag.is_set():
+                sleep(0.01)
+
+            # Process files
+
+            files = self.file_queue.get()
+
+            for filename in files:
+                dataset = self.factory(filename, *self.args, **self.kwargs)
+                if isinstance(dataset, Iterable):
+                    for b in dataset:
+                        self.batch_queue.put(b)
+                elif (hasattr(dataset, "__len__") and
+                        hasattr(dataset, "__getitem__")):
+                    for i in range(len(dataset)):
+                        self.batch_queue.put(dataset[i])
+                del dataset
+
+            # Processing finished.
+            self.batch_queue.join()
+            self.done_flag.set()
 
 
 class DatasetManager(multiprocessing.Process):
@@ -107,22 +122,32 @@ class DatasetManager(multiprocessing.Process):
         self.kwargs = kwargs
         self.batch_queue = multiprocessing.JoinableQueue(queue_size)
         self.backend = None
+
+        # Event for communication with master process.
+        self.restart_flag = multiprocessing.Event()
+        self.restart_flag.clear()
+        self.done_flag = multiprocessing.Event()
+        self.done_flag.clear()
+
         seed = int.from_bytes(os.urandom(4), "big") + os.getpid()
         self._rng = np.random.default_rng(seed)
 
-        files = list(np.random.permutation(self.files))
+        # Create initialize and start workers.
+        files = list(self._rng.permutation(self.files))
         n = len(files) // self.n_workers
         if len(files) % self.n_workers > 0:
             n += 1
         self.workers = []
         for fs in split(files, n):
-            self.workers.append(DatasetLoader(fs,
-                                              self.dataset_factory,
-                                              self.queue_size,
-                                              args=self.args,
-                                              kwargs=self.kwargs))
-            self.workers[-1].daemon = True
-            self.workers[-1].start()
+            worker = DatasetLoader(self.dataset_factory,
+                                   self.queue_size,
+                                   args=self.args,
+                                   kwargs=self.kwargs)
+            worker.daemon = True
+            worker.file_queue.put(fs)
+            worker.done_flag.clear()
+            worker.start()
+            self.workers.append(worker)
 
     def aggregate_batches(self, batches):
         """
@@ -168,80 +193,76 @@ class DatasetManager(multiprocessing.Process):
         Collects batches from child process and puts them on the batch
         queue.
         """
-        batches = []
         while True:
-            done = all([w.done.is_set() for w in self.workers])
-            if done:
-                break
 
-            for w in self.workers:
-                # Get batch from queue.
-                try:
-                    b = w.batch_queue.get_nowait()
-                    w.batch_queue.task_done()
-                    batches.append(b)
-                except FileNotFoundError:
-                    _LOGGER.warning(
-                        "FileNotFoundError occured when retrieving batch from "
-                        "loader process."
-                    )
-                except queue.Empty:
-                    continue
+            batches = []
+            # Collect batches from workers.
+            while not all([w.done_flag.is_set() for w in self.workers]):
+                for w in self.workers:
+                    # Get batch from queue.
+                    try:
+                        b = w.batch_queue.get_nowait()
+                        w.batch_queue.task_done()
+                        batches.append(b)
+                    except FileNotFoundError:
+                        _LOGGER.warning(
+                            "FileNotFoundError occured when retrieving batch from "
+                            "loader process."
+                        )
+                    except queue.Empty:
+                        continue
 
+                    if self.aggregate is None:
+                        for b in batches:
+                            self.batch_queue.put(b)
+                        batches = []
+                    else:
+                        while len(batches) >= self.aggregate:
+                            b = self.aggregate_batches(batches[:self.aggregate])
+                            batches = batches[self.aggregate:]
+                            self.batch_queue.put(b)
+
+            # Process remaining batches.
             if self.aggregate is None:
                 for b in batches:
                     self.batch_queue.put(b)
                 batches = []
             else:
-                while len(batches) >= self.aggregate:
+                while batches:
                     b = self.aggregate_batches(batches[:self.aggregate])
                     batches = batches[self.aggregate:]
                     self.batch_queue.put(b)
 
-        if self.aggregate is None:
-            for b in batches:
-                self.batch_queue.put(b)
-            batches = []
-        else:
-            while batches:
-                b = self.aggregate_batches(batches[:self.aggregate])
-                batches = batches[self.aggregate:]
-                self.batch_queue.put(b)
-        self.batch_queue.join()
+            # Signal end of epoch.
+            self.done_flag.set()
+            self.restart_flag.wait()
+            self.restart_flag.clear()
 
-    def join(self):
-        """
-        Make sure terminate is forwarded to worker child-processes.
-        """
-        if hasattr(self, "workers"):
-            for w in self.workers:
-                w.join()
-        multiprocessing.Process.join(self)
+            # Distribute new files to workers
+            files = list(self._rng.permutation(self.files))
+            n = len(files) // self.n_workers
+            if len(files) % self.n_workers > 0:
+                n += 1
+            for w, fs in zip(self.workers, split(files, n)):
+                w.file_queue.put(fs)
+                w.done_flag.clear()
 
-    def terminate(self):
+    def next_epoch(self):
         """
-        Make sure terminate is forwarded to worker child-processes.
+        Sends signal to manager to start loading of next epoch.
         """
-        multiprocessing.Process.terminate(self)
+        self.done_flag.clear()
+        self.restart_flag.set()
+
+    def shutdown(self):
+        """
+        Sends signal to manager to start loading of next epoch.
+        """
         if hasattr(self, "workers"):
             for w in self.workers:
                 w.terminate()
+        self.terminate()
 
-    def kill(self):
-        """
-        Make sure kill is forwarded to worker child-processes.
-        """
-        multiprocessing.Process.kill(self)
-        if hasattr(self, "workers"):
-            for w in self.workers:
-                w.kill()
-
-    def close(self):
-        multiprocessing.Process.close(self)
-        if hasattr(self, "workers"):
-            for w in self.workers:
-                w.join()
-                w.close()
 
 class DataFolder:
     """
@@ -319,16 +340,19 @@ class DataFolder:
 
     def __del__(self):
         if hasattr(self, "manager"):
-            self.manager.terminate()
+            self.manager.shutdown()
 
     def __iter__(self):
         """
         Iterate over all batches in all remote files.
         """
-        while self.manager.is_alive():
+        # Iterate while there's batches in the manager's batch queue
+        # and the manager hasn't finished processing the epoch yet.
+        while ((not self.manager.done_flag.is_set())
+               or self.manager.batch_queue.qsize()):
             try:
                 b = self.manager.batch_queue.get_nowait()
-                self.manager.batch_queue.task_done()
+                yield b
             except FileNotFoundError:
                 _LOGGER.warning(
                     "FileNotFoundError occured when retrieving batch from "
@@ -336,20 +360,7 @@ class DataFolder:
                 )
             except queue.Empty:
                 continue
-            yield b
-
-        self.manager.join()
-        self.manager.terminate()
-        self.manager = DatasetManager(self.dataset_factory,
-                                      self.files,
-                                      self.n_workers,
-                                      self.queue_size,
-                                      aggregate=self.aggregate,
-                                      shuffle=self.shuffle,
-                                      args=self.args,
-                                      kwargs=self.kwargs)
-        self.manager.daemon = True
-        self.manager.start()
+        self.manager.next_epoch()
 
 
 class LazyDataFolder:

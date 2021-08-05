@@ -333,7 +333,7 @@ class DRNN(NeuralNetworkModel):
             y_pred: Optional pre-computed quantile predictions, which, when
                  provided, will be used to avoid repeated propagation of the
                  the inputs through the network.
-            y: Rank-k tensor containing the true y values.
+            y_true: Rank-k tensor containing the true y values.
 
         Returns:
 
@@ -342,7 +342,8 @@ class DRNN(NeuralNetworkModel):
         if y_pred is None:
             if x is None:
                 raise ValueError(
-                    "One of the input arguments x or y_pred must be " " provided."
+                    "One of the input arguments x or y_pred must be "
+                    " provided."
                 )
             y_pred = self.predict(x)
 
@@ -357,8 +358,6 @@ class DRNN(NeuralNetworkModel):
         def calculate_crps(y_pred, y_true, bins):
             module = get_array_module(y_pred)
             bins = to_array(module, bins, like=y_pred)
-            return qd.crps(y_pred,
-                           y_true,
-                           bins,
-                           bin_axis=self.bin_axis)
-        return apply(calculate_crps, y_pred, y_true, bins)
+            return qd.crps(y_pred, y_true, bins, bin_axis=self.bin_axis)
+
+        return apply(calculate_crps, y_pred, bins)
