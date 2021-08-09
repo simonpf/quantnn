@@ -36,7 +36,6 @@ class SubprocessLogging(multiprocessing.Process):
         h = logging.handlers.QueueHandler(self.log_queue)
         root = logging.getLogger()
         root.addHandler(h)
-        root.setLevel(logging.DEBUG)
 
 
 class LoggingThread(threading.Thread):
