@@ -15,12 +15,16 @@ import os
 from queue import Queue
 import queue
 import tempfile
+import threading
 from time import sleep
 
 import numpy as np
 from quantnn.common import DatasetError
 from quantnn.files import CachedDataFolder, sftp
 from quantnn.backends import get_tensor_backend
+from quantnn.logging.multiprocessing import (SubprocessLogging,
+                                             start_logging,
+                                             stop_logging)
 from quantnn import utils
 
 _LOGGER = logging.getLogger("quantnn.data")
@@ -29,7 +33,7 @@ def split(data, n):
     return (data[i:i + n] for i in range(0, len(data), n))
 
 
-class DatasetLoader(multiprocessing.Process):
+class DatasetLoader(SubprocessLogging):
     """
     The active dataset class takes care of concurrent reading of
     data from a dataset.
@@ -71,6 +75,7 @@ class DatasetLoader(multiprocessing.Process):
         """
         Open dataset and start loading batches.
         """
+        super().run()
         while True:
 
             # Wait while done flag is set.
@@ -97,7 +102,7 @@ class DatasetLoader(multiprocessing.Process):
             self.done_flag.set()
 
 
-class DatasetManager(multiprocessing.Process):
+class DatasetManager(SubprocessLogging):
     """
     Manager process that fetches and potentially aggregates batches
     produces by loader processes.
@@ -193,6 +198,8 @@ class DatasetManager(multiprocessing.Process):
         Collects batches from child process and puts them on the batch
         queue.
         """
+        super().run()
+
         while True:
 
             batches = []
@@ -338,10 +345,12 @@ class DataFolder:
                                       kwargs=self.kwargs)
         self.manager.daemon = True
         self.manager.start()
+        start_logging()
 
     def __del__(self):
         if hasattr(self, "manager"):
             self.manager.shutdown()
+        stop_logging()
 
     def __iter__(self):
         """
@@ -446,11 +455,9 @@ class LazyDataFolder:
 
 class BatchedDataset:
     """
-    A generic batched dataset, that takes two numpy array and generates a sequence
-    dataset providing tensors of
-
+    A generic batched dataset, that takes two numpy array and generates a
+    sequence dataset providing tensors of
     """
-
     def __init__(
         self,
         x,
