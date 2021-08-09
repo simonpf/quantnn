@@ -207,6 +207,7 @@ class DatasetManager(SubprocessLogging):
             while not all([w.done_flag.is_set() for w in self.workers]):
                 for w in self.workers:
                     # Get batch from queue.
+
                     try:
                         b = w.batch_queue.get_nowait()
                         w.batch_queue.task_done()
@@ -254,6 +255,18 @@ class DatasetManager(SubprocessLogging):
             for w, fs in zip(self.workers, split(files, n)):
                 w.file_queue.put(fs)
                 w.done_flag.clear()
+
+    def check_workers(self):
+        """
+        j
+
+        """
+        for w in self.workers:
+            if not w.done_flag.is_set() and not w.is_alive():
+                _LOGGER.error(
+                    f"Woker process {w} died. Something went wrong."
+                )
+                w.done_flag.set()
 
     def next_epoch(self):
         """
@@ -370,6 +383,11 @@ class DataFolder:
                 )
             except queue.Empty:
                 continue
+            if not self.manager.is_alive():
+                _LOGGER.error(
+                    "Dataset manager process died. Something went wrong."
+                )
+            self.manager.check_workers()
         self.manager.next_epoch()
 
 
