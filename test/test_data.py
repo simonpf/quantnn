@@ -116,6 +116,7 @@ def test_sftp_stream():
     assert np.isclose(x_sum, 7 * 8 / 2 * 10 * 10)
     assert np.isclose(y_sum, 7 * 8 / 2 * 10)
 
+
 @pytest.mark.skipif(not HAS_LOGIN_INFO, reason="No SFTP login info.")
 def test_lazy_datafolder():
     host = "129.16.35.202"

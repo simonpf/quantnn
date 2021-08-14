@@ -57,8 +57,6 @@ class LoggingThread(threading.Thread):
         """
         Listen on queue and print incoming messages.
         """
-        root = logging.getLogger()
-        root.setLevel(logging.DEBUG)
         while True:
             record = self.log_queue.get()
             if record is None:

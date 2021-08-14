@@ -40,7 +40,9 @@ class DatasetLoader(SubprocessLogging):
     """
     def __init__(self,
                  factory,
-                 queue_size,
+                 task_queue,
+                 done_queue,
+                 batch_queue,
                  args=None,
                  kwargs=None):
         """
@@ -55,8 +57,9 @@ class DatasetLoader(SubprocessLogging):
         """
         super().__init__()
         self.factory = factory
-        self.file_queue = multiprocessing.Queue()
-        self.batch_queue = multiprocessing.JoinableQueue(queue_size)
+        self.task_queue = task_queue
+        self.done_queue = done_queue
+        self.batch_queue = batch_queue
         if args is None:
             self.args = []
         else:
@@ -66,11 +69,6 @@ class DatasetLoader(SubprocessLogging):
         else:
             self.kwargs = kwargs
 
-        # Initialize done flag to set indicating
-        # no work to be done.
-        self.done_flag = multiprocessing.Event()
-        self.done_flag.set()
-
     def run(self):
         """
         Open dataset and start loading batches.
@@ -78,15 +76,11 @@ class DatasetLoader(SubprocessLogging):
         super().run()
         while True:
 
-            # Wait while done flag is set.
-            while self.done_flag.is_set():
-                sleep(0.01)
+            filename = self.task_queue.get()
+            if filename is None:
+                break
 
-            # Process files
-
-            files = self.file_queue.get()
-
-            for filename in files:
+            try:
                 dataset = self.factory(filename, *self.args, **self.kwargs)
                 if isinstance(dataset, Iterable):
                     for b in dataset:
@@ -95,11 +89,9 @@ class DatasetLoader(SubprocessLogging):
                         hasattr(dataset, "__getitem__")):
                     for i in range(len(dataset)):
                         self.batch_queue.put(dataset[i])
-                del dataset
-
-            # Processing finished.
-            self.batch_queue.join()
-            self.done_flag.set()
+            except Exception as e:
+                _LOGGER.error("Error encountered in dataset loader: %s", e)
+            self.done_queue.put(filename)
 
 
 class DatasetManager(SubprocessLogging):
@@ -120,39 +112,40 @@ class DatasetManager(SubprocessLogging):
         self.dataset_factory = dataset_factory
         self.files = files
         self.n_workers = n_workers
-        self.queue_size = n_workers * queue_size
+        self.queue_size = queue_size
         self.aggregate = aggregate
         self.shuffle = shuffle
         self.args = args
         self.kwargs = kwargs
-        self.batch_queue = multiprocessing.JoinableQueue(queue_size)
         self.backend = None
-
-        # Event for communication with master process.
-        self.restart_flag = multiprocessing.Event()
-        self.restart_flag.clear()
-        self.done_flag = multiprocessing.Event()
-        self.done_flag.clear()
 
         seed = int.from_bytes(os.urandom(4), "big") + os.getpid()
         self._rng = np.random.default_rng(seed)
 
-        # Create initialize and start workers.
-        files = list(self._rng.permutation(self.files))
-        n = len(files) // self.n_workers
-        if len(files) % self.n_workers > 0:
-            n += 1
+        # Create and start workers.
+        self.task_queue = multiprocessing.Queue()
+        self.done_queue = multiprocessing.Queue()
+        self.batch_queue = multiprocessing.Queue(maxsize=queue_size)
+        self.merged_queue = multiprocessing.Queue(maxsize=queue_size)
+
         self.workers = []
-        for fs in split(files, n):
+        for i in range(self.n_workers):
             worker = DatasetLoader(self.dataset_factory,
-                                   self.queue_size,
+                                   self.task_queue,
+                                   self.done_queue,
+                                   self.batch_queue,
                                    args=self.args,
                                    kwargs=self.kwargs)
             worker.daemon = True
-            worker.file_queue.put(fs)
-            worker.done_flag.clear()
             worker.start()
             self.workers.append(worker)
+
+        files = list(self._rng.permutation(self.files))
+        for f in files:
+            self.task_queue.put(f)
+
+        self.done_flag = multiprocessing.Event()
+        self.done_flag.clear()
 
     def aggregate_batches(self, batches):
         """
@@ -193,6 +186,14 @@ class DatasetManager(SubprocessLogging):
             y = utils.apply(f, y)
         return x, y
 
+    @property
+    def epoch_done(self):
+        """
+        Boolean indicating whether the manager has finished processing the
+        current epoch.
+        """
+        return self.done_flag.is_set()
+
     def run(self):
         """
         Collects batches from child process and puts them on the batch
@@ -204,65 +205,52 @@ class DatasetManager(SubprocessLogging):
 
             batches = []
             # Collect batches from workers.
-            while not all([w.done_flag.is_set() for w in self.workers]):
-                for w in self.workers:
-                    # Get batch from queue.
+            while (self.done_queue.qsize() < len(self.files) or
+                   self.batch_queue.qsize()):
+                try:
+                    b = self.batch_queue.get()
+                    batches.append(b)
+                except FileNotFoundError as e:
+                    _LOGGER.warning(
+                        "FileNotFoundError occured when retrieving batch from "
+                        "loader process.", e
+                    )
+                    continue
+                except queue.Empty:
+                    continue
 
-                    try:
-                        b = w.batch_queue.get_nowait()
-                        w.batch_queue.task_done()
-                        batches.append(b)
-                    except FileNotFoundError as e:
-                        _LOGGER.warning(
-                            "FileNotFoundError occured when retrieving batch from "
-                            "loader process.", e
-                        )
-                        continue
-                    except queue.Empty:
-                        continue
-
-                    if self.aggregate is None:
-                        for b in batches:
-                            self.batch_queue.put(b)
-                        batches = []
-                    else:
-                        while len(batches) >= self.aggregate:
-                            b = self.aggregate_batches(batches[:self.aggregate])
-                            batches = batches[self.aggregate:]
-                            self.batch_queue.put(b)
+                if self.aggregate is None:
+                    for b in batches:
+                        self.merged_queue.put(b)
+                    batches = []
+                else:
+                    while len(batches) >= self.aggregate:
+                        b = self.aggregate_batches(batches[:self.aggregate])
+                        batches = batches[self.aggregate:]
+                        self.merged_queue.put(b)
 
             # Process remaining batches.
             if self.aggregate is None:
                 for b in batches:
-                    self.batch_queue.put(b)
+                    self.merged_queue.put(b)
                 batches = []
             else:
                 while batches:
                     b = self.aggregate_batches(batches[:self.aggregate])
                     batches = batches[self.aggregate:]
-                    self.batch_queue.put(b)
+                    self.merged_queue.put(b)
 
-            # Signal end of epoch.
             self.done_flag.set()
-            self.restart_flag.wait()
-            self.restart_flag.clear()
+            while self.done_flag.is_set():
+                sleep(0.01)
 
-            # Distribute new files to workers
-            files = list(self._rng.permutation(self.files))
-            n = len(files) // self.n_workers
-            if len(files) % self.n_workers > 0:
-                n += 1
-            for w, fs in zip(self.workers, split(files, n)):
-                w.file_queue.put(fs)
-                w.done_flag.clear()
 
     def check_workers(self):
         """
-        j
 
         """
         for w in self.workers:
-            if not w.done_flag.is_set() and not w.is_alive():
+            if not w.is_alive():
                 _LOGGER.error(
                     f"Woker process {w} died. Something went wrong."
                 )
@@ -272,8 +260,15 @@ class DatasetManager(SubprocessLogging):
         """
         Sends signal to manager to start loading of next epoch.
         """
+        # Empty done queue.
+        while not self.done_queue.empty():
+            self.done_queue.get()
+
+        files = []
+        files = list(self._rng.permutation(self.files))
+        for f in files:
+            self.task_queue.put(f)
         self.done_flag.clear()
-        self.restart_flag.set()
 
     def shutdown(self):
         """
@@ -371,18 +366,15 @@ class DataFolder:
         """
         # Iterate while there's batches in the manager's batch queue
         # and the manager hasn't finished processing the epoch yet.
-        while ((not self.manager.done_flag.is_set())
-               or self.manager.batch_queue.qsize()):
+        while not self.manager.epoch_done or self.manager.merged_queue.qsize():
             try:
-                b = self.manager.batch_queue.get_nowait()
+                b = self.manager.merged_queue.get()
                 yield b
             except FileNotFoundError:
                 _LOGGER.warning(
                     "FileNotFoundError occured when retrieving batch from "
                     "manager process."
                 )
-            except queue.Empty:
-                continue
             if not self.manager.is_alive():
                 _LOGGER.error(
                     "Dataset manager process died. Something went wrong."
