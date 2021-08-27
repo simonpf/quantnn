@@ -222,7 +222,10 @@ class NeuralNetworkModel:
                         raise error
                     metrics[i] = m
                 metrics[i].model = self
-                metrics[i].mask = loss.mask
+                if isinstance(loss, dict):
+                    metrics[i].mask = next(iter(loss.values())).mask
+                else:
+                    metrics[i].mask = loss.mask
 
         if logger is None:
             logger = TrainingLogger(n_epochs)

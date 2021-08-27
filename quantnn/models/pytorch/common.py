@@ -178,7 +178,7 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
 
     def __call__(self, y_pred, y_true, key=None):
         """Evaluate the loss."""
-        if key is None:
+        if not isinstance(self.bins, dict) or key is None:
             bins = self.bins.to(y_pred.device)
         else:
             bins = self.bins[key].to(y_pred.device)
@@ -270,6 +270,47 @@ class QuantileLoss(nn.Module):
             return (l * mask).sum() / ((mask.sum() + 1e-6) * self.n_quantiles)
         return l.mean()
 
+
+class MSELoss(nn.Module):
+    r"""
+    Mean-squared error loss with masking.
+    """
+    def __init__(self, mask=None):
+        """
+        Args:
+            mask: Only values larger than the given mask value will be
+                considered in the loss.
+        """
+        super().__init__()
+        self.mask = mask
+        if self.mask:
+            self.mask = np.float32(mask)
+        if self.mask is None:
+            self.loss = nn.MSELoss()
+        else:
+            self.loss = nn.MSELoss(reduction="none")
+
+    def to(self, device):
+        if self.mask is not None:
+            self.mask = self.mask.to(device)
+
+    def __call__(self, y_pred, y_true, key=None):
+        """
+        Compute mean-squared error loss.
+
+        Arguments:
+            y_pred: N-tensor containing the predicted quantities.
+            y_true: N-tensor containing the true y values corresponding to
+                the predictions in y_pred
+
+        Returns:
+            The MSE.
+        """
+        if self.mask is None:
+            return self.loss(y_pred, y_true)
+        dy_2 = self.loss(y_pred, y_true)
+        mask = (y_true > self.mask).to(y_true.dtype)
+        return (dy_2 * mask).sum() / (mask.sum() + 1e-6)
 
 ################################################################################
 # Default scheduler and optimizer
@@ -457,17 +498,24 @@ class PytorchModel:
             y_pred = {"__loss__": y_pred}
         if not isinstance(y, dict):
             y = {next(iter(y_pred.keys())): y}
+        if not isinstance(loss, dict):
+            loss = {k: loss for k in y_pred}
 
         losses = {}
-
-        if loss.mask is not None:
-            mask = torch.tensor(loss.mask).to(dtype=x.dtype, device=x.device)
-        else:
-            mask = None
 
         total_loss = None
         # Loop over keys in prediction.
         for k in y_pred:
+
+            loss_k = loss[k]
+
+            if loss_k.mask is not None:
+                mask = torch.tensor(loss_k.mask).to(
+                    dtype=x.dtype,
+                    device=x.device
+                )
+            else:
+                mask = None
 
             if isinstance(transformation, dict):
                 transform_k = transformation[k]
@@ -493,9 +541,9 @@ class PytorchModel:
                 y_pred_k_t = transform_k.invert(y_pred_k)
 
             if k == "__loss__":
-                l = loss(y_pred_k, y_k_t)
+                l = loss_k(y_pred_k, y_k_t)
             else:
-                l = loss(y_pred_k, y_k_t, k)
+                l = loss_k(y_pred_k, y_k_t, k)
 
             cache = {}
             with torch.no_grad():
@@ -582,7 +630,11 @@ class PytorchModel:
             scheduler = _get_default_scheduler(optimizer)
 
         self.to(device)
-        loss.to(device)
+
+        if isinstance(loss, dict):
+            {k: loss[k].to(device) for k in loss}
+        else:
+            loss.to(device)
 
         # metrics
         if metrics is None:

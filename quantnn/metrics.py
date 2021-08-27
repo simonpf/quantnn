@@ -120,7 +120,11 @@ class ScalarMetric(Metric):
 
         results = {}
         for key in self.keys:
-            results[key] = self.get_value(key)
+            try:
+                results[key] = self.get_value(key)
+            except KeyError:
+                pass
+
         return results
 
 
@@ -294,8 +298,12 @@ class CRPS(ScalarMetric):
             self.tensor_backend = get_tensor_backend(y_pred)
         xp = self.tensor_backend
 
+        crps = self.model.crps(y_pred=y_pred, y_true=y, key=key)
+        if crps is None:
+            return None
+
         crps_batches = self.crps.setdefault(key, [])
-        crps = xp.to_numpy(self.model.crps(y_pred=y_pred, y_true=y, key=key))
+        crps = xp.to_numpy(crps)
         y = xp.to_numpy(y)
 
         if self.mask is not None:
@@ -367,6 +375,8 @@ class CalibrationPlot(Metric):
             y_pred = self.model.posterior_quantiles(
                 y_pred=y_pred, quantiles=quantiles, key=key
             )
+            if y_pred is None:
+                return None
 
         if self.tensor_backend is None:
             self.tensor_backend = get_tensor_backend(y_pred)

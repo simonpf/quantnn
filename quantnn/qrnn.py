@@ -40,11 +40,6 @@ Example usage
     # Load the model
     QRNN.load("qrnn.pckl")
 """
-
-import copy
-import pickle
-import importlib
-
 import numpy as np
 import quantnn.quantiles as qq
 from quantnn.neural_network_model import NeuralNetworkModel
@@ -336,7 +331,7 @@ class QRNN(NeuralNetworkModel):
 
         return apply(calculate_samples, y_pred)
 
-    def sample_posterior_gaussian_fit(self, x=None, y_pred=None, n_samples=1, **kwargs):
+    def sample_posterior_gaussian_fit(self, x=None, y_pred=None, n_samples=1):
         r"""
         Generates :code:`n` samples from the predicted posterior
         distribution for the input vector :code:`x`. The sampling

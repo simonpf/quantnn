@@ -8,6 +8,7 @@ models for the :py:class:`quantnn.QRNN` class.
 from quantnn.models.pytorch.common import (
     CrossEntropyLoss,
     QuantileLoss,
+    MSELoss,
     BatchedDataset,
     save_model,
     load_model,
