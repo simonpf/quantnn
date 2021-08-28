@@ -291,8 +291,7 @@ class MSELoss(nn.Module):
             self.loss = nn.MSELoss(reduction="none")
 
     def to(self, device):
-        if self.mask is not None:
-            self.mask = self.mask.to(device)
+        pass
 
     def __call__(self, y_pred, y_true, key=None):
         """
