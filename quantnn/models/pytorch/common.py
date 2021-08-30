@@ -526,10 +526,10 @@ class PytorchModel:
                 y_k = y[k]
             except KeyError:
                 raise DatasetError(f"No targets provided for ouput '{k}'.")
-            shape = y_pred_k.size()
-            shape = (shape[0], 1) + shape[2:]
 
-            y_k = y_k.reshape(shape)
+            if y_k.ndim < y_pred_k.ndim:
+                y_k = torch.unsqueeze(y_k, 1)
+
             if transform_k is None:
                 y_k_t = y_k
                 y_pred_k_t = y_pred_k

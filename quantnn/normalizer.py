@@ -43,7 +43,7 @@ class NormalizerBase(ABC):
                 that should not be normalized.
             feature_axis: The axis along which the input features are located.
         """
-        x = x.astype(np.float64)
+        x = x.astype(np.float32)
 
         n = x.shape[feature_axis]
         self.stats = {}
@@ -127,7 +127,7 @@ class NormalizerBase(ABC):
         for i in range(n):
             selection[self.feature_axis] = i
             if i in self.stats:
-                x_slice = x[tuple(selection)].astype(np.float64)
+                x_slice = x[tuple(selection)].astype(np.float32)
                 x_normed = self._normalize(x_slice, self.stats[i])
             else:
                 x_normed = x[tuple(selection)]
@@ -156,7 +156,7 @@ class NormalizerBase(ABC):
         for i in range(n):
             selection[self.feature_axis] = i
             if i in self.stats:
-                x_slice = x[tuple(selection)].astype(np.float64)
+                x_slice = x[tuple(selection)].astype(np.float32)
                 x_inverted = self._invert(x_slice, self.stats[i])
             else:
                 x_inverted = x[tuple(selection)]

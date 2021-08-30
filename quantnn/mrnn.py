@@ -104,13 +104,13 @@ class Quantiles(TargetType):
             quantile_axis=self.quantile_axis
         )
 
-    def posterior_quantiles(self, y_pred, quantiles):
+    def posterior_quantiles(self, y_pred, new_quantiles):
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.posterior_quantiles(
             y_pred,
             quantiles=quantiles,
-            new_quantiles=quantiles,
+            new_quantiles=new_quantiles,
             quantile_axis=self.quantile_axis
         )
 
@@ -199,13 +199,13 @@ class Density(TargetType):
             quantile_axis=self.quantile_axis
         )
 
-    def posterior_quantiles(self, y_pred, quantiles):
+    def posterior_quantiles(self, y_pred, new_quantiles):
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
         return qd.posterior_quantiles(
             y_pred,
             bins=bins,
-            new_quantiles=quantiles,
+            new_quantiles=new_quantiles,
             quantile_axis=self.quantile_axis
         )
 

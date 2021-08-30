@@ -74,9 +74,11 @@ class DatasetLoader(SubprocessLogging):
         Open dataset and start loading batches.
         """
         super().run()
+        task_pool = ThreadPoolExecutor(max_workers=2)
         while True:
 
             filename = self.task_queue.get()
+
             if filename is None:
                 break
 
@@ -125,7 +127,8 @@ class DatasetManager(SubprocessLogging):
         # Create and start workers.
         self.task_queue = multiprocessing.Queue()
         self.done_queue = multiprocessing.Queue()
-        self.batch_queue = multiprocessing.Queue(maxsize=queue_size)
+        self.batch_queues = [multiprocessing.Queue(maxsize=queue_size)
+                             for _ in range(2)]
         self.merged_queue = multiprocessing.Queue(maxsize=queue_size)
 
         self.workers = []
@@ -133,7 +136,7 @@ class DatasetManager(SubprocessLogging):
             worker = DatasetLoader(self.dataset_factory,
                                    self.task_queue,
                                    self.done_queue,
-                                   self.batch_queue,
+                                   self.batch_queues[i % 2],
                                    args=self.args,
                                    kwargs=self.kwargs)
             worker.daemon = True
@@ -205,30 +208,47 @@ class DatasetManager(SubprocessLogging):
 
             batches = []
             # Collect batches from workers.
-            while (self.done_queue.qsize() < len(self.files) or
-                   self.batch_queue.qsize()):
-                try:
-                    b = self.batch_queue.get()
-                    batches.append(b)
-                except FileNotFoundError as e:
-                    _LOGGER.warning(
-                        "FileNotFoundError occured when retrieving batch from "
-                        "loader process.", e
-                    )
-                    continue
-                except queue.Empty:
-                    continue
+            while (self.done_queue.qsize() < len(self.files)):
+                for i in range(2):
+                    batch_queue = self.batch_queues[i]
+                    while batch_queue.qsize():
+                        try:
+                            b = batch_queue.get()
+                            batches.append(b)
+                        except FileNotFoundError as e:
+                            _LOGGER.warning(
+                                "FileNotFoundError occured when retrieving batch from "
+                                "loader process.", e
+                            )
+                            continue
+                        except queue.Empty:
+                            continue
 
-                if self.aggregate is None:
-                    for b in batches:
-                        self.merged_queue.put(b)
-                    batches = []
-                else:
-                    while len(batches) >= self.aggregate:
-                        b = self.aggregate_batches(batches[:self.aggregate])
-                        batches = batches[self.aggregate:]
-                        self.merged_queue.put(b)
+                        if self.aggregate is None:
+                            for b in batches:
+                                self.merged_queue.put(b)
+                            batches = []
+                        else:
+                            while len(batches) >= self.aggregate:
+                                b = self.aggregate_batches(batches[:self.aggregate])
+                                batches = batches[self.aggregate:]
+                                self.merged_queue.put(b)
 
+            for i in range(2):
+                batch_queue = self.batch_queues[i]
+                while batch_queue.qsize():
+                    try:
+                        b = batch_queue.get()
+                        batches.append(b)
+                    except FileNotFoundError as e:
+                        _LOGGER.warning(
+                            "FileNotFoundError occured when retrieving batch from "
+                            "loader process.", e
+                        )
+                        continue
+                    except queue.Empty:
+                        continue
+    
             # Process remaining batches.
             if self.aggregate is None:
                 for b in batches:
