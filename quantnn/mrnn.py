@@ -584,7 +584,7 @@ class MRNN(NeuralNetworkModel):
             loss = self.losses[k]
             if hasattr(loss, "sample_posterior_gaussian_fit"):
                 results[k] = loss.sample_posterior_gaussian_fit(
-                    y_pred, n_samples=n_samples
+                    y_pred[k], n_samples=n_samples
                 )
 
         return results
@@ -620,7 +620,7 @@ class MRNN(NeuralNetworkModel):
             loss = self.losses[k]
             if hasattr(loss, "posterior_mean"):
                 results[k] = loss.posterior_mean(
-                    y_pred
+                    y_pred[k]
                 )
 
         return results
@@ -673,7 +673,7 @@ class MRNN(NeuralNetworkModel):
         for k in y_pred:
             loss = self.losses[k]
             if hasattr(loss, "crps"):
-                results[k] = loss.crps(y_pred, y_true)
+                results[k] = loss.crps(y_pred[k], y_true[k])
 
         return results
 
@@ -714,8 +714,8 @@ class MRNN(NeuralNetworkModel):
         for k in y_pred:
             loss = self.losses[k]
             if hasattr(loss, "probability_larger_than"):
-                results[k] = loss.posterior_mean(
-                    y_pred, y
+                results[k] = loss.probability_larger_than(
+                    y_pred[k], y
                 )
 
         return results
@@ -753,8 +753,8 @@ class MRNN(NeuralNetworkModel):
         for k in y_pred:
             loss = self.losses[k]
             if hasattr(loss, "probability_less_than"):
-                results[k] = loss.posterior_mean(
-                    y_pred, y
+                results[k] = loss.probability_less_than(
+                    y_pred[k], y
                 )
 
         return results
@@ -798,7 +798,7 @@ class MRNN(NeuralNetworkModel):
             loss = self.losses[k]
             if hasattr(loss, "posterior_quantiles"):
                 results[k] = loss.posterior_quantiles(
-                    y_pred, quantiles
+                    y_pred[k], quantiles
                 )
 
         return results
