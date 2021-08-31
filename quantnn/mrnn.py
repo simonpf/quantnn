@@ -4,9 +4,8 @@ quantnn.mrnn
 ============
 
 This module implements Mixed Regression Neural Networks (MRSS), which
-allows mixing quantile, density and MSE regression within a single
+allow mixing quantile, density and MSE regression within a single
 model.
-
 """
 from abc import ABC
 
@@ -18,33 +17,54 @@ from quantnn.common import QuantnnException, UnsupportedBackendException
 from quantnn.generic import softmax, to_array, get_array_module
 from quantnn.utils import apply
 
+
 ###############################################################################
-# MRNN class
+# Target class
 ###############################################################################
 
 
-class TargetType(ABC):
-    def get_loss(self, backend):
-        """
-        Return corresponding loss object from backend.
-        """
-
-
-class Quantiles(TargetType):
+class Quantiles():
     """
-    Quantiles to predict.
+    Represents a regression target for which a given selection of quantiles
+    should be predicted.
     """
     def __init__(self, quantiles):
+        """
+        Args:
+            quantiles: Array containing the quantiles to predict.
+        """
         self.quantile_axis = 1
         self.quantiles = quantiles
 
     def get_loss(self, backend, mask=None):
+        """
+        Return loss function for this target for a specific backend.
+
+        Args:
+            backend: The backend from which to retrieve the loss
+                function.
+            mask: Optional mask value to use during training.
+
+        Return:
+            The loss function to use to train this target.
+        """
         return backend.QuantileLoss(self.quantiles, mask=mask)
 
     def predict(self, y_pred):
+        """
+        Apply post processing to model prediction. Does nothing
+        for predicted quantiles.
+        """
         return y_pred
 
     def cdf(self, y_pred):
+        """
+        Calculate CDF from predicted quantiles.
+
+        Args:
+            y_pred: Tensor containing the quantiles predicted by the NN
+                model.
+        """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.pdf(y_pred,
@@ -52,6 +72,13 @@ class Quantiles(TargetType):
                       quantile_axis=self.quantile_axis)
 
     def pdf(self, y_pred):
+        """
+        Calculate PDF from predicted quantiles.
+
+        Args:
+            y_pred: Tensor containing the quantiles predicted by the NN
+                model.
+        """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.pdf(y_pred,
@@ -59,6 +86,14 @@ class Quantiles(TargetType):
                       quantile_axis=self.quantile_axis)
 
     def sample_posterior(self, y_pred, n_samples=1):
+        """
+        Sample retrieval values from posterior distribution.
+
+        Args:
+            y_pred: Tensor containing the quantiles predicted by the NN
+                model.
+            n_samples: The number of samples to produce.
+        """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.sample_posterior(
@@ -67,6 +102,15 @@ class Quantiles(TargetType):
         )
 
     def sample_posterior_gaussian_fit(self, y_pred, n_samples=1):
+        """
+        Sample retrieval values from posterior distribution using
+        a Gaussian fit.
+
+        Args:
+            y_pred: Tensor containing the quantiles predicted by the NN
+                model.
+            n_samples: The number of samples to produce.
+        """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.sample_posterior_gaussian_fit(
@@ -75,6 +119,13 @@ class Quantiles(TargetType):
         )
 
     def posterior_mean(self, y_pred):
+        """
+        Calculate the posterior mean from predicted quantiles.
+
+        Args:
+            y_pred: Tensor containing the quantiles predicted by the NN
+                model.
+        """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.posterior_mean(
@@ -82,6 +133,14 @@ class Quantiles(TargetType):
         )
 
     def crps(self, y_pred, y_true):
+        """
+        Calculate the CRPS score from predicted quantiles.
+
+        Args:
+            y_pred: Tensor containing the quantiles predicted by the NN
+                model.
+            y_true: Tensor containing the true values.
+        """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.crps(
@@ -89,6 +148,15 @@ class Quantiles(TargetType):
         )
 
     def probability_larger_than(self, y_pred, y):
+        """
+        Calculate the probability that the retrieval value is larger than
+        a given threshold.
+
+        Args:
+            y_pred: Tensor containing the quantiles predicted by the NN
+                model.
+            y: The scalar threshold value.
+        """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.probability_larger_than(
@@ -97,6 +165,15 @@ class Quantiles(TargetType):
         )
 
     def probability_less_than(self, y_pred, y):
+        """
+        Calculate the probability that the retrieval value is less than
+        a given threshold.
+
+        Args:
+            y_pred: Tensor containing the quantiles predicted by the NN
+                model.
+            y: The scalar threshold value.
+        """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.probability_less_than(
@@ -105,6 +182,14 @@ class Quantiles(TargetType):
         )
 
     def posterior_quantiles(self, y_pred, new_quantiles):
+        """
+        Calculate new quantiles.
+
+        Args:
+            y_pred: Tensor containing the quantiles predicted by the NN
+                model.
+            new_quantiles: Array containing the new quantiles to compute.
+        """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.posterior_quantiles(
@@ -121,19 +206,43 @@ class Quantiles(TargetType):
         return f"Quantiles({self.quantiles})"
 
 
-class Density(TargetType):
+class Density():
     """
-    Quantiles to predict.
+    Represents a regression target for which a binned approximation of the
+    probability density function should be predicted.
     """
     def __init__(self, bins, bin_axis=None):
+        """
+        Args:
+            bins: Array defining the bin boundaries for the PDF approximation.
+        """
         if bin_axis is None:
             self.bin_axis = 1
         self.bins = bins
 
     def get_loss(self, backend, mask=None):
+        """
+        Return loss function for this target for a specific backend.
+
+        Args:
+            backend: The backend from which to retrieve the loss
+                function.
+            mask: Optional mask value to use during training.
+
+        Return:
+            The loss function to use to train this target.
+        """
         return backend.CrossEntropyLoss(self.bins, mask=mask)
 
     def predict(self, y_pred):
+        """
+        Apply post processing to model prediction. Converts predicted
+        logits to normalized probabilities.
+
+        Args:
+            y_pred: Tensor containing the logit values predicted by
+                the neural network model.
+        """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
         y_pred = softmax(module, y_pred, axis=1)
@@ -141,6 +250,13 @@ class Density(TargetType):
         return y_pred
 
     def cdf(self, y_pred):
+        """
+        Calculate CDF from predicted logits.
+
+        Args:
+            y_pred: Tensor containing the logit values predicted by
+                the neural network model.
+        """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
         return qd.pdf(y_pred,
@@ -148,6 +264,13 @@ class Density(TargetType):
                       bin_axis=self.bin_axis)
 
     def pdf(self, y_pred):
+        """
+        Calculate PDF from predicted logits.
+
+        Args:
+            y_pred: Tensor containing the logit values predicted by
+                the neural network model.
+        """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
         return qd.pdf(y_pred,
@@ -155,6 +278,14 @@ class Density(TargetType):
                       quantile_axis=self.quantile_axis)
 
     def sample_posterior(self, y_pred, n_samples=1):
+        """
+        Sample retrieval values from posterior distribution.
+
+        Args:
+            y_pred: Tensor containing the logit values predicted by
+                the neural network model.
+            n_samples: The number of samples to produce.
+        """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
         return qd.sample_posterior(
@@ -163,6 +294,15 @@ class Density(TargetType):
         )
 
     def sample_posterior_gaussian_fit(self, y_pred, n_samples=1):
+        """
+        Sample retrieval values from posterior distribution using
+        a Gaussian fit.
+
+        Args:
+            y_pred: Tensor containing the logit values predicted by
+                the neural network model.
+            n_samples: The number of samples to produce.
+        """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
         return qd.sample_posterior_gaussian_fit(
@@ -171,6 +311,13 @@ class Density(TargetType):
         )
 
     def posterior_mean(self, y_pred):
+        """
+        Calculate the posterior mean from predicted quantiles.
+
+        Args:
+            y_pred: Tensor containing the logit values predicted by
+                the neural network model.
+        """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
         return qd.posterior_mean(
@@ -179,6 +326,14 @@ class Density(TargetType):
         )
 
     def crps(self, y_pred, y_true):
+        """
+        Calculate the CRPS score from predicted quantiles.
+
+        Args:
+            y_pred: Tensor containing the logit values predicted by
+                the neural network model.
+            y_true: Tensor containing the true values.
+        """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qd.crps(
@@ -186,6 +341,15 @@ class Density(TargetType):
         )
 
     def probability_larger_than(self, y_pred, y):
+        """
+        Calculate the probability that the retrieval value is larger than
+        a given threshold.
+
+        Args:
+            y_pred: Tensor containing the logit values predicted by
+                the neural network model.
+            y: The scalar threshold value.
+        """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
         return qd.probability_larger_than(
@@ -194,12 +358,29 @@ class Density(TargetType):
         )
 
     def probability_less_than(self, y_pred, y):
+        """
+        Calculate the probability that the retrieval value is larger than
+        a given threshold.
+
+        Args:
+            y_pred: Tensor containing the logit values predicted by
+                the neural network model.
+            y: The scalar threshold value.
+        """
         return qd.probability_less_than(
             y_pred=y_pred, y=y,
             quantile_axis=self.quantile_axis
         )
 
     def posterior_quantiles(self, y_pred, new_quantiles):
+        """
+        Calculate quantiles of the posterior distribution.
+
+        Args:
+            y_pred: Tensor containing the logit values predicted by
+                the neural network model.
+            y: The scalar threshold value.
+        """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
         return qd.posterior_quantiles(
@@ -216,7 +397,7 @@ class Density(TargetType):
         return f"Density({self.bins})"
 
 
-class Mean(TargetType):
+class Mean():
     """
     Quantiles to predict.
     """
@@ -279,6 +460,9 @@ class MixedLoss:
         return self.losses[key](y_pred, y_true, key)
 
 
+###############################################################################
+# MRNN class
+###############################################################################
 
 
 class MRNN(NeuralNetworkModel):

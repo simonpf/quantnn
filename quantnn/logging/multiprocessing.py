@@ -6,6 +6,7 @@ quantnn.logging.multiprocessing
 This module defines utility function to handle logging from sub-processes.
 """
 import logging
+from logging import handlers
 import multiprocessing
 import threading
 
@@ -33,9 +34,9 @@ class SubprocessLogging(multiprocessing.Process):
         self.log_queue = get_log_queue()
 
     def run(self):
-        h = logging.handlers.QueueHandler(self.log_queue)
+        import quantnn.logging
         root = logging.getLogger()
-        root.addHandler(h)
+        root.handlers = [handlers.QueueHandler(self.log_queue)]
 
 
 class LoggingThread(threading.Thread):

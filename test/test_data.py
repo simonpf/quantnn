@@ -2,6 +2,7 @@
 Test for the quantnn.data module.
 
 """
+import logging
 import os
 
 import numpy as np
@@ -17,6 +18,9 @@ from quantnn.data import DataFolder, LazyDataFolder
 
 HAS_LOGIN_INFO = ("QUANTNN_SFTP_USER" in os.environ and
                   "QUANTNN_SFTP_PASSWORD" in os.environ)
+
+
+LOGGER = logging.getLogger(__file__)
 
 
 class Dataset:
@@ -38,6 +42,7 @@ class Dataset:
         data = np.load(filename)
         self.x = data["x"]
         self.y = data["y"].reshape(-1, 1)
+        LOGGER.info("Loaded data from file %s.", filename)
 
     def _shuffle(self):
         """
