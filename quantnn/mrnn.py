@@ -410,32 +410,8 @@ class Mean():
     def get_loss(self, backend, mask=None):
         return backend.MSELoss(mask=mask)
 
-    def cdf(self, y_pred):
-        return None
-
-    def pdf(self, y_pred):
-        return None
-
-    def sample_posterior(self, y_pred, n_samples=1):
-        return None
-
-    def sample_posterior_gaussian_fit(self, y_pred, n_samples=1):
-        return None
-
     def posterior_mean(self, y_pred):
         return y_pred
-
-    def crps(self, y_pred, y_true):
-        return None
-
-    def probability_larger_than(self, y_pred, y):
-        return None
-
-    def probability_less_than(self, y_pred, y):
-        return None
-
-    def posterior_quantiles(self, y_pred, quantiles):
-        return None
 
     def __repr__(self):
         return f"Mean()"
@@ -851,7 +827,11 @@ class MRNN(NeuralNetworkModel):
             )
 
         if not isinstance(y_pred, dict):
-            return self.losses[key].crps(y_pred, y_true)
+            loss = self.losses[key]
+            if hasattr(loss, "crps"):
+                return loss.crps(y_pred, y_true)
+            else:
+                return None
 
         results = {}
         for k in y_pred:
@@ -892,7 +872,10 @@ class MRNN(NeuralNetworkModel):
             )
 
         if not isinstance(y_pred, dict):
-            return self.losses[key].probability_larger_than(y_pred, y)
+            loss = self.losses[key]
+            if hasattr(loss, "probability_larger_than"):
+                return loss.probability_larger_than(y_pred, y)
+            return None
 
         results = {}
         for k in y_pred:
@@ -931,7 +914,10 @@ class MRNN(NeuralNetworkModel):
             y_pred = self.predict(x)
 
         if not isinstance(y_pred, dict):
-            return self.losses[key].probability_less_than(y_pred, y)
+            loss = self.losses[key]
+            if hasattr(loss, "probability_less_than"):
+                return loss.probability_less_than(y_pred, y)
+            return None
 
         results = {}
         for k in y_pred:
@@ -974,8 +960,10 @@ class MRNN(NeuralNetworkModel):
             )
 
         if not isinstance(y_pred, dict):
-            return self.losses[key].posterior_quantiles(
-                y_pred, quantiles)
+            loss = self.losses[key]
+            if hasattr(loss, "posterior_quantiles"):
+                return loss.posterior_quantiles(y_pred, quantiles)
+            return None
 
         results = {}
         for k in y_pred:

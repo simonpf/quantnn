@@ -564,7 +564,7 @@ class PytorchModel:
         validation_data=None,
         loss=None,
         optimizer=None,
-        scheduler=None,
+        scheduler="default",
         n_epochs=None,
         adversarial_training=None,
         batch_size=None,
@@ -625,8 +625,12 @@ class PytorchModel:
         self.optimizer = optimizer
 
         # Training scheduler
-        if not scheduler:
+        if scheduler == "default":
             scheduler = _get_default_scheduler(optimizer)
+        if scheduler is not None:
+            scheduler_sig = signature(scheduler.step)
+        else:
+            scheduler_sig = None
 
         self.to(device)
 
@@ -638,8 +642,6 @@ class PytorchModel:
         # metrics
         if metrics is None:
             metrics = []
-
-        scheduler_sig = signature(scheduler.step)
 
         training_losses = []
         validation_losses = []
