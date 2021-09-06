@@ -321,7 +321,7 @@ class Density():
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
         return qd.posterior_mean(
-            y_pred, bins, n_samples=n_samples,
+            y_pred, bins,
             quantile_axis=self.quantile_axis
         )
 
