@@ -275,7 +275,7 @@ class Density():
         bins = to_array(module, self.bins, like=y_pred)
         return qd.pdf(y_pred,
                       bins,
-                      quantile_axis=self.quantile_axis)
+                      bin_axis=self.bin_axis)
 
     def sample_posterior(self, y_pred, n_samples=1):
         """
@@ -290,7 +290,7 @@ class Density():
         bins = to_array(module, self.bins, like=y_pred)
         return qd.sample_posterior(
             y_pred, bins, n_samples=n_samples,
-            quantile_axis=self.quantile_axis
+            bin_axis=self.bin_axis
         )
 
     def sample_posterior_gaussian_fit(self, y_pred, n_samples=1):
@@ -307,7 +307,7 @@ class Density():
         bins = to_array(module, self.bins, like=y_pred)
         return qd.sample_posterior_gaussian_fit(
             y_pred, bins, n_samples=n_samples,
-            quantile_axis=self.quantile_axis
+            bin_axis=self.bin_axis
         )
 
     def posterior_mean(self, y_pred):
@@ -322,7 +322,7 @@ class Density():
         bins = to_array(module, self.bins, like=y_pred)
         return qd.posterior_mean(
             y_pred, bins,
-            quantile_axis=self.quantile_axis
+            bin_axis=self.bin_axis
         )
 
     def crps(self, y_pred, y_true):
@@ -337,7 +337,7 @@ class Density():
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qd.crps(
-            y_pred, quantiles, y_true, quantile_axis=self.quantile_axis
+            y_pred, quantiles, y_true, bin_axis=self.bin_axis
         )
 
     def probability_larger_than(self, y_pred, y):
@@ -354,7 +354,7 @@ class Density():
         bins = to_array(module, self.bins, like=y_pred)
         return qd.probability_larger_than(
             y_pred=y_pred, bins=bins, y=y,
-            quantile_axis=self.quantile_axis
+            bin_axis=self.bin_axis
         )
 
     def probability_less_than(self, y_pred, y):
@@ -369,7 +369,7 @@ class Density():
         """
         return qd.probability_less_than(
             y_pred=y_pred, y=y,
-            quantile_axis=self.quantile_axis
+            bin_axis=self.bin_axis
         )
 
     def posterior_quantiles(self, y_pred, new_quantiles):
@@ -387,7 +387,7 @@ class Density():
             y_pred,
             bins=bins,
             new_quantiles=new_quantiles,
-            quantile_axis=self.quantile_axis
+            bin_axis=self.bin_axis
         )
 
     def __repr__(self):

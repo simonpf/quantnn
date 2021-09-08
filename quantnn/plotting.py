@@ -6,11 +6,12 @@ quantnn.plotting
 The plotting module provides some utility function for plotting QRNN results.
 """
 from copy import copy
+import pathlib
+
 from matplotlib import rc
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_rgba
-import pathlib
 
 _STYLE_FILE = pathlib.Path(__file__).parent / "data" / "matplotlib_style.rc"
 
