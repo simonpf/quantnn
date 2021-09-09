@@ -386,7 +386,7 @@ class Density():
         return qd.posterior_quantiles(
             y_pred,
             bins=bins,
-            new_quantiles=new_quantiles,
+            quantiles=new_quantiles,
             bin_axis=self.bin_axis
         )
 
