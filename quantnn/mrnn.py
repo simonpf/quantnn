@@ -144,7 +144,7 @@ class Quantiles():
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.crps(
-            y_pred, quantiles, y_true, quantile_axis=self.quantile_axis
+            y_pred, y_true, quantiles, quantile_axis=self.quantile_axis
         )
 
     def probability_larger_than(self, y_pred, y):
@@ -337,7 +337,7 @@ class Density():
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
         return qd.crps(
-            y_pred, bins, y_true, bin_axis=self.bin_axis
+            y_pred, y_true, bins, bin_axis=self.bin_axis
         )
 
     def probability_larger_than(self, y_pred, y):

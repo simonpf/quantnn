@@ -260,7 +260,7 @@ def test_crps(xp):
 
     quantiles = arange(xp, 0.1, 0.91, 0.1)
     y_pred = arange(xp, 1.0, 9.1, 1.0)
-    scores = crps(y_pred, quantiles, 4.9)
+    scores = crps(y_pred, 4.9, quantiles,)
     assert np.all(np.isclose(scores, 0.86 * xp.ones_like(scores)))
 
     #
@@ -270,7 +270,7 @@ def test_crps(xp):
     quantiles = arange(xp, 0.1, 0.91, 0.1)
     y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> w q', w=2)
     y_true = 4.9 * xp.ones(2)
-    scores = crps(y_pred, quantiles, y_true)
+    scores = crps(y_pred, y_true, quantiles)
     assert np.all(np.isclose(scores, 0.86 * xp.ones_like(scores)))
 
     ##
@@ -280,7 +280,7 @@ def test_crps(xp):
     quantiles = arange(xp, 0.1, 0.91, 0.1)
     y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> h w q', w=10, h=10)
     y_true = 4.9 * xp.ones((10, 10))
-    scores = crps(y_pred, quantiles, y_true, quantile_axis=2)
+    scores = crps(y_pred, y_true, quantiles, quantile_axis=2)
     assert np.all(np.isclose(scores, 0.86 * xp.ones_like(scores)))
 
     ##
@@ -290,7 +290,7 @@ def test_crps(xp):
     quantiles = arange(xp, 0.1, 0.91, 0.1)
     y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> h q w', w=10, h=10)
     y_true = 4.9 * xp.ones((10, 10))
-    scores = crps(y_pred, quantiles, y_true, quantile_axis=1)
+    scores = crps(y_pred, y_true, quantiles, quantile_axis=1)
     assert np.all(np.isclose(scores, 0.86 * xp.ones_like(scores)))
 
 @pytest.mark.parametrize("xp", pytest.backends)

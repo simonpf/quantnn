@@ -421,7 +421,7 @@ def posterior_quantiles(y_pred, quantiles, new_quantiles, quantile_axis=1):
     return concatenate(xp, y_qs, quantile_axis)
 
 
-def crps(y_pred, quantiles, y_true, quantile_axis=1):
+def crps(y_pred, y_true, quantiles, quantile_axis=1):
     r"""
     Compute the Continuous Ranked Probability Score (CRPS) for given
     predicted quantiles.

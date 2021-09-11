@@ -443,7 +443,7 @@ class QRNN(NeuralNetworkModel):
         def calculate_crps(y_pred):
             module = get_array_module(y_pred)
             quantiles = to_array(module, self.quantiles, like=y_pred)
-            return qq.crps(y_pred, quantiles, y_true, quantile_axis=self.quantile_axis)
+            return qq.crps(y_pred, y_true, quantiles, quantile_axis=self.quantile_axis)
 
         return apply(calculate_crps, y_pred)
 
