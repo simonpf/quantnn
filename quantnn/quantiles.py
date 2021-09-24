@@ -28,6 +28,8 @@ from quantnn.generic import (
     zeros,
     ones,
     cumsum,
+    argmax,
+    take_along_axis
 )
 
 
@@ -849,3 +851,17 @@ def correct_a_priori(y_pred, quantiles, r, quantile_axis=1):
 
     y_pred_new = concatenate(xp, y_pred_new, quantile_axis)
     return y_pred_new
+
+
+def posterior_maximum(y_pred, quantiles, quantile_axis=1):
+    if len(y_pred.shape) == 1:
+        quantile_axis = 0
+    xp = get_array_module(y_pred)
+
+    x, y = pdf(y_pred, quantiles, quantile_axis=quantile_axis)
+    indices = argmax(xp, y, axes=quantile_axis)
+    shape = indices.shape
+    indices = expand_dims(xp, indices, quantile_axis)
+    return take_along_axis(xp, x, indices, axis=quantile_axis).reshape(shape)
+
+

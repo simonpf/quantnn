@@ -67,7 +67,7 @@ class Quantiles():
         """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
-        return qq.pdf(y_pred,
+        return qq.cdf(y_pred,
                       quantiles,
                       quantile_axis=self.quantile_axis)
 

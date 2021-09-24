@@ -21,6 +21,8 @@ from quantnn.generic import (
     as_type,
     zeros,
     sample_uniform,
+    argmax,
+    take_along_axis
 )
 
 
@@ -431,3 +433,27 @@ def quantile_function(y_pdf, y_true, bins, bin_axis=1):
     result = result + 1.0 - as_type(xp, mask_r.sum(bin_axis) > 0, mask)
 
     return result
+
+
+def posterior_maximum(y_pdf, bins, bin_axis=1):
+    """
+    Calculate maximum of the posterior distribution.
+
+    Args:
+        y_pdf: Rank-``k`` Tensor containing the normalized, discrete
+            posterior pdf.
+        bins: Array containing the bin boundaries corresponding to 'y_pdf'.
+        bin_axis: The axis along which the bins of the posterior PDF are
+            oriented.
+
+    Return:
+        Tensor of rank ``k - 1`` containing the values corresponding to the
+        maxima of the given posterior.
+    """
+    if len(y_pdf.shape) == 1:
+        bin_axis = 0
+    xp = get_array_module(y_pdf)
+    x = 0.5 * (bins[1:] + bins[:-1])
+    indices = argmax(xp, y_pdf, axes=bin_axis)
+    return x[indices]
+

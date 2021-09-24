@@ -7,7 +7,8 @@ from quantnn.generic import (get_array_module, to_array, sample_uniform,
                              sample_gaussian, numel, concatenate, expand_dims,
                              pad_zeros, pad_zeros_left, as_type, arange,
                              reshape, trapz, cumsum, cumtrapz, ones, zeros,
-                             softmax, exp, tensordot)
+                             softmax, exp, tensordot, argmax, take_along_axis)
+
 
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_get_array_module(backend):
@@ -20,6 +21,7 @@ def test_get_array_module(backend):
     module = get_array_module(x)
     assert module == backend
 
+
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_to_array(backend):
     """
@@ -29,6 +31,7 @@ def test_to_array(backend):
     x = np.arange(10)
     array = to_array(backend, x)
     assert get_array_module(array) == backend
+
 
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_sample_uniform(backend):
@@ -49,6 +52,7 @@ def test_sample_gaussian(backend):
     samples = sample_gaussian(backend, (10, ))
     assert get_array_module(samples) == backend
 
+
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_numel(backend):
     """
@@ -56,6 +60,7 @@ def test_numel(backend):
     """
     array = backend.ones(10)
     assert numel(array) == 10
+
 
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_concatenate(backend):
@@ -67,6 +72,7 @@ def test_concatenate(backend):
     result = concatenate(backend, [array_1, array_2], 1)
     assert numel(result) == 30
 
+
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_expand_dims(backend):
     """
@@ -76,6 +82,7 @@ def test_expand_dims(backend):
     result = expand_dims(backend, array, 1)
     assert len(result.shape) == 2
     assert result.shape[1] == 1
+
 
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_pad_zeros(backend):
@@ -90,6 +97,7 @@ def test_pad_zeros(backend):
     assert result[0, 1] == 0.0
     assert result[-1, -2] == 0.0
 
+
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_pad_zeros_left(backend):
     """
@@ -103,6 +111,7 @@ def test_pad_zeros_left(backend):
     assert result[0, 1] == 0.0
     assert result[-1, -2] != 0.0
 
+
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_as_type(backend):
     """
@@ -113,6 +122,7 @@ def test_as_type(backend):
     result = as_type(backend, mask, array)
     assert array.dtype == result.dtype
 
+
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_arange(backend):
     """
@@ -122,6 +132,7 @@ def test_arange(backend):
     assert array[0] == 0.0
     assert array[-1] == 10.0
 
+
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_reshape(backend):
     array = arange(backend, 0, 10.1, 1)
@@ -130,11 +141,13 @@ def test_reshape(backend):
     assert result.shape[1] == 11
     assert result.shape[2] == 1
 
+
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_trapz(backend):
     array = arange(backend, 0, 10.1, 1)
     result = trapz(backend, array, array, 0)
     assert result == 50
+
 
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_cumsum(backend):
@@ -143,6 +156,7 @@ def test_cumsum(backend):
     assert result[-1, 0] == 55
     result = cumsum(backend, array, 1)
     assert result[-1, 0] == 10
+
 
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_cumtrapz(backend):
@@ -157,20 +171,24 @@ def test_cumtrapz(backend):
     assert result[0, 0] == 0.0
     assert result[-1, 0] == 100.0
 
+
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_zeros(backend):
     x = ones(backend, (1, 1))
     assert x[0, 0] == 1.0
+
 
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_zeros(backend):
     x = zeros(backend, (1, 1))
     assert x[0, 0] == 0.0
 
+
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_softmax(backend):
     array = arange(backend, 0, 10.1, 1)
     y = softmax(backend, array)
+
 
 @pytest.mark.parametrize("backend", pytest.backends)
 def test_tensordot(backend):
@@ -178,3 +196,25 @@ def test_tensordot(backend):
     y = ones(backend, 11)
     z = tensordot(backend, x, y, ((0,), (0,)))
     assert np.isclose(z, 55)
+
+
+@pytest.mark.parametrize("backend", pytest.backends)
+def test_argmax(backend):
+    x = arange(backend, 0, 10.1, 1).reshape(-1, 1)
+    i = argmax(backend, x)
+    assert i == 10
+
+    i = argmax(backend, x, 1)
+    assert all(i == 0)
+
+
+@pytest.mark.parametrize("backend", pytest.backends)
+def test_take_along_axis(backend):
+    x = arange(backend, 0, 10.1, 1).reshape(-1, 1)
+    indices = to_array(backend, [[0], [1], [2], [3]])
+    i = take_along_axis(backend, x, indices, 0)
+
+    assert i[0] == 0
+    assert i[1] == 1
+    assert i[2] == 2
+    assert i[3] == 3
