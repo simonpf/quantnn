@@ -687,7 +687,7 @@ class PytorchModel:
 
                     if not isinstance(x, torch.Tensor):
                         if isinstance(x, Iterable):
-                            [x_i.float().to(device) for x_i in x]
+                            x = [x_i.float().to(device) for x_i in x]
                         else:
                             raise ValueError(
                                 "Batch input 'x' should be a torch.Tensor or"
