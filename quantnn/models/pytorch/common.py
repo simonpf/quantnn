@@ -755,7 +755,16 @@ class PytorchModel:
                             self.optimizer.zero_grad(**_ZERO_GRAD_ARGS)
 
                             x, y = _get_x_y(data, keys)
-                            x = x.float().to(device)
+                            if not isinstance(x, torch.Tensor):
+                                if isinstance(x, Iterable):
+                                    x = [x_i.float().to(device) for x_i in x]
+                                else:
+                                    raise ValueError(
+                                        "Batch input 'x' should be a torch.Tensor or"
+                                        " an Iterable of tensors."
+                                    )
+                            else:
+                                x = x.float().to(device)
                             if isinstance(y, dict):
                                 for k in y:
                                     y[k] = y[k].to(device)
