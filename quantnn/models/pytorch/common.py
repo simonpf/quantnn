@@ -570,9 +570,10 @@ class PytorchModel:
                 n = (y_k > mask).sum()
             else:
                 n = torch.numel(y_k)
-            tot_loss += (l *  n).item()
+            tot_loss += (l * n).item()
             n_samples += n
 
+        n_samples = n_samples.item()
         return avg_loss, tot_loss, losses, n_samples
 
     def train(
