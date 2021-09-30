@@ -785,7 +785,6 @@ class PytorchModel:
                                 of = len(validation_data)
                             else:
                                 of = None
-                            n_samples = torch.numel(x) / x.size()[1]
                             logger.validation_step(
                                 tot_loss.item() / n_samples, n_samples, of=of, losses=losses
                             )
