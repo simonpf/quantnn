@@ -413,14 +413,17 @@ def test_training_transformation_mrnn_quantiles():
             self.hidden = nn.Linear(16, 128)
             self.head_1 = nn.Linear(128, 10)
             self.head_2 = nn.Linear(128, 1)
+            self.head_3 = nn.Linear(128, 10)
 
         def forward(self, x):
             x = torch.relu(self.hidden(x))
             y_1 = self.head_1(x)
             y_2 = self.head_2(x)
+            y_3 = self.head_3(x)
             return {
                 "y_1": y_1,
-                "y_2": y_2
+                "y_2": y_2,
+                "y_3": y_3
             }
 
     x = np.random.rand(2024, 16) + 1.0
@@ -435,6 +438,8 @@ def test_training_transformation_mrnn_quantiles():
                 "y_1": torch.tensor(y[i * 128: (i + 1) * 128],
                                     dtype=torch.float32),
                 "y_2": torch.tensor(y[i * 128: (i + 1) * 128] ** 2,
+                                    dtype=torch.float32),
+                "y_3": torch.tensor(y[i * 128: (i + 1) * 128] ** 2,
                                     dtype=torch.float32)
             }
         }
@@ -449,7 +454,7 @@ def test_training_transformation_mrnn_quantiles():
     losses = {
         "y_1": Quantiles(np.linspace(0.05, 0.95, 10)),
         "y_2": Mean(),
-        "y_3": Density(np.linspace(-2, 2, 21))
+        "y_3": Density(np.linspace(-2, 2, 11))
     }
 
     mrnn = MRNN(losses=losses, model=model)

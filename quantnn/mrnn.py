@@ -396,6 +396,23 @@ class Density():
     def __str__(self):
         return f"Density({self.bins})"
 
+    def _post_process_prediction(self, y_pred, bins=None, key=None):
+        module = get_array_module(y_pred)
+        if bins is not None:
+            bins = to_array(module, bins, like=y_pred)
+        else:
+            if isinstance(self.bins, dict):
+                bins = to_array(module, self.bins[key], like=y_pred)
+            else:
+                bins = to_array(module, self.bins, like=y_pred)
+
+        module = get_array_module(y_pred)
+        y_pred = softmax(module, y_pred, axis=1)
+        bins = to_array(module, bins, like=y_pred)
+        y_pred = qd.normalize(y_pred, bins, bin_axis=self.bin_axis)
+        return y_pred
+
+
 
 class Mean():
     """
@@ -979,3 +996,19 @@ class MRNN(NeuralNetworkModel):
         super().__setstate__(state)
         if not hasattr(self, "transformation"):
             self.transformation = None
+
+    def _post_process_prediction(self, y_pred, bins=None, key=None):
+
+
+        if not isinstance(y_pred, dict):
+            loss = self.losses[key]
+            if hasattr(loss, "_post_process_prediction"):
+                return loss._post_process_prediction(y_pred, bins=bins, key=key)
+            return y_pred
+
+        results = {}
+        for k in y_pred:
+            loss = self.losses[k]
+            if hasattr(loss, "_post_process_prediction"):
+                results[k] = loss._post_process_prediction(y_pred, bins=bins, key=key)
+        return results
