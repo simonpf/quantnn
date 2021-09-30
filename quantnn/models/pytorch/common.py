@@ -570,7 +570,7 @@ class PytorchModel:
                 n = (y_k > mask).sum()
             else:
                 n = torch.numel(y_k)
-            tot_loss += l.detach() *  n
+            tot_loss += (l *  n).item()
             n_samples += n
 
         return avg_loss, tot_loss, losses, n_samples
@@ -717,12 +717,12 @@ class PytorchModel:
                     else:
                         of = None
                     logger.training_step(
-                        tot_loss.item() / n_samples, n_samples, of=of, losses=losses
+                        tot_loss / n_samples, n_samples, of=of, losses=losses
                     )
 
                     # Track epoch error.
                     n += get_batch_size(x)
-                    epoch_error += tot_loss.item() * n
+                    epoch_error += tot_loss * n
 
                     # Perform adversarial training step if required.
                     if adversarial_training is not None and x.requires_grad:
@@ -786,7 +786,7 @@ class PytorchModel:
                             else:
                                 of = None
                             logger.validation_step(
-                                tot_loss.item() / n_samples, n_samples, of=of, losses=losses
+                                tot_loss / n_samples, n_samples, of=of, losses=losses
                             )
 
                             # Update running validation errors.
