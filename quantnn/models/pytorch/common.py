@@ -716,8 +716,10 @@ class PytorchModel:
                         of = len(training_data)
                     else:
                         of = None
+                    if n_samples > 0:
+                        tot_loss /= n_samples
                     logger.training_step(
-                        tot_loss / n_samples, n_samples, of=of, losses=losses
+                        tot_loss, n_samples, of=of, losses=losses
                     )
 
                     # Track epoch error.
@@ -785,8 +787,11 @@ class PytorchModel:
                                 of = len(validation_data)
                             else:
                                 of = None
+                            if n_samples > 0:
+                                tot_loss /= n_samples
+
                             logger.validation_step(
-                                tot_loss / n_samples, n_samples, of=of, losses=losses
+                                tot_loss, n_samples, of=of, losses=losses
                             )
 
                             # Update running validation errors.
