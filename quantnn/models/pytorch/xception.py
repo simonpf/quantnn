@@ -50,7 +50,7 @@ class SeparableConv3x3(nn.Sequential):
 class XceptionBlock(nn.Module):
     """
     Xception block consisting of two depth-wise separable convolutions
-    each folowed by batch-norm and ReLU activations.
+    each folowed by batch-norm and GELU activations.
     """
 
     def __init__(self, channels_in, channels_out, downsample=False):
@@ -65,22 +65,22 @@ class XceptionBlock(nn.Module):
         if downsample:
             self.block_1 = nn.Sequential(
                 SeparableConv3x3(channels_in, channels_out),
-                nn.BatchNorm2d(channels_out),
+                nn.GroupNorm(1, channels_out),
                 SymmetricPadding(1),
                 nn.MaxPool2d(kernel_size=3, stride=2),
-                nn.ReLU(),
+                nn.GELU(),
             )
         else:
             self.block_1 = nn.Sequential(
                 SeparableConv3x3(channels_in, channels_out),
-                nn.BatchNorm2d(channels_out),
-                nn.ReLU(),
+                nn.GroupNorm(1, channels_out),
+                nn.GELU(),
             )
 
         self.block_2 = nn.Sequential(
             SeparableConv3x3(channels_out, channels_out),
-            nn.BatchNorm2d(channels_out),
-            nn.ReLU(),
+            nn.GroupNorm(1, channels_out),
+            nn.GELU(),
         )
 
         if channels_in != channels_out or downsample:
@@ -131,8 +131,8 @@ class UpsamplingBlock(nn.Module):
                                     align_corners=False)
         self.block = nn.Sequential(
             SeparableConv3x3(n_channels * 2, n_channels),
-            nn.BatchNorm2d(n_channels),
-            nn.ReLU(),
+            nn.GroupNorm(1, n_channels),
+            nn.GELU(),
         )
 
     def forward(self, x, x_skip):
@@ -179,11 +179,11 @@ class XceptionFpn(nn.Module):
 
         self.head = nn.Sequential(
             nn.Conv2d(2 * n_features, n_features, 1),
-            nn.BatchNorm2d(n_features),
-            nn.ReLU(),
+            nn.GroupNorm(1, n_features),
+            nn.GELU(),
             nn.Conv2d(n_features, n_features, 1),
-            nn.BatchNorm2d(n_features),
-            nn.ReLU(),
+            nn.GroupNorm(1, n_features),
+            nn.GELU(),
             nn.Conv2d(n_features, n_outputs, 1),
         )
 
