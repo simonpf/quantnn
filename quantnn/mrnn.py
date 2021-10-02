@@ -67,7 +67,7 @@ class Quantiles():
         """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
-        return qq.pdf(y_pred,
+        return qq.cdf(y_pred,
                       quantiles,
                       quantile_axis=self.quantile_axis)
 
@@ -144,7 +144,7 @@ class Quantiles():
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.crps(
-            y_pred, quantiles, y_true, quantile_axis=self.quantile_axis
+            y_pred, y_true, quantiles, quantile_axis=self.quantile_axis
         )
 
     def probability_larger_than(self, y_pred, y):
@@ -275,7 +275,7 @@ class Density():
         bins = to_array(module, self.bins, like=y_pred)
         return qd.pdf(y_pred,
                       bins,
-                      quantile_axis=self.quantile_axis)
+                      bin_axis=self.bin_axis)
 
     def sample_posterior(self, y_pred, n_samples=1):
         """
@@ -290,7 +290,7 @@ class Density():
         bins = to_array(module, self.bins, like=y_pred)
         return qd.sample_posterior(
             y_pred, bins, n_samples=n_samples,
-            quantile_axis=self.quantile_axis
+            bin_axis=self.bin_axis
         )
 
     def sample_posterior_gaussian_fit(self, y_pred, n_samples=1):
@@ -307,7 +307,7 @@ class Density():
         bins = to_array(module, self.bins, like=y_pred)
         return qd.sample_posterior_gaussian_fit(
             y_pred, bins, n_samples=n_samples,
-            quantile_axis=self.quantile_axis
+            bin_axis=self.bin_axis
         )
 
     def posterior_mean(self, y_pred):
@@ -321,8 +321,8 @@ class Density():
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
         return qd.posterior_mean(
-            y_pred, bins, n_samples=n_samples,
-            quantile_axis=self.quantile_axis
+            y_pred, bins,
+            bin_axis=self.bin_axis
         )
 
     def crps(self, y_pred, y_true):
@@ -335,9 +335,9 @@ class Density():
             y_true: Tensor containing the true values.
         """
         module = get_array_module(y_pred)
-        quantiles = to_array(module, self.quantiles, like=y_pred)
+        bins = to_array(module, self.bins, like=y_pred)
         return qd.crps(
-            y_pred, quantiles, y_true, quantile_axis=self.quantile_axis
+            y_pred, y_true, bins, bin_axis=self.bin_axis
         )
 
     def probability_larger_than(self, y_pred, y):
@@ -354,7 +354,7 @@ class Density():
         bins = to_array(module, self.bins, like=y_pred)
         return qd.probability_larger_than(
             y_pred=y_pred, bins=bins, y=y,
-            quantile_axis=self.quantile_axis
+            bin_axis=self.bin_axis
         )
 
     def probability_less_than(self, y_pred, y):
@@ -369,7 +369,7 @@ class Density():
         """
         return qd.probability_less_than(
             y_pred=y_pred, y=y,
-            quantile_axis=self.quantile_axis
+            bin_axis=self.bin_axis
         )
 
     def posterior_quantiles(self, y_pred, new_quantiles):
@@ -386,8 +386,8 @@ class Density():
         return qd.posterior_quantiles(
             y_pred,
             bins=bins,
-            new_quantiles=new_quantiles,
-            quantile_axis=self.quantile_axis
+            quantiles=new_quantiles,
+            bin_axis=self.bin_axis
         )
 
     def __repr__(self):
@@ -395,6 +395,23 @@ class Density():
 
     def __str__(self):
         return f"Density({self.bins})"
+
+    def _post_process_prediction(self, y_pred, bins=None, key=None):
+        module = get_array_module(y_pred)
+        if bins is not None:
+            bins = to_array(module, bins, like=y_pred)
+        else:
+            if isinstance(self.bins, dict):
+                bins = to_array(module, self.bins[key], like=y_pred)
+            else:
+                bins = to_array(module, self.bins, like=y_pred)
+
+        module = get_array_module(y_pred)
+        y_pred = softmax(module, y_pred, axis=1)
+        bins = to_array(module, bins, like=y_pred)
+        y_pred = qd.normalize(y_pred, bins, bin_axis=self.bin_axis)
+        return y_pred
+
 
 
 class Mean():
@@ -979,3 +996,19 @@ class MRNN(NeuralNetworkModel):
         super().__setstate__(state)
         if not hasattr(self, "transformation"):
             self.transformation = None
+
+    def _post_process_prediction(self, y_pred, bins=None, key=None):
+
+
+        if not isinstance(y_pred, dict):
+            loss = self.losses[key]
+            if hasattr(loss, "_post_process_prediction"):
+                return loss._post_process_prediction(y_pred, bins=bins, key=key)
+            return y_pred
+
+        results = {}
+        for k in y_pred:
+            loss = self.losses[k]
+            if hasattr(loss, "_post_process_prediction"):
+                results[k] = loss._post_process_prediction(y_pred, bins=bins, key=key)
+        return results

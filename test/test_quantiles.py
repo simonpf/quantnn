@@ -4,7 +4,11 @@ Tests for the quantnn.quantiles module.
 import einops as eo
 import numpy as np
 import pytest
-from quantnn.generic import sample_uniform, to_array, arange, reshape
+from quantnn.generic import (sample_uniform,
+                             to_array,
+                             arange,
+                             reshape,
+                             concatenate)
 from quantnn.a_priori import LookupTable
 from quantnn.quantiles import (cdf, pdf, pdf_binned, posterior_mean, crps,
                                probability_less_than,
@@ -13,7 +17,8 @@ from quantnn.quantiles import (cdf, pdf, pdf_binned, posterior_mean, crps,
                                sample_posterior_gaussian,
                                quantile_loss,
                                posterior_quantiles,
-                               correct_a_priori)
+                               correct_a_priori,
+                               posterior_maximum)
 
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_cdf(xp):
@@ -260,7 +265,7 @@ def test_crps(xp):
 
     quantiles = arange(xp, 0.1, 0.91, 0.1)
     y_pred = arange(xp, 1.0, 9.1, 1.0)
-    scores = crps(y_pred, quantiles, 4.9)
+    scores = crps(y_pred, 4.9, quantiles,)
     assert np.all(np.isclose(scores, 0.86 * xp.ones_like(scores)))
 
     #
@@ -270,7 +275,7 @@ def test_crps(xp):
     quantiles = arange(xp, 0.1, 0.91, 0.1)
     y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> w q', w=2)
     y_true = 4.9 * xp.ones(2)
-    scores = crps(y_pred, quantiles, y_true)
+    scores = crps(y_pred, y_true, quantiles)
     assert np.all(np.isclose(scores, 0.86 * xp.ones_like(scores)))
 
     ##
@@ -280,7 +285,7 @@ def test_crps(xp):
     quantiles = arange(xp, 0.1, 0.91, 0.1)
     y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> h w q', w=10, h=10)
     y_true = 4.9 * xp.ones((10, 10))
-    scores = crps(y_pred, quantiles, y_true, quantile_axis=2)
+    scores = crps(y_pred, y_true, quantiles, quantile_axis=2)
     assert np.all(np.isclose(scores, 0.86 * xp.ones_like(scores)))
 
     ##
@@ -290,7 +295,7 @@ def test_crps(xp):
     quantiles = arange(xp, 0.1, 0.91, 0.1)
     y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> h q w', w=10, h=10)
     y_true = 4.9 * xp.ones((10, 10))
-    scores = crps(y_pred, quantiles, y_true, quantile_axis=1)
+    scores = crps(y_pred, y_true, quantiles, quantile_axis=1)
     assert np.all(np.isclose(scores, 0.86 * xp.ones_like(scores)))
 
 @pytest.mark.parametrize("xp", pytest.backends)
@@ -712,3 +717,64 @@ def test_correct_a_priori(xp):
 
     assert np.isclose(y_pred_new[0, 0, 0], y_pred[0, 0, 0])
     assert np.isclose(y_pred_new[-1, -1, -1], y_pred[-1, -1, -1])
+
+
+@pytest.mark.parametrize("xp", pytest.backends)
+def test_posterior_maximum(xp):
+    """
+    Test calculation of posterior maximum
+    """
+
+    #
+    # 1D predictions
+    #
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    y_pred = [
+        arange(xp, 2.0, 4.1, 1.0),
+        arange(xp, 4.4, 4.51, 0.1),
+        arange(xp, 5.0, 8.1, 1.0)
+    ]
+    y_pred = concatenate(xp, y_pred, 0)
+
+    pm = posterior_maximum(y_pred, quantiles)
+
+    assert np.isclose(pm, 4.45)
+
+    #
+    # 2D predictions
+    #
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    y_pred = eo.repeat(y_pred, 'q -> h q', h=10)
+
+    pm = posterior_maximum(y_pred, quantiles)
+    assert np.isclose(pm[0], 4.45)
+
+    #
+    # 3D predictions
+    #
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    y_pred = [
+        arange(xp, 2.0, 4.1, 1.0),
+        arange(xp, 4.4, 4.51, 0.1),
+        arange(xp, 5.0, 8.1, 1.0)
+    ]
+    y_pred = concatenate(xp, y_pred, 0)
+    y_pred = eo.repeat(y_pred, 'q -> h q w', h=10, w=10)
+
+    pm = posterior_maximum(y_pred, quantiles)
+    assert np.isclose(pm[0, 0], 4.45)
+
+    quantiles = arange(xp, 0.1, 0.91, 0.1)
+    y_pred = [
+        arange(xp, 2.0, 4.1, 1.0),
+        arange(xp, 4.4, 4.51, 0.1),
+        arange(xp, 5.0, 8.1, 1.0)
+    ]
+    y_pred = concatenate(xp, y_pred, 0)
+    y_pred = eo.repeat(y_pred, 'q -> h w q', h=10, w=10)
+
+    pm = posterior_maximum(y_pred, quantiles, quantile_axis=-1)
+    assert np.isclose(pm[0, 0], 4.45)

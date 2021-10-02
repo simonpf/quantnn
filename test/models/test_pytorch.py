@@ -401,7 +401,71 @@ def test_training_transformation():
                metrics=metrics)
 
 
-def test_training_transformation_mrnn():
+def test_training_transformation_mrnn_quantiles():
+    """
+    Ensure that training in transformed space works.
+    """
+    set_default_backend("pytorch")
+
+    class MultipleOutputModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.hidden = nn.Linear(16, 128)
+            self.head_1 = nn.Linear(128, 10)
+            self.head_2 = nn.Linear(128, 1)
+            self.head_3 = nn.Linear(128, 10)
+
+        def forward(self, x):
+            x = torch.relu(self.hidden(x))
+            y_1 = self.head_1(x)
+            y_2 = self.head_2(x)
+            y_3 = self.head_3(x)
+            return {
+                "y_1": y_1,
+                "y_2": y_2,
+                "y_3": y_3
+            }
+
+    x = np.random.rand(2024, 16) + 1.0
+    y = np.sum(x, axis=-1)
+    y += np.random.normal(size=y.size)
+
+    batched_data = [
+        {
+            "x": torch.tensor(x[i * 128: (i + 1) * 128],
+                              dtype=torch.float32),
+            "y": {
+                "y_1": torch.tensor(y[i * 128: (i + 1) * 128],
+                                    dtype=torch.float32),
+                "y_2": torch.tensor(y[i * 128: (i + 1) * 128] ** 2,
+                                    dtype=torch.float32),
+                "y_3": torch.tensor(y[i * 128: (i + 1) * 128] ** 2,
+                                    dtype=torch.float32)
+            }
+        }
+        for i in range(1024 // 128)
+    ]
+
+    model = MultipleOutputModel()
+    transformations = {
+        "y_1": Log10(),
+        "y_2": Log10()
+    }
+    losses = {
+        "y_1": Quantiles(np.linspace(0.05, 0.95, 10)),
+        "y_2": Mean(),
+        "y_3": Density(np.linspace(-2, 2, 11))
+    }
+
+    mrnn = MRNN(losses=losses, model=model)
+    metrics = ["Bias", "CRPS", "MeanSquaredError", "ScatterPlot", "CalibrationPlot"]
+    mrnn.train(batched_data,
+               validation_data=batched_data,
+               n_epochs=5, keys=("x", "y"),
+               metrics=metrics)
+
+
+def test_training_transformation_mrnn_density():
     """
     Ensure that training in transformed space works.
     """
@@ -447,9 +511,8 @@ def test_training_transformation_mrnn():
         "y_2": Log10()
     }
     losses = {
-        "y_1": Quantiles(np.linspace(0.05, 0.95, 10)),
-        "y_2": Mean(),
-        "y_3": Density(np.linspace(-2, 2, 21))
+        "y_1": Density(np.linspace(0.05, 0.95, 11)),
+        "y_2": Mean()
     }
 
     mrnn = MRNN(losses=losses, model=model)

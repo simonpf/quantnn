@@ -17,7 +17,8 @@ from quantnn.density import (posterior_quantiles,
                              probability_less_than,
                              sample_posterior,
                              crps,
-                             quantile_function)
+                             quantile_function,
+                             posterior_maximum)
 
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_posterior_cdf(xp):
@@ -425,3 +426,101 @@ def test_quantile_function(xp):
 
     assert np.isclose(qf[0, 0], 0.0, rtol=1e-3)
     assert np.isclose(qf[-1, -1], 1.0, rtol=1e-3)
+
+
+@pytest.mark.parametrize("xp", pytest.backends)
+def test_posterior_maximum(xp):
+    """
+    Ensure that the maximum of the posterior is computed correctly.
+    """
+
+    #
+    # 1D predictions
+    #
+
+    bins = arange(xp, 0.0, 10.001, 1.0)
+
+    y_pred = [
+        xp.ones(4),
+        to_array(xp, [2.0]),
+        xp.ones(4)
+    ]
+    y_pred = concatenate(xp, y_pred, 0)
+    pm = posterior_maximum(y_pred, bins)
+    assert np.isclose(pm, 4.5)
+
+    #
+    # 2D predictions
+    #
+
+    bins = arange(xp, 0.0, 10.001, 1.0)
+
+    y_pred = [
+        xp.ones(4),
+        to_array(xp, [2.0]),
+        xp.ones(4)
+    ]
+    y_pred = concatenate(xp, y_pred, 0)
+    y_pred = eo.repeat(y_pred, 'q -> h q', h=10)
+
+    pm = posterior_maximum(y_pred, bins)
+    assert np.isclose(pm[0], 4.5)
+
+    #
+    # 2D predictions
+    #
+
+    bins = arange(xp, 0.0, 10.001, 1.0)
+
+    y_pred = [
+        xp.ones(4),
+        to_array(xp, [2.0]),
+        xp.ones(4)
+    ]
+    y_pred = concatenate(xp, y_pred, 0)
+    y_pred = eo.repeat(y_pred, 'q -> h q w', h=10, w=10)
+
+    pm = posterior_maximum(y_pred, bins)
+    assert np.isclose(pm[0, 0], 4.5)
+
+    bins = arange(xp, 0.0, 10.001, 1.0)
+
+    y_pred = [
+        xp.ones(4),
+        to_array(xp, [2.0]),
+        xp.ones(4)
+    ]
+    y_pred = concatenate(xp, y_pred, 0)
+    y_pred = eo.repeat(y_pred, 'q -> h w q', h=10, w=10)
+
+    pm = posterior_maximum(y_pred, bins, -1)
+    assert np.isclose(pm[0, 0], 4.5)
+
+    #bins = arange(xp, 0.0, 10.001, 0.01)
+    #y_pred = xp.ones((21, len(bins) - 1))
+    #y_true = 5.0 * xp.ones((21, 1))
+
+    #c = crps(y_pred, y_true, bins)
+    #c_ref = 10.0 * 2.0 * 0.5 ** 3 / 3.0
+    #assert np.isclose(c[0], c_ref, rtol=1e-3)
+
+    ##
+    ## 3D predictions
+    ##
+
+    #bins = arange(xp, 0.0, 10.001, 0.01)
+    #y_pred = xp.ones((21, len(bins) - 1, 10))
+    #y_true = 5.0 * xp.ones((21, 1, 10))
+
+    #c = crps(y_pred, y_true, bins)
+    #c_ref = 10.0 * 2.0 * 0.5 ** 3 / 3.0
+    #assert np.isclose(c[0, 0], c_ref, rtol=1e-3)
+
+    #bins = arange(xp, 0.0, 10.001, 0.01)
+    #y_pred = xp.ones((21, 10, len(bins) - 1))
+    #y_true = 5.0 * xp.ones((21, 10, 1))
+
+    #c = crps(y_pred, y_true, bins, bin_axis=-1)
+    #c_ref = 10.0 * 2.0 * 0.5 ** 3 / 3.0
+    #assert np.isclose(c[0, 0], c_ref, rtol=1e-3)
+

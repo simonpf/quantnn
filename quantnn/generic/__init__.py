@@ -639,14 +639,17 @@ def exp(module, x):
 
 def tensordot(module, x, y, axes):
     """
-    Calculate exponential of tensor.
+    Calculate tensor product of two tensors.
 
     Arguments:
         module: The backend array corresponding to the given array.
-        x: The tensor to calculate the exponential of.
+        x: The left-hand-side operand
+        y: The right-hand-side operand
+        axes: Integer or pair of integers describing over which axes
+            to calculate the tensor product.
 
     Return:
-         exp(x)
+        The tensor containing the tensor product of the input tensors.
     """
     _import_modules()
     if module in [np, ma]:
@@ -658,3 +661,35 @@ def tensordot(module, x, y, axes):
     elif module == tf:
         return tf.tensordot(x, y, axes)
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+
+def argmax(module, x, axes=None):
+    """
+    Get indices of maximum in tensor.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        x: The tensor to calculate the exponential of.
+        axes: Tuple specifying the axes along the which compute the
+            maximum.
+
+    Return:
+        Tensor containing indices of the maximum in 'x'.
+    """
+    return module.argmax(x, axes)
+
+
+def take_along_axis(module, x, indices, axis):
+    """
+    Take elements along axis.
+    """
+    if module in [np, ma]:
+        return np.take_along_axis(x, indices, axis)
+    elif module == torch:
+        return torch.gather(x, axis, indices)
+    elif module == tf:
+        return tf.gather(x, indices, axis=axis)
+    elif module == jnp:
+        return jnp.take_along_axis(x, indices, axis)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+

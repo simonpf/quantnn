@@ -74,7 +74,6 @@ class DatasetLoader(SubprocessLogging):
         Open dataset and start loading batches.
         """
         super().run()
-        task_pool = ThreadPoolExecutor(max_workers=2)
         while True:
 
             filename = self.task_queue.get()
@@ -91,6 +90,11 @@ class DatasetLoader(SubprocessLogging):
                         hasattr(dataset, "__getitem__")):
                     for i in range(len(dataset)):
                         self.batch_queue.put(dataset[i])
+                else:
+                    raise TypeError(
+                        "Provided dataset is neither iterable nor does it "
+                        "implement '__getitem__' and '__len__' methods."
+                    )
             except Exception as e:
                 _LOGGER.error("Error encountered in dataset loader: %s", e)
             self.done_queue.put(filename)
@@ -248,7 +252,7 @@ class DatasetManager(SubprocessLogging):
                         continue
                     except queue.Empty:
                         continue
-    
+
             # Process remaining batches.
             if self.aggregate is None:
                 for b in batches:
