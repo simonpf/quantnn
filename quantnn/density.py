@@ -22,7 +22,9 @@ from quantnn.generic import (
     zeros,
     sample_uniform,
     argmax,
-    take_along_axis
+    take_along_axis,
+    digitize,
+    scatter_add
 )
 
 
@@ -457,3 +459,60 @@ def posterior_maximum(y_pdf, bins, bin_axis=1):
     indices = argmax(xp, y_pdf, axes=bin_axis)
     return x[indices]
 
+
+def add(y_pdf_1, bins_1, y_pdf_2, bins_2, bins_out, bin_axis=1):
+    """
+    Calculate the discretized PDF of the sum of two random variables
+    represented by their respective discretized PDFs.
+
+    Args:
+        y_pdf_1: The discretized PDF of the first random variable.
+        bins_1: The bin boundaries corresponding to 'y_pdf_1'.
+        y_pdf_2: The discretized PDF of the second random variable.
+        bins_2: The bin boundaries corresponding to 'y_pdf_2'.
+        bins_out: The bins boundaries for the resulting discretized PDF.
+        bin_axis: The dimension along which the probabilities are
+            oriented.
+
+    Return:
+
+        A tensor containing the discretized PDF corresponding to the sum of
+        the two given PDFs.
+    """
+    if len(y_pdf_1.shape) == 1:
+        bin_axis = 0
+    xp = get_array_module(y_pdf_1)
+
+    bins_1_c = 0.5 * (bins_1[1:] + bins_1[:-1])
+    dx_1 = bins_1[1:] - bins_1[:-1]
+    shape_1 = [1] * len(y_pdf_1.shape)
+    shape_1[bin_axis] = numel(bins_1) - 1
+    dx_1 = dx_1.reshape(shape_1)
+    p_1 = y_pdf_1 * dx_1
+
+    bins_2_c = 0.5 * (bins_2[1:] + bins_2[:-1])
+    dx_2 = bins_2[1:] - bins_2[:-1]
+    shape_2 = [1] * len(y_pdf_2.shape)
+    shape_2[bin_axis] = numel(bins_2) - 1
+    dx_2 = dx_2.reshape(shape_2)
+    p_2 = y_pdf_2 * dx_2
+
+    out_shape = list(y_pdf_1.shape)
+    out_shape[bin_axis] = numel(bins_out) - 1
+    p_out = zeros(xp, out_shape, like=y_pdf_1)
+
+    rank = len(y_pdf_1.shape)
+    selection = [slice(0, None)] * rank
+
+    n_bins = numel(bins_1_c)
+    offsets = sample_uniform(xp, (n_bins,), like=bins_2)
+    for i in range(n_bins):
+        d_b = bins_1[i + 1] - bins_1[i]
+        b = bins_1[i] + offsets[i] * d_b
+        selection[bin_axis] = i
+        bins = bins_2_c + b
+        probs = p_1[tuple(selection)] * p_2
+        inds = digitize(xp, bins, bins_out) - 1
+        p_out = scatter_add(xp, p_out, inds, probs, bin_axis)
+
+    return normalize(p_out, bins_out, bin_axis=bin_axis)

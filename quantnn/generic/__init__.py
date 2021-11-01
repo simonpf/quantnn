@@ -224,7 +224,8 @@ def numel(array):
     elif module_name.split(".")[0] == "tensorflow":
         return tf.size(array)
     raise UnknownArrayTypeException(
-        f"The provided input of type {type(x)} is" "not a supported array type."
+        f"The provided input of type {type(array)} is"
+        "not a supported array type."
     )
 
 
@@ -691,5 +692,56 @@ def take_along_axis(module, x, indices, axis):
         return tf.gather(x, indices, axis=axis)
     elif module == jnp:
         return jnp.take_along_axis(x, indices, axis)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+
+def digitize(module, x, bins):
+    """
+    Calculate bin indices.
+    """
+    if module in [np, ma]:
+        return np.digitize(x, bins)
+    elif module == torch:
+        return torch.bucketize(x, bins)
+    elif module == tf:
+        return tf.bucketize(x, bins)
+    elif module == jnp:
+        return jnp.digitize(x, bins)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+
+def scatter_add(module, x, indices, y, axis):
+    """
+    Sparse addition of values in y to given indices in x.
+
+    Note: This operation is in-place for backend that support this.
+
+    Args:
+        module: The tensor backend module.
+        x: A rank-k tensor to which to add values.
+        indices: 1D Tensor containing the indices along ``axis`` into which
+            to add the values from y.
+        y: Tensor of rank ``k-1`` from which to add element to 'x'
+        axis: Index defining the axis along which to perform the sparse
+            addition.
+    """
+    if module in [np, ma, torch, tf]:
+        selection_out = [slice(0, None)] * x.ndim
+        selection_in = [slice(0, None)] * y.ndim
+        for i, ind in enumerate(indices):
+            if (ind >= 0) and (ind < x.shape[axis]):
+                selection_out[axis] = ind
+                selection_in[axis] = i
+                x[tuple(selection_out)] += y[tuple(selection_in)]
+        return x
+    elif module == jnp:
+        selection_out = [slice(0, None)] * x.ndim
+        selection_in = [slice(0, None)] * y.ndim
+        for i, ind in enumerate(indices):
+            if (ind >= 0) and (ind < x.shape[axis]):
+                selection_out[axis] = ind
+                selection_in[axis] = i
+                x = x.at[tuple(selection_out)].add(y[tuple(selection_in)])
+        return x
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
 

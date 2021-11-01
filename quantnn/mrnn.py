@@ -259,7 +259,7 @@ class Density():
         """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
-        return qd.pdf(y_pred,
+        return qd.cdf(y_pred,
                       bins,
                       bin_axis=self.bin_axis)
 
@@ -635,7 +635,7 @@ class MRNN(NeuralNetworkModel):
         for k in y_pred:
             loss = self.losses[k]
             if hasattr(loss, "cdf"):
-                results[k] = loss.cdf(y_pred)
+                results[k] = loss.cdf(y_pred[k])
 
         return results
 
@@ -677,7 +677,7 @@ class MRNN(NeuralNetworkModel):
         for k in y_pred:
             loss = self.losses[k]
             if hasattr(loss, "pdf"):
-                results[k] = loss.cdf(y_pred)
+                results[k] = loss.pdf(y_pred[k])
 
         return results
 
@@ -720,7 +720,7 @@ class MRNN(NeuralNetworkModel):
         for k in y_pred:
             loss = self.losses[k]
             if hasattr(loss, "sample_posterior"):
-                results[k] = loss.sample_posterior(y_pred, n_samples=n_samples)
+                results[k] = loss.sample_posterior(y_pred[k], n_samples=n_samples)
 
         return results
 

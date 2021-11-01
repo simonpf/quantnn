@@ -7,7 +7,8 @@ from quantnn.generic import (get_array_module, to_array, sample_uniform,
                              sample_gaussian, numel, concatenate, expand_dims,
                              pad_zeros, pad_zeros_left, as_type, arange,
                              reshape, trapz, cumsum, cumtrapz, ones, zeros,
-                             softmax, exp, tensordot, argmax, take_along_axis)
+                             softmax, exp, tensordot, argmax, take_along_axis,
+                             digitize, scatter_add)
 
 
 @pytest.mark.parametrize("backend", pytest.backends)
@@ -218,3 +219,32 @@ def test_take_along_axis(backend):
     assert i[1] == 1
     assert i[2] == 2
     assert i[3] == 3
+
+
+@pytest.mark.parametrize("backend", pytest.backends)
+def test_digitize(backend):
+    x = arange(backend, 0, 10.0, 1).reshape(-1, 1) + 0.5
+    bins = arange(backend, 0, 10.1, 1)
+
+    inds = digitize(backend, x, bins)
+    assert inds[0] == 1
+    assert inds[-1] == 10
+
+
+@pytest.mark.parametrize("backend", pytest.backends)
+def test_scatter_add(backend):
+    x = zeros(backend, (3, 3))
+    y = ones(backend, (2, 3))
+    indices = to_array(backend, [0, 2])
+
+    z = scatter_add(backend, x, indices, y, 0)
+    assert np.isclose(z[0, 0], 1.0)
+    assert np.isclose(z[1, 0], 0.0)
+    assert np.isclose(z[2, 0], 1.0)
+
+    x = zeros(backend, (3, 3))
+    y = ones(backend, (3, 2))
+    z = scatter_add(backend, x, indices, y, 1)
+    assert np.isclose(z[0, 0], 1.0)
+    assert np.isclose(z[0, 1], 0.0)
+    assert np.isclose(z[0, 2], 1.0)
