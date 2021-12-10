@@ -69,6 +69,7 @@ class Dataset:
         return (self.x[start:end], self.y[start:end])
 
 
+@pytest.mark.xfail()
 @pytest.mark.skipif(not HAS_LOGIN_INFO, reason="No SFTP login info.")
 def test_sftp_stream():
     """

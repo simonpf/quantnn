@@ -278,7 +278,6 @@ class DatasetManager(SubprocessLogging):
                 _LOGGER.error(
                     f"Woker process {w} died. Something went wrong."
                 )
-                w.done_flag.set()
 
     def next_epoch(self):
         """
