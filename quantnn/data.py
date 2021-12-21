@@ -271,7 +271,7 @@ class DatasetManager(SubprocessLogging):
 
     def check_workers(self):
         """
-
+        Checks state of workers and 
         """
         for w in self.workers:
             if not w.is_alive():

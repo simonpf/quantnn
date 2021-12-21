@@ -37,7 +37,7 @@ def _check_dimensions(n_y, n_b):
         )
 
 
-def normalize(y_pred, bins, bin_axis=1):
+def normalize(y_pred, bins, bin_axis=1, density=True):
     """
     Converts the raw DRNN output to a PDF.
 
@@ -63,6 +63,9 @@ def normalize(y_pred, bins, bin_axis=1):
 
     norm = y_pred.sum(bin_axis)
     norm = expand_dims(xp, norm, bin_axis)
+
+    if not density:
+        return y_pred / norm
 
     dx = bins[1:] - bins[:-1]
     shape = [1] * n
