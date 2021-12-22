@@ -304,8 +304,10 @@ class NeuralNetworkModel:
 
         if "training_history" in dct:
             history = dct["training_history"]
-            dct["training_history"] = serialize_dataset(history)
-
+            try:
+                dct["training_history"] = serialize_dataset(history)
+            except ValueError:
+                pass
         return dct
 
     def __setstate__(self, state):
@@ -315,4 +317,7 @@ class NeuralNetworkModel:
         if hasattr(self, "training_history"):
             history = self.training_history
             if isinstance(history, bytes):
-                self.training_history = deserialize_dataset(history)
+                try:
+                    self.training_history = deserialize_dataset(history)
+                except ValueError:
+                    pass
