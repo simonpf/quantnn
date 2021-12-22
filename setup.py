@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="quantnn",
-    version="0.0.1dev",
+    version="0.0.2dev",
     author="Simon Pfreundschuh",
     description="Quantile regression neural networks.",
     long_description=long_description,
