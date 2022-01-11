@@ -13,7 +13,7 @@ import numpy as np
 import rich
 from rich.align import Align
 from rich.text import Text
-from rich.console import Console, RenderGroup
+from rich.console import Console
 from rich.columns import Columns
 from rich.panel import Panel
 from rich.padding import Padding
