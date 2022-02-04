@@ -91,6 +91,42 @@ def test_mse_loss():
                              ref.mean().detach().numpy()))
 
 
+def test_qrnn_training_state():
+    """
+    Ensure that training attributes of models are conserved through
+    training.
+    """
+    set_default_backend("pytorch")
+
+    x = np.random.rand(1024, 16)
+    y = np.random.rand(1024)
+    training_data = torch.utils.data.TensorDataset(torch.tensor(x),
+                                                   torch.tensor(y))
+    training_loader = torch.utils.data.DataLoader(training_data, batch_size=128)
+
+    model = nn.Sequential(
+        nn.BatchNorm1d(16),
+        nn.Linear(16, 10)
+    )
+    qrnn = QRNN(np.linspace(0.05, 0.95, 10), model=model)
+
+    qrnn.model.train(False)
+    qrnn.train(training_loader, n_epochs=1)
+
+    mean = model[0].running_mean.detach().numpy()
+    assert np.all(np.isclose(mean, 0.0))
+    var = model[0].running_var.detach().numpy()
+    assert np.all(np.isclose(var, 1.0))
+
+    qrnn.model.train(True)
+    qrnn.train(training_loader, n_epochs=1)
+
+    mean = model[0].running_mean.detach().numpy()
+    assert not np.all(np.isclose(mean, 0.0))
+    var = model[0].running_var.detach().numpy()
+    assert not np.all(np.isclose(var, 1.0))
+
+
 def test_qrnn_training_with_dataloader():
     """
     Ensure that training with a pytorch dataloader works.

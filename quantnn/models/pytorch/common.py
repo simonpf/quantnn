@@ -663,9 +663,9 @@ class PytorchModel:
         training_losses = []
         validation_losses = []
 
-        state = {}
+        training_states = {}
         for m in self.modules():
-            state[m] = m.training
+            training_states[m] = m.training
 
         # Training loop
         with logger:
@@ -750,7 +750,8 @@ class PytorchModel:
                 if validation_data is not None:
                     n = 0
                     epoch_error = 0
-                    self.eval()
+
+                    self.train(False)
                     with torch.no_grad():
                         for j, data in enumerate(validation_data):
 
@@ -800,8 +801,9 @@ class PytorchModel:
 
                         validation_losses.append(epoch_error / n)
 
+                        # Reset training state for all modules.
                         for m in self.modules():
-                            m.training = state[m]
+                            m.training = training_states[m]
 
                 # Finally update scheduler.
                 if scheduler:
