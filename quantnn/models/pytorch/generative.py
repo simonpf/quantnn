@@ -131,15 +131,15 @@ class ConditionalGenerator(nn.Module):
                 GeneratorBlockUp(channels, channels)
             ),
             nn.Sequential(
-                GeneratorBlock(2 * channels + n_lat, channels),
+                GeneratorBlock(2 * channels, channels),
                 GeneratorBlockUp(channels, channels)
             ),
             nn.Sequential(
-                GeneratorBlock(2 * channels + n_lat, channels),
+                GeneratorBlock(2 * channels, channels),
                 GeneratorBlockUp(channels, channels)
             ),
             nn.Sequential(
-                GeneratorBlock(2 * channels + n_lat, channels),
+                GeneratorBlock(2 * channels, channels),
                 GeneratorBlockUp(channels, channels)
             ),
         ])
