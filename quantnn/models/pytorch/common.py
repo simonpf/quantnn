@@ -57,13 +57,15 @@ def save_model(f, model):
             to store the data to.
         model(:code:`pytorch.nn.Moduel`): The pytorch model to save
     """
-    path = tempfile.mkdtemp()
-    filename = os.path.join(path, "module.h5")
-    torch.save(model, filename)
-    archive = tarfile.TarFile(fileobj=f, mode="w")
-    archive.add(filename, arcname="module.h5")
-    archive.close()
-    shutil.rmtree(path)
+    try:
+        path = tempfile.mkdtemp()
+        filename = os.path.join(path, "module.h5")
+        torch.save(model, filename)
+        archive = tarfile.TarFile(fileobj=f, mode="w")
+        archive.add(filename, arcname="module.h5")
+        archive.close()
+    finally:
+        shutil.rmtree(path)
 
 
 def load_model(file):
@@ -81,23 +83,25 @@ def load_model(file):
     """
     path = tempfile.mkdtemp()
     tar_file = tarfile.TarFile(fileobj=file, mode="r")
-
-    # Check that archive contains 'module.h5' file or
-    # 'keras_model.h5' for backwards compatibility.
-    names = tar_file.getnames()
-    if "keras_model.h5" in names:
-        tar_file.extract("keras_model.h5", path=path)
-        filename = os.path.join(path, "keras_model.h5")
-    elif "module.h5" in names:
-        tar_file.extract("module.h5", path=path)
-        filename = os.path.join(path, "module.h5")
-    else:
-        raise ModelLoadError(
-            "Model archive does not contain the expected model file. It looks"
-            "like your file is corrupted."
-        )
-    model = torch.load(filename, map_location=torch.device("cpu"))
-    shutil.rmtree(path)
+    try:
+        # Check that archive contains 'module.h5' file or
+        # 'keras_model.h5' for backwards compatibility.
+        names = tar_file.getnames()
+        if "keras_model.h5" in names:
+            tar_file.extract("keras_model.h5", path=path)
+            filename = os.path.join(path, "keras_model.h5")
+        elif "module.h5" in names:
+            tar_file.extract("module.h5", path=path)
+            filename = os.path.join(path, "module.h5")
+        else:
+            raise ModelLoadError(
+                "Model archive does not contain the expected model file. It looks"
+                "like your file is corrupted."
+            )
+        model = torch.load(filename, map_location=torch.device("cpu"))
+    finally:
+        shutil.rmtree(path)
+        tar_file.close()
     return model
 
 

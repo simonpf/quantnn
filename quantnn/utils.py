@@ -7,7 +7,7 @@ This module providers Helper functions that are used in multiple other modules.
 """
 import io
 from pathlib import Path
-from tempfile import mkstemp
+from tempfile import NamedTemporaryFile
 
 import xarray as xr
 
@@ -48,7 +48,9 @@ def serialize_dataset(dataset):
     Returns:
          Bytes object containing the dataset as netcdf file.
     """
-    _, filename = mkstemp()
+    tmp = NamedTemporaryFile(delete=False)
+    tmp.close()
+    filename = tmp.name
     try:
         dataset.to_netcdf(filename)
         with open(filename, "rb") as file:
@@ -70,8 +72,9 @@ def deserialize_dataset(data):
     Returns:
         The deserialized xarray dataset.
     """
-
-    _, filename = mkstemp()
+    tmp = NamedTemporaryFile(delete=False)
+    tmp.close()
+    filename = tmp.name
     try:
         with open(filename, "wb") as file:
             buffer = file.write(data)
