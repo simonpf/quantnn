@@ -131,15 +131,15 @@ class ConditionalGenerator(nn.Module):
                 GeneratorBlockUp(channels, channels)
             ),
             nn.Sequential(
-                GeneratorBlock(2 * channels, channels),
+                GeneratorBlock(channels, channels),
                 GeneratorBlockUp(channels, channels)
             ),
             nn.Sequential(
-                GeneratorBlock(2 * channels, channels),
+                GeneratorBlock(channels, channels),
                 GeneratorBlockUp(channels, channels)
             ),
             nn.Sequential(
-                GeneratorBlock(2 * channels, channels),
+                GeneratorBlock(channels, channels),
                 GeneratorBlockUp(channels, channels)
             ),
         ])
@@ -152,9 +152,9 @@ class ConditionalGenerator(nn.Module):
 
     def forward(self, x, z=None):
 
-        skips = [x]
+        y = x
         for layer in self.conditioner:
-            skips.append(layer(skips[-1]))
+            y = layer(y)
 
         n = x.shape[0]
 
@@ -165,11 +165,10 @@ class ConditionalGenerator(nn.Module):
 
         input = None
         for layer in self.generator:
-            skip = skips.pop()
             if input is None:
-                input = layer(torch.cat([skip, z], 1))
+                input = layer(torch.cat([y, z], 1))
             else:
-                input = layer(torch.cat([input, skip], 1))
+                input = layer(input)
 
         return self.output_range * torch.tanh(self.output(input))
 
