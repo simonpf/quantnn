@@ -16,8 +16,8 @@ except ImportError:
 from quantnn.data import DataFolder, LazyDataFolder
 
 
-HAS_LOGIN_INFO = ("QUANTNN_SFTP_USER" in os.environ and
-                  "QUANTNN_SFTP_PASSWORD" in os.environ)
+# Currently no SFTP test data available.
+HAS_LOGIN_INFO = False
 
 
 LOGGER = logging.getLogger(__file__)

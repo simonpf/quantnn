@@ -540,7 +540,7 @@ class MRNN(NeuralNetworkModel):
         losses = apply(lambda l: l.get_loss(self.backend, mask=mask), self.losses)
         return super().train(
             training_data,
-            loss,
+            losses,
             validation_data=validation_data,
             optimizer=optimizer,
             scheduler=scheduler,

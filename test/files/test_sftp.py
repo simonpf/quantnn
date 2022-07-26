@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 from quantnn.files import sftp
 
-HAS_LOGIN_INFO = ("QUANTNN_SFTP_USER" in os.environ and
-                  "QUANTNN_SFTP_PASSWORD" in os.environ)
+# Currently no SFTP test data available.
+HAS_LOGIN_INFO = False
 
 @pytest.mark.skipif(not HAS_LOGIN_INFO, reason="No SFTP login info.")
 def test_list_files():
