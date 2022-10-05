@@ -56,6 +56,39 @@ class PackedTensor:
         ret = func(*args, **kwargs)
         return PackedTensor(ret, batch_sizes[0], batch_indices[0])
 
+    @classmethod
+    def stack(cls, tensors):
+        """
+        Stack a list of tensors into a PackedTensor.
+
+        Args:
+            tensors: A list containing dense tensors corresponding to valid
+                samples interleaved with ``None`` where no valid batch is
+                available.
+
+        Return:
+            A ``PackedTensor`` representation of samples given in ``tensors``
+            stacked into a batch.
+        """
+        batch_size = len(tensors)
+        batch_indices = []
+        parts = []
+        for index, tensor in enumerate(tensors):
+            if isinstance(tensor, torch.Tensor):
+                parts.append(tensor)
+                batch_indices.append(index)
+            elif tensor is not None:
+                raise ValueError(
+                    "List of samples may only contain ``torch.Tensor`` objects"
+                    " or ``None``. Found '%s'",
+                    type(tensor)
+                )
+        if len(parts) == 0:
+            data = torch.ones((0, 1, 1, 1))
+        else:
+            data = torch.stack(parts)
+        return PackedTensor(data, batch_size, batch_indices)
+
     def __init__(self, x, batch_size, batch_indices):
         """
         Initializes a new packed tensor.
@@ -93,6 +126,13 @@ class PackedTensor:
         NOTE: This is not the shape of the full tensor.
         """
         return self._t.shape
+
+    @property
+    def not_empty(self):
+        """
+        Checks whether batch contains data.
+        """
+        return len(self._batch_indices) > 0
 
     def __repr__(self):
         s = (f"PackedTensor(batch_size={self.batch_size}, "
@@ -188,7 +228,7 @@ class PackedTensor:
             def get_slice(i):
                 return other[i]
 
-        indices = list(set(self.batch_indices) & set(other_indices))
+        indices = sorted(list(set(self.batch_indices) & set(other_indices)))
 
         parts_self = []
         for i, index in enumerate(self.batch_indices):
@@ -204,7 +244,7 @@ class PackedTensor:
             return None, None
 
         parts_self = torch.stack(parts_self, 0)
-        parts_other = torch.stack(parts_other)
+        parts_other = torch.stack(parts_other, 0)
 
         parts_self = PackedTensor(parts_self, self.batch_size, indices)
         parts_other = PackedTensor(parts_other, self.batch_size, indices)
@@ -233,26 +273,25 @@ class PackedTensor:
             def get_slice(i):
                 return other[i]
 
-        indices = list(set(self.batch_indices) ^ set(other_indices))
+        indices = sorted(list(set(self.batch_indices) ^ set(other_indices)))
 
-        try:
-            if len(self.batch_indices) > 0:
-                pattern = self._t[0]
-            else:
-                pattern = get_slice(0)
-        except IndexError:
-            return None
+        if len(self.batch_indices) > 0:
+            pattern = self._t[0]
+        else:
+            pattern = get_slice(0)
 
         parts = []
         running_ind_self = 0
         running_ind_other = 0
-        for i in indices:
-            if i in self.batch_indices:
-                parts.append(torch.as_tensor(self._t[running_ind_self]))
-                running_ind_self += 1
-            elif i in other.batch_indices:
-                parts.append(torch.as_tensor(get_slice(running_ind_other)))
-                running_ind_other += 1
+        for i in range(self.batch_size):
+            if i in indices:
+                if i in self.batch_indices:
+                    parts.append(torch.as_tensor(self._t[running_ind_self]))
+                elif i in other.batch_indices:
+                    parts.append(torch.as_tensor(get_slice(running_ind_other)))
+
+            running_ind_self += i in self.batch_indices
+            running_ind_other += i in other.batch_indices
 
         if len(parts) == 0:
             return None
@@ -285,7 +324,7 @@ class PackedTensor:
             def get_slice(i):
                 return other[i]
 
-        indices = list(set(self.batch_indices) | set(other_indices))
+        indices = sorted(list(set(self.batch_indices) | set(other_indices)))
 
         try:
             if len(self.batch_indices) > 0:
@@ -298,12 +337,28 @@ class PackedTensor:
         parts = []
         running_ind_self = 0
         running_ind_other = 0
-        for i in indices:
-            if i in self.batch_indices:
-                parts.append(torch.as_tensor(self._t[running_ind_self]))
-                running_ind_self += 1
-            elif i in other.batch_indices:
-                parts.append(torch.as_tensor(get_slice(running_ind_other)))
-                running_ind_other += 1
+        for i in range(self.batch_size):
+            if i in indices:
+                if i in self.batch_indices:
+                    parts.append(torch.as_tensor(self._t[running_ind_self]))
+                elif i in other.batch_indices:
+                    parts.append(torch.as_tensor(get_slice(running_ind_other)))
 
-        return PackedTensor(torch.stack(parts), self.batch_size, indices)
+            running_ind_self += i in self.batch_indices
+            running_ind_other += i in other.batch_indices
+
+        if len(parts) == 0:
+            data = np.ones((0, 1, 1, 1))
+        else:
+            data = torch.stack(parts)
+        return PackedTensor(data, self.batch_size, indices)
+
+
+    def to(self, *args, **kwargs):
+        return PackedTensor(
+            self._t.to(*args, **kwargs),
+            self.batch_size,
+            self.batch_indices
+        )
+
+
