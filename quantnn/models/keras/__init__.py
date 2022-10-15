@@ -690,11 +690,11 @@ class FullyConnected(KerasModel, keras.Model):
 
     def __init__(
         self,
-        n_inputs=None,
-        n_outputs=None,
-        n_layers=None,
-        width=None,
-        activation=None,
+        n_inputs,
+        n_outputs,
+        n_layers,
+        width,
+        activation="ReLU",
         convolutional=False,
         **kwargs,
     ):
@@ -758,6 +758,7 @@ class FullyConnected(KerasModel, keras.Model):
             "n_outputs": self.n_outputs,
             "n_layers": self.n_layers,
             "activation": self.activation,
+            "width": self.width,
             "convolutional": self.convolutional,
         }
         return {**base_config, **config}
