@@ -430,7 +430,14 @@ def test_training_transformation():
     }
     qrnn = QRNN(np.linspace(0.05, 0.95, 11), model=model,
                 transformation=transformations)
-    metrics = ["Bias", "CRPS", "MeanSquaredError", "ScatterPlot", "CalibrationPlot"]
+    metrics = [
+        "Bias",
+        "CRPS",
+        "MeanSquaredError",
+        "ScatterPlot",
+        "CalibrationPlot",
+        "Correlation"
+    ]
     qrnn.train(batched_data,
                validation_data=batched_data,
                n_epochs=5, keys=("x", "y"),
@@ -494,7 +501,14 @@ def test_training_transformation_mrnn_quantiles():
     }
 
     mrnn = MRNN(losses=losses, model=model)
-    metrics = ["Bias", "CRPS", "MeanSquaredError", "ScatterPlot", "CalibrationPlot"]
+    metrics = [
+        "Bias",
+        "CRPS",
+        "MeanSquaredError",
+        "ScatterPlot",
+        "CalibrationPlot",
+        "Correlation"
+    ]
     mrnn.train(batched_data,
                validation_data=batched_data,
                n_epochs=5, keys=("x", "y"),
@@ -552,7 +566,14 @@ def test_training_transformation_mrnn_density():
     }
 
     mrnn = MRNN(losses=losses, model=model)
-    metrics = ["Bias", "CRPS", "MeanSquaredError", "ScatterPlot", "CalibrationPlot"]
+    metrics = [
+        "Bias",
+        "CRPS",
+        "MeanSquaredError",
+        "ScatterPlot",
+        "CalibrationPlot",
+        "Correlation"
+    ]
     mrnn.train(batched_data,
                validation_data=batched_data,
                n_epochs=5, keys=("x", "y"),
@@ -584,7 +605,14 @@ def test_qrnn_training_metrics_conv():
 
     qrnn = QRNN(np.linspace(0.05, 0.95, 10), model=model)
 
-    metrics = ["Bias", "MeanSquaredError", "CRPS", "CalibrationPlot", "ScatterPlot"]
+    metrics = [
+        "Bias",
+        "MeanSquaredError",
+        "CRPS",
+        "CalibrationPlot",
+        "ScatterPlot",
+        "Correlation"
+    ]
     qrnn.train(training_loader,
                validation_data=validation_loader,
                n_epochs=2,

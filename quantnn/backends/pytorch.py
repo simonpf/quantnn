@@ -35,7 +35,7 @@ class PyTorch(TensorBackend):
 
     @classmethod
     def as_type(cls, tensor, like):
-        return tensor.to(dtype=like.dtype, device=like.device)
+        return tensor.type_as(like)
 
     @classmethod
     def sample_uniform(cls, shape=None, like=None):

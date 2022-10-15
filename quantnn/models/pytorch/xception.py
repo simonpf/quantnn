@@ -100,7 +100,7 @@ class XceptionBlock(nn.Module):
         else:
             x_proj = self.projection(x)
         y = self.block_2(self.block_1(x))
-        return x_proj + y
+        return torch.add(x_proj,y )
 
 
 class DownsamplingBlock(nn.Sequential):
@@ -120,7 +120,7 @@ class UpsamplingBlock(nn.Module):
     Xception upsampling block.
     """
 
-    def __init__(self, n_channels):
+    def __init__(self, n_channels, skip_connections=True):
         """
         Args:
             n_channels: The number of incoming and outgoing channels.
@@ -129,19 +129,25 @@ class UpsamplingBlock(nn.Module):
         self.upsample = nn.Upsample(mode="bilinear",
                                     scale_factor=2,
                                     align_corners=False)
+        n_channels_in = n_channels * 2 if skip_connections else n_channels
         self.block = nn.Sequential(
-            SeparableConv3x3(n_channels * 2, n_channels),
+            SeparableConv3x3(n_channels_in, n_channels),
             nn.GroupNorm(1, n_channels),
             nn.GELU(),
         )
+        self.projection = nn.Conv2d(n_channels_in, n_channels, 1,)
 
-    def forward(self, x, x_skip):
+
+    def forward(self, x, x_skip=None):
         """
         Propagate input through block.
         """
         x_up = self.upsample(x)
-        x_merged = torch.cat([x_up, x_skip], 1)
-        return self.block(x_merged)
+        if x_skip is not None:
+            x_merged = torch.cat([x_up, x_skip], 1)
+        else:
+            x_merged = x_up
+        return torch.add(self.block(x_merged), self.projection(x_merged))
 
 
 class XceptionFpn(nn.Module):

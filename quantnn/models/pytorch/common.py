@@ -57,6 +57,9 @@ def save_model(f, model):
             to store the data to.
         model(:code:`pytorch.nn.Moduel`): The pytorch model to save
     """
+    if model.__class__.__bases__[0] is PytorchModel:
+        base = model.__class__.__bases__[1]
+        model.__class__ = base
     try:
         path = tempfile.mkdtemp()
         filename = os.path.join(path, "module.h5")
@@ -141,6 +144,35 @@ def handle_input(data, device=None):
     return data
 
 
+def to_device(x, device, to_float=True):
+    """
+    Convert training input to float and move to device.
+
+    Args:
+        x: A batch of training inputs.
+        device: The torch device to move the input to.
+
+    Return:
+        The input 'x' moved to the requested device.
+    """
+    if not isinstance(x, torch.Tensor):
+        if isinstance(x, dict):
+            return {k: to_device(v, device) for k, v in x.items()}
+        elif isinstance(x, Iterable):
+            return  [to_device(x_i, device) for x_i in x]
+        else:
+            raise ValueError(
+                "Batch input 'x' should be a torch.Tensor or"
+                " an Iterable of tensors."
+            )
+    else:
+        if to_float:
+            return x.to(device).to(torch.float32)
+        else:
+            return x.to(device)
+
+
+
 class BatchedDataset(quantnn.data.BatchedDataset):
     """
     Batches an un-batched dataset.
@@ -155,10 +187,14 @@ def get_batch_size(x):
     """
     Get batch size of tensor or iterable of tensors.
     """
-    if isinstance(x, Iterable):
-        return x[0].shape[0]
-    else:
+    if isinstance(x, torch.Tensor):
         return x.shape[0]
+    else:
+        if isinstance(x, dict):
+            return get_batch_size(next(iter(x.values())))
+        elif isinstance(x, Iterable):
+            return get_batch_size(next(iter(x)))
+    return 1.0
 
 ################################################################################
 # Quantile loss
@@ -173,7 +209,6 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
     over the given inputs but applies an optional masking to the
     inputs, in order to allow the handling of missing values.
     """
-
     def __init__(self, bins, mask=None):
         """
         Args:
@@ -276,7 +311,7 @@ class QuantileLoss(nn.Module):
             1,
         ] * len(dy.size())
         shape[self.quantile_axis] = self.n_quantiles
-        qs = self.quantiles.reshape(shape)
+        qs = self.quantiles.reshape(shape).to(y_true.device)
         l = torch.where(dy >= 0.0, (1.0 - qs) * dy, (-qs) * dy)
         if self.mask:
             mask = (y_true > self.mask).to(y_true.dtype)
@@ -440,7 +475,9 @@ class PytorchModel:
             )
         if isinstance(model, PytorchModel):
             return model
-        model.__class__ = type("__QuantnnMixin__", (PytorchModel, type(model)), {})
+        cls = model.__class__
+        cls_name = model.__class__.__name__
+        model.__class__ = type(cls_name, (PytorchModel, cls), {})
         PytorchModel.__init__(model)
         return model
 
@@ -481,15 +518,16 @@ class PytorchModel:
 
         self.apply(reset_function)
 
+
     def _train_step(
-        self, x, y, loss, adversarial_training, metrics=None, transformation=None
+        self, y_pred, y, loss, adversarial_training, metrics=None, transformation=None
     ):
         """
         Performs a single training step and returns a dictionary of
         losses for every output.
 
         Args:
-            x: The input data for the current batch.
+            y_pred: The model predictions for the current batch.
             y: The output data for the current batch.
             adversarial_training: Scaling factor for adversarial training or
                 None if no adversarial training should be performed.
@@ -498,12 +536,38 @@ class PytorchModel:
             A single loss or a dictionary of losses in the case of a multi-output
             network.
         """
-        y_pred = self(x)
+        # Recurse if y and y_pred are lists:
+        if isinstance(y_pred, list) and not isinstance(y, list):
+            y = [y]
 
-        # Keep track of x gradients if adversarial training
-        # is to be performed.
-        if adversarial_training is not None:
-            x.requires_grad = True
+        if isinstance(y_pred, list) and isinstance(y, list):
+            avg_loss = 0.0
+            tot_loss = 0.0
+            n_samples = 0
+            losses = {}
+
+            for y_pred_s, y_s in zip(y_pred, y):
+                res = self._train_step(
+                    y_pred_s,
+                    y_s,
+                    loss,
+                    adversarial_training,
+                    metrics=metrics,
+                    transformation=transformation
+                )
+                avg_loss += res[0] * res[3]
+                tot_loss += res[1]
+                n_samples += res[3]
+                if isinstance(res[2], dict):
+                    for key, loss_k in res[2].items():
+                        if key in losses:
+                            losses[key] += loss_k
+                        else:
+                            losses[key] = loss_k
+                    else:
+                        losses = res[2]
+            return avg_loss / n_samples, tot_loss, losses, n_samples
+
 
         # Make sure both outputs are dicts.
         if not isinstance(y_pred, dict):
@@ -546,12 +610,10 @@ class PytorchModel:
 
             if transform_k is None:
                 y_k_t = y_k
-                y_pred_k_t = y_pred_k
             else:
                 y_k_t = transform_k(y_k)
                 if mask is not None:
                     y_k_t = torch.where(y_k > mask, y_k_t, mask)
-                y_pred_k_t = transform_k.invert(y_pred_k)
 
             if k == "__loss__":
                 l = loss_k(y_pred_k, y_k_t)
@@ -561,6 +623,12 @@ class PytorchModel:
             cache = {}
             with torch.no_grad():
                 if metrics is not None:
+
+                    if transform_k is None:
+                        y_pred_k_t = y_pred_k
+                    else:
+                        y_pred_k_t = transform_k.invert(y_pred_k)
+
                     for m in metrics:
                         m.process_batch(k, y_pred_k_t, y_k, cache=cache)
 
@@ -688,28 +756,22 @@ class PytorchModel:
                     self.optimizer.zero_grad(**_ZERO_GRAD_ARGS)
 
                     x, y = _get_x_y(data, keys)
+                    x = to_device(x, device)
+                    y = to_device(y, device, to_float=False)
 
-                    if not isinstance(x, torch.Tensor):
-                        if isinstance(x, Iterable):
-                            x = [x_i.float().to(device) for x_i in x]
-                        else:
-                            raise ValueError(
-                                "Batch input 'x' should be a torch.Tensor or"
-                                " an Iterable of tensors."
-                            )
-                    else:
-                        x = x.float().to(device)
 
-                    if isinstance(y, dict):
-                        for k in y:
-                            y[k] = y[k].to(device)
-                    else:
-                        y = y.to(device)
                     if adversarial_training is not None:
                         x.requires_grad = True
 
+
+                    # Keep track of x gradients if adversarial training
+                    # is to be performed.
+                    if adversarial_training is not None:
+                        x.requires_grad = True
+                    y_pred = self(x)
+
                     avg_loss, tot_loss, losses, n_samples = self._train_step(
-                        x, y, loss, adversarial_training,
+                        y_pred, y, loss, adversarial_training,
                         transformation=transformation
                     )
                     avg_loss.backward()
@@ -733,9 +795,10 @@ class PytorchModel:
                     # Perform adversarial training step if required.
                     if adversarial_training is not None and x.requires_grad:
                         x_adv = self._make_adversarial_samples(x, adversarial_training)
+                        y_pred = self(x_adv)
                         self.optimizer.zero_grad(**_ZERO_GRAD_ARGS)
                         tot_loss, _ = self._train_step(
-                            x_adv,
+                            y_pred,
                             y,
                             loss,
                             adversarial_training,
@@ -762,24 +825,12 @@ class PytorchModel:
                             self.optimizer.zero_grad(**_ZERO_GRAD_ARGS)
 
                             x, y = _get_x_y(data, keys)
-                            if not isinstance(x, torch.Tensor):
-                                if isinstance(x, Iterable):
-                                    x = [x_i.float().to(device) for x_i in x]
-                                else:
-                                    raise ValueError(
-                                        "Batch input 'x' should be a torch.Tensor or"
-                                        " an Iterable of tensors."
-                                    )
-                            else:
-                                x = x.float().to(device)
-                            if isinstance(y, dict):
-                                for k in y:
-                                    y[k] = y[k].to(device)
-                            else:
-                                y = y.to(device)
+                            x = to_device(x, device)
+                            y = to_device(y, device, to_float=True)
+                            y_pred = self(x)
 
                             avg_loss, tot_loss, losses, n_samples = self._train_step(
-                                x,
+                                y_pred,
                                 y,
                                 loss,
                                 None,

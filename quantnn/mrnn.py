@@ -537,13 +537,10 @@ class MRNN(NeuralNetworkModel):
                  (``y``) when dataset elements are given as dictionaries.
         """
         #loss = MixedLoss(self.backend, self.losses)
-        loss = {
-            k: l.get_loss(self.backend, mask=mask)
-            for k, l in self.losses.items()
-        }
+        losses = apply(lambda l: l.get_loss(self.backend, mask=mask), self.losses)
         return super().train(
             training_data,
-            loss,
+            losses,
             validation_data=validation_data,
             optimizer=optimizer,
             scheduler=scheduler,

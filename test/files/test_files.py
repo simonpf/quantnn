@@ -8,8 +8,8 @@ import numpy as np
 from quantnn.files import read_file, CachedDataFolder
 from concurrent.futures import ThreadPoolExecutor
 
-HAS_LOGIN_INFO = ("QUANTNN_SFTP_USER" in os.environ and
-                  "QUANTNN_SFTP_PASSWORD" in os.environ)
+# Currently no SFTP test data available.
+HAS_LOGIN_INFO = False
 
 def test_local_file(tmp_path):
     """

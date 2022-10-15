@@ -1,0 +1,13 @@
+name: quantnn
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - torchvision
+  - torchaudio
+  - cudatoolkit=10.2
+  - pytorch
+  - tensorflow
+  - tensorboard
+prefix: /home/simonpf/miniconda3/envs/quantnn

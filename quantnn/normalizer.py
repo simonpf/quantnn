@@ -75,7 +75,7 @@ class NormalizerBase(ABC):
         """
 
     @abstractmethod
-    def _normalize(self, x, stats):
+    def _normalize(self, x, stats, rng=None):
         """
         Normalize a feature slice using the corresponding statistics.
 
@@ -107,12 +107,14 @@ class NormalizerBase(ABC):
            the un-normalized values.
         """
 
-    def __call__(self, x):
+    def __call__(self, x, rng=None):
         """
         Applies normalizer to input data.
 
         Args:
             x: The input tensor to normalize.
+            rng: Optional numpy random number generator, which will be
+                used to randomize the replacement values for NAN inputs.
 
         Returns:
             The input tensor x normalized using the normalization data
@@ -128,7 +130,7 @@ class NormalizerBase(ABC):
             selection[self.feature_axis] = i
             if i in self.stats:
                 x_slice = x[tuple(selection)].astype(np.float32)
-                x_normed = self._normalize(x_slice, self.stats[i])
+                x_normed = self._normalize(x_slice, self.stats[i], rng=rng)
             else:
                 x_normed = x[tuple(selection)]
             x_normed = np.expand_dims(x_normed, self.feature_axis)
@@ -217,7 +219,7 @@ class Normalizer(NormalizerBase):
         std_dev = x.std()
         return (mean, std_dev)
 
-    def _normalize(self, x_slice, stats):
+    def _normalize(self, x_slice, stats, rng=None):
         mean, std_dev = stats
         if np.isclose(std_dev, 0.0):
             x_normed = -1.0 * np.ones_like(x_slice)
@@ -264,7 +266,7 @@ class MinMaxNormalizer(NormalizerBase):
             x_max = np.nan
         return (x_min, x_max)
 
-    def _normalize(self, x_slice, stats):
+    def _normalize(self, x_slice, stats, rng=None):
         x_min, x_max = stats
         d_x = x_max - x_min
 
@@ -275,9 +277,13 @@ class MinMaxNormalizer(NormalizerBase):
             x_normed = -1.0 * np.ones_like(x_slice)
         else:
             x_normed = l + (r - l) * (x_slice - x_min) / d_x
+            x_normed = np.maximum(np.minimum(x_normed, 1.0), -1.0)
 
         if self.replace_nan:
-            x_normed[np.isnan(x_slice)] = -1.5
+            missing = -1.5
+            if rng is not None:
+                missing = missing * rng.uniform(0.95, 1.05)
+            x_normed[np.isnan(x_slice)] = missing
 
         return x_normed
 
