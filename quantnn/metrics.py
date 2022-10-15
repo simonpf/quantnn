@@ -273,6 +273,106 @@ class MeanSquaredError(ScalarMetric):
         return xp.to_numpy(self.squared_error[key] / self.n_samples[key])
 
 
+class Correlation(ScalarMetric):
+    """
+    Correlation coefficent computed using the posterior mean.
+    """
+    def __init__(self):
+        super().__init__()
+
+        self.xy = {}
+        self.xx = {}
+        self.yy = {}
+        self.x = {}
+        self.y = {}
+
+        self.n_samples = {}
+        self.tensor_backend = None
+
+    @property
+    def name(self):
+        return "Correlation"
+
+    def process_batch(self, key, y_pred, y, cache=None):
+        _check_input_dimensions(y_pred, y)
+        if hasattr(self.model, "_post_process_prediction"):
+            y_pred = self.model._post_process_prediction(y_pred, key=key)
+
+        self.keys.add(key)
+
+        if self.tensor_backend is None:
+            self.tensor_backend = get_tensor_backend(y_pred)
+        xp = self.tensor_backend
+
+        # Get deviation from mean from cache
+        # if not already computed.
+        if cache is not None and "y_mean" in cache:
+            y_mean = cache["y_mean"]
+        else:
+            y_mean = self.model.posterior_mean(y_pred=y_pred, key=key)
+        if cache is not None:
+            cache["y_mean"] = y_mean
+
+        if len(y.shape) > len(y_mean.shape):
+            if hasattr(self.model, "quantile_axis"):
+                dist_axis = self.model.quantile_axis
+            else:
+                dist_axis = self.model.bin_axis
+            y = y.squeeze(dist_axis)
+
+        if self.mask is not None:
+            mask = xp.as_type(y > self.mask, y)
+            y_pred_m = mask * y_mean
+            y_m = mask * y
+            n = self.n_samples.get(key, 0.0)
+            self.n_samples[key] = n + xp.to_numpy(mask.sum())
+        else:
+            y_pred_m = y_mean
+            y_m = y
+            n = self.n_samples.get(key, 0.0)
+            self.n_samples[key] = n + xp.to_numpy(xp.size(y_m))
+
+        x = self.x.get(key, 0.0)
+        self.x[key] = x + xp.to_numpy((y_pred_m).sum())
+        xx = self.xx.get(key, 0.0)
+        self.xx[key] = xx + xp.to_numpy((y_pred_m ** 2).sum())
+
+        y = self.y.get(key, 0.0)
+        self.y[key] = y + xp.to_numpy((y_m).sum())
+        yy = self.yy.get(key, 0.0)
+        self.yy[key] = yy + xp.to_numpy((y_m ** 2).sum())
+
+        xy = self.xy.get(key, 0.0)
+        self.xy[key] = xy + xp.to_numpy((y_pred_m * y_m).sum())
+
+    def reset(self):
+        self.x = {}
+        self.xx = {}
+        self.y = {}
+        self.yy = {}
+        self.xy = {}
+        self.n_samples = {}
+
+    def get_value(self, key):
+
+        xp = self.tensor_backend
+        if xp is None:
+            return 0.0
+
+        xy = self.xy[key]
+        x = self.x[key]
+        xx = self.xx[key]
+        y = self.y[key]
+        yy = self.yy[key]
+        n = self.n_samples[key]
+
+        sigma_x = np.sqrt(xx / n - (x / n) ** 2)
+        sigma_y = np.sqrt(yy / n - (y / n) ** 2)
+        corr = (xy / n - x / n * y / n) / sigma_x / sigma_y
+
+        return corr
+
+
 class CRPS(ScalarMetric):
     """
     Mean squared error metric computed using the posterior mean.
