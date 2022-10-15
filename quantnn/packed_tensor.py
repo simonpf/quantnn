@@ -7,6 +7,7 @@ to represent sparse batches.
 """
 import torch
 
+
 class PackedTensor:
     """
     Special Tensor that to represent a sparse batch.
@@ -16,6 +17,7 @@ class PackedTensor:
     size of the batch, while ``batch_indices`` holds the batch indices
     that the data stored in the associated tensor corresponds to.
     """
+
     @classmethod
     def __torch_function__(cls, func, types, args=(), kwargs=None):
         """
@@ -42,11 +44,12 @@ class PackedTensor:
                 return tuple([replace_args(nested) for nested in arg])
             return arg
 
-
         args = list(map(replace_args, args))
         if len(batch_indices) > 1:
+
             def is_same(bi):
                 return batch_indices[0] == bi
+
             if not all(map(is_same, batch_indices[1:])):
                 raise ValueError(
                     "Native torch operations can only be applied to packed"
@@ -81,7 +84,7 @@ class PackedTensor:
                 raise ValueError(
                     "List of samples may only contain ``torch.Tensor`` objects"
                     " or ``None``. Found '%s'",
-                    type(tensor)
+                    type(tensor),
                 )
         if len(parts) == 0:
             data = torch.ones((0, 1, 1, 1))
@@ -135,8 +138,10 @@ class PackedTensor:
         return len(self._batch_indices) > 0
 
     def __repr__(self):
-        s = (f"PackedTensor(batch_size={self.batch_size}, "
-             f"batch_indices={self.batch_indices})")
+        s = (
+            f"PackedTensor(batch_size={self.batch_size}, "
+            f"batch_indices={self.batch_indices})"
+        )
         return s
 
     def __getitem__(self, slices):
@@ -221,10 +226,13 @@ class PackedTensor:
         """
         if isinstance(other, PackedTensor):
             other_indices = other.batch_indices
+
             def get_slice(i):
                 return other._t[i]
+
         else:
             other_indices = list(range(self.batch_size))
+
             def get_slice(i):
                 return other[i]
 
@@ -250,7 +258,6 @@ class PackedTensor:
         parts_other = PackedTensor(parts_other, self.batch_size, indices)
         return parts_self, parts_other
 
-
     def difference(self, other):
         """
         Extract samples that are present in only one of two tensors.
@@ -266,10 +273,13 @@ class PackedTensor:
         """
         if isinstance(other, PackedTensor):
             other_indices = other.batch_indices
+
             def get_slice(i):
                 return other._t[i]
+
         else:
             other_indices = range(self.batch_size)
+
             def get_slice(i):
                 return other[i]
 
@@ -296,12 +306,7 @@ class PackedTensor:
         if len(parts) == 0:
             return None
 
-        return PackedTensor(
-            torch.stack(parts),
-            self.batch_size,
-            indices
-        )
-
+        return PackedTensor(torch.stack(parts), self.batch_size, indices)
 
     def sum(self, other):
         """
@@ -317,10 +322,13 @@ class PackedTensor:
         """
         if isinstance(other, PackedTensor):
             other_indices = other.batch_indices
+
             def get_slice(i):
                 return other._t[i]
+
         else:
             other_indices = range(self.batch_size)
+
             def get_slice(i):
                 return other[i]
 
@@ -353,12 +361,7 @@ class PackedTensor:
             data = torch.stack(parts)
         return PackedTensor(data, self.batch_size, indices)
 
-
     def to(self, *args, **kwargs):
         return PackedTensor(
-            self._t.to(*args, **kwargs),
-            self.batch_size,
-            self.batch_indices
+            self._t.to(*args, **kwargs), self.batch_size, self.batch_indices
         )
-
-
