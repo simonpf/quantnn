@@ -569,10 +569,19 @@ class QRNN(NeuralNetworkModel):
         if not hasattr(self, "transformation"):
             self.transformation = None
 
-    def lightning(self, mask):
+    def lightning(self, mask, optimizer=None, scheduler=None, metrics=None, name=None):
         """
         Get Pytorch Lightning module.
         """
         from quantnn.models.pytorch.lightning import QuantnnLightning
+
         loss = self.backend.QuantileLoss(self.quantiles, mask=mask)
-        return QuantnnLightning(self.model, loss)
+        return QuantnnLightning(
+            self,
+            loss,
+            scheduler=scheduler,
+            optimizer=optimizer,
+            metrics=metrics,
+            transformation=self.transformation,
+            name=name,
+        )
