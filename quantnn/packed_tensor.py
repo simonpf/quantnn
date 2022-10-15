@@ -137,6 +137,13 @@ class PackedTensor:
         """
         return len(self._batch_indices) > 0
 
+    @property
+    def tensor(self):
+        """
+        The 'torch.Tensor' containing the data of the packed tensor.
+        """
+        return self._t
+
     def __repr__(self):
         s = (
             f"PackedTensor(batch_size={self.batch_size}, "

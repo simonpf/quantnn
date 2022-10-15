@@ -1,4 +1,3 @@
-
 import numpy as np
 import torch
 from quantnn.packed_tensor import PackedTensor
@@ -127,8 +126,8 @@ def test_intersection():
         indices = list(set(l.batch_indices) & set(r.batch_indices))
         l, r = l.intersection(r)
         for i, index in enumerate(indices):
-            assert (l._t[i] == index).all()
-            assert (r._t[i] == index).all()
+            assert (l.tensor[i] == index).all()
+            assert (r.tensor[i] == index).all()
 
 
 def test_difference():
@@ -157,7 +156,7 @@ def test_difference():
         indices = sorted(list(set(l.batch_indices) ^ set(r.batch_indices)))
         d = l.difference(r)
         for i, index in enumerate(indices):
-            assert (d._t[i] == index).all()
+            assert (d.tensor[i] == index).all()
 
 
 def test_sum():
@@ -196,4 +195,4 @@ def test_sum():
         s = l.sum(r)
 
         for i, index in enumerate(indices):
-            assert (s._t[i] == index).all()
+            assert (s.tensor[i] == index).all()
