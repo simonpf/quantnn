@@ -57,6 +57,9 @@ def save_model(f, model):
             to store the data to.
         model(:code:`pytorch.nn.Moduel`): The pytorch model to save
     """
+    if model.__class__.__bases__[0] is PytorchModel:
+        base = model.__class__.__bases__[1]
+        model.__class__ = base
     try:
         path = tempfile.mkdtemp()
         filename = os.path.join(path, "module.h5")
@@ -206,7 +209,6 @@ class CrossEntropyLoss(nn.CrossEntropyLoss):
     over the given inputs but applies an optional masking to the
     inputs, in order to allow the handling of missing values.
     """
-
     def __init__(self, bins, mask=None):
         """
         Args:
@@ -473,7 +475,9 @@ class PytorchModel:
             )
         if isinstance(model, PytorchModel):
             return model
-        model.__class__ = type("__QuantnnMixin__", (PytorchModel, type(model)), {})
+        cls = model.__class__
+        cls_name = model.__class__.__name__
+        model.__class__ = type(cls_name, (PytorchModel, cls), {})
         PytorchModel.__init__(model)
         return model
 
@@ -533,6 +537,9 @@ class PytorchModel:
             network.
         """
         # Recurse if y and y_pred are lists:
+        if isinstance(y_pred, list) and not isinstance(y, list):
+            y = [y]
+
         if isinstance(y_pred, list) and isinstance(y, list):
             avg_loss = 0.0
             tot_loss = 0.0
@@ -540,8 +547,15 @@ class PytorchModel:
             losses = {}
 
             for y_pred_s, y_s in zip(y_pred, y):
-                res = self._train_step(y_pred_s, y_s, loss, adversarial_training, metrics=metrics, transformation=transformation)
-                avg_loss += res[0]
+                res = self._train_step(
+                    y_pred_s,
+                    y_s,
+                    loss,
+                    adversarial_training,
+                    metrics=metrics,
+                    transformation=transformation
+                )
+                avg_loss += res[0] * res[3]
                 tot_loss += res[1]
                 n_samples += res[3]
                 if isinstance(res[2], dict):
@@ -552,7 +566,7 @@ class PytorchModel:
                             losses[key] = loss_k
                     else:
                         losses = res[2]
-                return avg_loss, tot_loss, losses, n_samples
+            return avg_loss / n_samples, tot_loss, losses, n_samples
 
 
         # Make sure both outputs are dicts.
@@ -596,12 +610,10 @@ class PytorchModel:
 
             if transform_k is None:
                 y_k_t = y_k
-                y_pred_k_t = y_pred_k
             else:
                 y_k_t = transform_k(y_k)
                 if mask is not None:
                     y_k_t = torch.where(y_k > mask, y_k_t, mask)
-                y_pred_k_t = transform_k.invert(y_pred_k)
 
             if k == "__loss__":
                 l = loss_k(y_pred_k, y_k_t)
@@ -611,6 +623,12 @@ class PytorchModel:
             cache = {}
             with torch.no_grad():
                 if metrics is not None:
+
+                    if transform_k is None:
+                        y_pred_k_t = y_pred_k
+                    else:
+                        y_pred_k_t = transform_k.invert(y_pred_k)
+
                     for m in metrics:
                         m.process_batch(k, y_pred_k_t, y_k, cache=cache)
 
@@ -809,8 +827,8 @@ class PytorchModel:
                             x, y = _get_x_y(data, keys)
                             x = to_device(x, device)
                             y = to_device(y, device, to_float=True)
-
                             y_pred = self(x)
+
                             avg_loss, tot_loss, losses, n_samples = self._train_step(
                                 y_pred,
                                 y,
