@@ -330,7 +330,7 @@ class Correlation(ScalarMetric):
             y_pred_m = y_mean
             y_m = y
             n = self.n_samples.get(key, 0.0)
-            self.n_samples[key] = n + xp.to_numpy(xp.size(y_m))
+            self.n_samples[key] = n + xp.size(y_m)
 
         x = self.x.get(key, 0.0)
         self.x[key] = x + xp.to_numpy((y_pred_m).sum())
