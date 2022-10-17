@@ -206,46 +206,45 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             self,
             input_channels: Dict[int, int],
             base_channels: int,
-            n_stages: int,
-            stage_depths: Union[int, List[int]],
+            stages: List[Union[int, StageConfig]],
+            block_factory: Optional[Callable[[int, int], nn.Module]],
+            aggregator_factory: Optional[Callable[[int], nn.Module]],
             channel_scaling: int = 2,
             max_channels: int = None,
-            block_factory: Optional[Callable[[int, int], nn.Module]] = None,
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
             downsampler_factory: Callable[[int, int], nn.Module] = None,
-            aggregator_factory: Callable[[int, int], nn.Module] = None,
     ):
         if max_channels is None:
             max_channels = base_channels * channel_scaling ** n_stages
 
+        n_stages = len(stages)
         keys = list(input_channels.keys())
-        min_scale = min(keys)
-        stages = n_stages - int(log(min_scale, channel_scaling))
+        first_stage = min(keys)
         true_input_channels = min(
-            base_channels * min_scale,
+            base_channels * channel_scaling ** first_stage,
             max_channels
         )
         super().__init__(
             true_input_channels,
             stages,
-            stage_depths,
+            block_factory,
             channel_scaling=channel_scaling,
             max_channels=max_channels,
-            block_factory=block_factory,
             stage_factory=stage_factory,
             downsampler_factory=downsampler_factory
         )
         self.stems = nn.ModuleDict()
         self.aggregators = nn.ModuleDict()
         self.input_channels = input_channels
-        self.min_scale = min_scale
+        self.first_stage = first_stage
 
-
-        for ind, (scale, channels_in) in enumerate(input_channels.items()):
-            channels_out = min(base_channels * scale, max_channels)
-            self.stems[str(scale)] = block_factory(channels_in, channels_out)
+        for ind, (stage_ind, channels_in) in enumerate(input_channels.items()):
+            channels_out = min(
+                base_channels * channel_scaling ** stage_ind,
+                max_channels)
+            self.stems[str(stage_ind)] = block_factory(channels_in, channels_out)
             if ind > 0:
-                self.aggregators[str(scale)] = aggregator_factory(
+                self.aggregators[str(stage_ind)] = aggregator_factory(
                     channels_out,
                     channels_out,
                 )
@@ -261,28 +260,28 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             last element in the list corresponding to the output of the
             last encoder stage.
         """
-        scale = self.min_scale
+        stage_ind = self.first_stage
         skips = []
         y = None
         input_index = 0
 
         for down, stage in zip(self.downsamplers, self.stages):
             # Integrate input into stream.
-            scl = str(scale)
-            if scale in self.input_channels:
+            stage_s = str(stage_ind)
+            if stage_ind in self.input_channels:
                 if y is None:
-                    y = self.stems[scl](x[input_index])
+                    y = self.stems[stage_s](x[input_index])
                     skips.append(y)
                 else:
-                    agg = self.aggregators[scl]
-                    y = agg(y, self.stems[scl](x[input_index]))
+                    agg = self.aggregators[stage_s]
+                    y = agg(y, self.stems[stage_s](x[input_index]))
                 input_index += 1
 
             if down is not None:
                 y = down(y)
             y = stage(y)
             skips.append(y)
-            scale = scale * self.channel_scaling
+            stage_ind += 1
         return skips
 
     def forward(
@@ -311,23 +310,23 @@ class MultiInputSpatialEncoder(SpatialEncoder):
         if return_skips:
             return self.forward_with_skips(x)
 
-        scale = self.min_scale
+        stage_ind = self.first_stage
         y = None
         input_index = 0
 
         for down, stage in zip(self.downsamplers, self.stages):
             # Integrate input into stream.
-            scl = str(scale)
-            if scale in self.input_channels:
+            stage_s = str(stage_ind)
+            if stage_ind in self.input_channels:
                 if y is None:
-                    y = self.stems[scl](x[input_index])
+                    y = self.stems[stage_s](x[input_index])
                 else:
-                    agg = self.aggregators[scl]
-                    y = agg(y, self.stems[scl](x[input_index]))
+                    agg = self.aggregators[stage_s]
+                    y = agg(y, self.stems[stage_s](x[input_index]))
                 input_index += 1
 
             if down is not None:
                 y = down(y)
             y = stage(y)
-            scale = scale * self.channel_scaling
+            stage_ind = stage_ind + 1
         return y
