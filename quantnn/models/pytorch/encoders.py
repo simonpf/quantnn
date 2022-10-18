@@ -214,10 +214,10 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
             downsampler_factory: Callable[[int, int], nn.Module] = None,
     ):
+        n_stages = len(stages)
         if max_channels is None:
             max_channels = base_channels * channel_scaling ** n_stages
 
-        n_stages = len(stages)
         keys = list(input_channels.keys())
         first_stage = min(keys)
         true_input_channels = min(
@@ -226,7 +226,7 @@ class MultiInputSpatialEncoder(SpatialEncoder):
         )
         super().__init__(
             true_input_channels,
-            stages,
+            stages[first_stage:],
             block_factory,
             channel_scaling=channel_scaling,
             max_channels=max_channels,

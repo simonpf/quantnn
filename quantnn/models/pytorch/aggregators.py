@@ -36,7 +36,7 @@ class SparseAggregator(nn.Module):
         """
         super().__init__()
         self.channels_in = channels_in
-        self.aggregator = aggregator_factory(2 * channels_in, channels_in)
+        self.aggregator = aggregator_factory(channels_in, channels_in)
 
     def forward(self, x_1, x_2):
         """
@@ -100,6 +100,39 @@ class SparseAggregator(nn.Module):
         if return_full:
             return merged.tensor
         return merged
+
+
+class SparseAggregatorFactory:
+    """
+    Factory class to create sparse aggregation block.
+    """
+    def __init__(
+            self,
+            block_factory
+    ):
+        """
+        Args:
+            block_factory: A factory to create the underlying merge block.
+        """
+        self.block_factory = block_factory
+
+    def __call__(
+            self,
+            input_channels,
+            output_channels
+    ):
+        """
+        Create an aggregation block for a given number of input channels.
+
+        Args:
+            input_channels: The number of channels in the inputs to merge.
+        """
+        if not input_channels == output_channels:
+            raise ValueError(
+                "The 'input_channels' and 'output_channels' must be the same "
+                "for SparseAggregator."
+            )
+        return SparseAggregator(input_channels, self.block_factory)
 
 
 class AverageBlock(nn.Module):
