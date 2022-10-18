@@ -15,11 +15,8 @@ import torch
 import numpy as np
 from torch import nn
 from torch import optim
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.data import Dataset
 
 from quantnn.common import (ModelNotSupported,
-                            InputDataError,
                             DatasetError,
                             ModelLoadError)
 from quantnn.logging import TrainingLogger
@@ -125,7 +122,7 @@ def handle_input(data, device=None):
         x, y = data
 
         dtype_y = torch.float
-        if "int" in str(y.dtype):
+        if "int" in str(y.dtype) or y.dtype == torch.long:
             dtype_y = torch.long
 
         x = torch.tensor(x, dtype=torch.float)
@@ -157,9 +154,12 @@ def to_device(x, device, to_float=True):
     """
     if not isinstance(x, torch.Tensor):
         if isinstance(x, dict):
-            return {k: to_device(v, device) for k, v in x.items()}
+            return {
+                k: to_device(v, device, to_float=to_float)
+                for k, v in x.items()
+            }
         elif isinstance(x, Iterable):
-            return  [to_device(x_i, device) for x_i in x]
+            return [to_device(x_i, device, to_float=False) for x_i in x]
         else:
             raise ValueError(
                 "Batch input 'x' should be a torch.Tensor or"
@@ -170,7 +170,6 @@ def to_device(x, device, to_float=True):
             return x.to(device).to(torch.float32)
         else:
             return x.to(device)
-
 
 
 class BatchedDataset(quantnn.data.BatchedDataset):
@@ -201,52 +200,86 @@ def get_batch_size(x):
 ################################################################################
 
 
-class CrossEntropyLoss(nn.CrossEntropyLoss):
+class CrossEntropyLoss(nn.Module):
     """
     Cross entropy loss with optional masking.
 
     This loss function class calculates the mean cross entropy loss
-    over the given inputs but applies an optional masking to the
-    inputs, in order to allow the handling of missing values.
+    over the given inputs but applies an optional masking allowing
+    the handling of missing values.
     """
-    def __init__(self, bins, mask=None):
+    def __init__(self, bins_or_classes, mask=None):
         """
         Args:
+            bins_or_classes: The bins overwich to calculate the probabilities
+                 or the number of classes for which to calculate the loss.
             mask: All values that are smaller than or equal to this value will
                  be excluded from the calculation of the loss.
+
         """
-        self.bins = apply(lambda x: torch.Tensor(x).to(torch.float), bins)
+        super().__init__()
         if mask is None:
             reduction = "mean"
             self.mask = mask
         else:
             reduction = "none"
-            self.mask = np.float32(mask)
-        super().__init__(reduction=reduction)
+            if isinstance(bins_or_classes, int):
+                self.mask = np.int64(mask)
+            else:
+                self.mask = np.float32(mask)
+
+        self.bins = None
+        self.n_classes = None
+        if isinstance(bins_or_classes, int):
+            self.n_classes = bins_or_classes
+            if bins_or_classes < 2:
+                raise ValueError(
+                    "The cross entropy loss is only meaningful for more than "
+                    "1 class."
+                )
+            elif bins_or_classes == 2:
+                self.loss = nn.BCEWithLogitsLoss(
+                    reduction=reduction
+                )
+            else:
+                self.loss = nn.CrossEntropyLoss(
+                    reduction=reduction
+                )
+        else:
+            self.bins = apply(
+                lambda x: torch.Tensor(x).to(torch.float),
+                bins_or_classes
+            )
+            self.loss = nn.CrossEntropyLoss(
+                reduction=reduction
+            )
 
     def __call__(self, y_pred, y_true, key=None):
         """Evaluate the loss."""
-        if not isinstance(self.bins, dict) or key is None:
-            bins = self.bins.to(y_pred.device)
+        if self.bins is not None:
+            if not isinstance(self.bins, dict) or key is None:
+                bins = self.bins.to(y_pred.device)
+            else:
+                bins = self.bins[key].to(y_pred.device)
+            y_cat = torch.bucketize(y_true, bins[1:-1])
+            if len(y_cat.shape) == len(y_pred.shape):
+                y_cat = y_cat.squeeze(1)
+                y_true = y_true.squeeze(1)
         else:
-            bins = self.bins[key].to(y_pred.device)
-        y_cat = torch.bucketize(y_true, bins[1:-1])
+            y_cat = torch.maximum(y_true, torch.zeros_like(y_true))
+            if self.n_classes > 2 and len(y_cat.shape) == len(y_pred.shape):
+                y_cat = y_cat.squeeze(1)
+                y_true = y_true.squeeze(1)
 
-        if len(y_cat.shape) == len(y_pred.shape):
-            y_cat = y_cat.squeeze(1)
-            y_true = y_true.squeeze(1)
+        if self.n_classes == 2:
+            y_cat = y_cat.to(dtype=y_pred.dtype)
 
         if self.mask is None:
-            return nn.CrossEntropyLoss.__call__(self, y_pred, y_cat)
-        else:
-            loss = nn.CrossEntropyLoss.__call__(
-                self,
-                y_pred,
-                y_cat,
-            )
-            mask = (y_true > self.mask).to(dtype=y_pred.dtype)
+            return self.loss(y_pred, y_cat)
 
-            return (loss * mask).sum() / (mask.sum() + 1e-6)
+        loss = self.loss(y_pred, y_cat)
+        mask = (y_true > self.mask).to(dtype=y_pred.dtype)
+        return (loss * mask).sum() / (mask.sum() + 1e-6)
 
 
 class QuantileLoss(nn.Module):
@@ -305,7 +338,6 @@ class QuantileLoss(nn.Module):
         """
         y_true = y_true.to(y_pred.dtype)
         dy = y_pred - y_true
-        n = self.quantiles.size()[0]
 
         shape = [
             1,

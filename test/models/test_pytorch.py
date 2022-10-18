@@ -8,7 +8,7 @@ import numpy as np
 from quantnn import set_default_backend
 from quantnn.qrnn import QRNN
 from quantnn.drnn import DRNN, _to_categorical
-from quantnn.mrnn import Quantiles, Density, Mean, MRNN
+from quantnn.mrnn import Quantiles, Density, Mean, Classification, MRNN
 
 from quantnn.models.pytorch import QuantileLoss, CrossEntropyLoss, MSELoss
 from quantnn.transformations import Log10
@@ -66,6 +66,41 @@ def test_cross_entropy_loss():
     ref = -y_pred[:5, 5, :5] + torch.log(torch.exp(y_pred[:5, :, :5]).sum(1))
     assert np.all(np.isclose(loss(y_pred, y).detach().numpy(),
                              ref.mean().detach().numpy()))
+
+    # Test loss for multi-class classification.
+    y_pred = torch.rand(10, 10, 10)
+    y = torch.ones(10, 10, dtype=torch.long)
+    y[:, :] = 5
+
+    loss = CrossEntropyLoss(10, mask=-1.0)
+    ref = -y_pred[:, 5, :] + torch.log(torch.exp(y_pred).sum(1))
+    assert np.all(np.isclose(loss(y_pred, y).detach().numpy(),
+                             ref.mean().detach().numpy()))
+
+
+    y[5:, :] = -1.0
+    y[:, 5:] = -1.0
+    ref = -y_pred[:5, 5, :5] + torch.log(torch.exp(y_pred[:5, :, :5]).sum(1))
+    assert np.all(np.isclose(loss(y_pred, y).detach().numpy(),
+                             ref.mean().detach().numpy()))
+
+    # Test loss for binary classification.
+    y_pred = torch.rand(10, 1, 10)
+    y = torch.ones(10, 1, 10, dtype=torch.long)
+    y[:, :] = 1
+
+    loss = CrossEntropyLoss(2, mask=-1)
+    ref = -torch.nn.functional.logsigmoid(y_pred)
+    assert np.all(np.isclose(loss(y_pred, y).detach().numpy(),
+                             ref.mean().detach().numpy()))
+
+
+    y[5:, :] = -1.0
+    y[:, 5:] = -1.0
+    ref = - torch.nn.functional.logsigmoid(y_pred[:5, :5])
+    assert np.all(np.isclose(loss(y_pred, y).detach().numpy(),
+                             ref.mean().detach().numpy()))
+
 
 
 def test_mse_loss():
@@ -338,38 +373,45 @@ def test_training_multi_mrnn():
             super().__init__()
             self.hidden = nn.Linear(16, 128)
             self.head_1 = nn.Linear(128, 10)
-            self.head_2 = nn.Linear(128, 1)
-            self.head_3 = nn.Linear(128, 20)
+            self.head_2 = nn.Linear(128, 20)
+            self.head_3 = nn.Linear(128, 1)
+            self.head_4 = nn.Linear(128, 1)
+            self.head_5 = nn.Linear(128, 10)
 
         def forward(self, x):
             x = torch.relu(self.hidden(x))
             y_1 = self.head_1(x)
             y_2 = self.head_2(x)
             y_3 = self.head_3(x)
+            y_4 = self.head_4(x)
+            y_5 = self.head_5(x)
             return {
-                "y_1": y_1,
-                "y_2": y_2,
-                "y_3": y_3
+                "quantiles": y_1,
+                "density": y_2,
+                "mean": y_3,
+                "binary_classification": y_4,
+                "classification": y_5,
             }
 
     x = np.random.rand(2024, 16) + 1.0
     y = np.sum(x, axis=-1)
     y += np.random.normal(size=y.size)
 
-    batched_data = [
-        {
-            "x": torch.tensor(x[i * 128: (i + 1) * 128]).to(torch.float32),
-            "y": {
-                "y_1": torch.tensor(y[i * 128: (i + 1) * 128],
-                                    dtype=torch.float32),
-                "y_2": torch.tensor(y[i * 128: (i + 1) * 128] ** 2,
-                                    dtype=torch.float32),
-                "y_3": torch.tensor(y[i * 128: (i + 1) * 128] ** 2,
-                                    dtype=torch.float32)
-            }
+    batched_data = []
+    for i in range(512):
+        x = torch.as_tensor(np.random.normal(size=(128, 16)))
+        r = torch.as_tensor(np.random.normal(size=128), dtype=torch.float)
+        y = {
+            "quantiles": r,
+            "density": r,
+            "mean": r,
+            "binary_classification": torch.as_tensor(r > 0, dtype=torch.long),
+            "classification": torch.as_tensor(
+                np.digitize(r, np.linspace(-1, 1, 11)) - 2,
+                dtype=torch.long
+            ),
         }
-        for i in range(1024 // 128)
-    ]
+        batched_data.append((x, y))
 
     model = MultipleOutputModel()
 
@@ -377,13 +419,21 @@ def test_training_multi_mrnn():
     bins = {"y_1": bins, "y_2": bins}
 
     losses = {
-        "y_1": Quantiles(np.linspace(0.05, 0.95, 10)),
-        "y_2": Mean(),
-        "y_3": Density(np.linspace(-2, 2, 21))
+        "quantiles": Quantiles(np.linspace(0.05, 0.95, 10)),
+        "density": Density(np.linspace(-2, 2, 21)),
+        "mean": Mean(),
+        "binary_classification": Classification(2),
+        "classification": Classification(10)
     }
 
     mrnn = MRNN(losses=losses, model=model)
-    mrnn.train(batched_data, n_epochs=1)
+    mrnn.train(batched_data, n_epochs=4)
+
+    x = batched_data[0][0].to(torch.float)
+    with torch.no_grad():
+        y_pred = mrnn.model(x)
+        y_binary = torch.nn.functional.sigmoid(y_pred["binary_classification"])
+        assert np.all(np.isclose(y_binary.numpy(), 0.5, atol=0.10))
 
 
 def test_training_transformation():

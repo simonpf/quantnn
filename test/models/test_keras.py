@@ -50,17 +50,52 @@ def test_cross_entropy_loss():
 
     loss = CrossEntropyLoss(bins, mask=-1.0)
     ref = -y_pred[:, :, 5] + np.log(np.exp(y_pred).sum(1))
-    print(loss(y, y_pred), ref.mean())
     assert np.all(np.isclose(loss(y, y_pred),
                              ref.mean(),
                              rtol=1e-3))
-
 
     y[5:, :, :] = -1.0
     y[:, 5:, :] = -1.0
     ref = -y_pred[:5, :5, 5] + np.log(np.exp(y_pred[:5, :5, :]).sum(-1))
     assert np.all(np.isclose(loss(y, y_pred),
                              ref.mean()))
+
+    loss = CrossEntropyLoss(10, mask=-1.0)
+    y = np.ones((10, 10, 1), dtype=np.int32)
+    y[:, :, :] = 5
+    ref = -y_pred[:, :, 5] + np.log(np.exp(y_pred).sum(1))
+    assert np.all(np.isclose(loss(y, y_pred),
+                             ref.mean(),
+                             rtol=1e-3))
+
+    y[5:, :, :] = -1.0
+    y[:, 5:, :] = -1.0
+
+    ref = -y_pred[:5, :5, 5] + np.log(np.exp(y_pred[:5, :5, :]).sum(-1))
+    assert np.all(np.isclose(loss(y, y_pred),
+                             ref.mean()))
+
+    # Test binary case.
+    loss = CrossEntropyLoss(2, mask=-1.0)
+    y = np.ones((10, 10, 1), dtype=np.int32)
+    y_pred = np.random.rand(10, 10, 1).astype(np.float32)
+    y[:, :, :] = 1
+    ref = tf.math.log_sigmoid(y_pred)
+    assert np.all(np.isclose(
+        loss(y, y_pred),
+        -tf.math.reduce_mean(ref),
+        rtol=1e-3
+    ))
+
+    y[5:, :, :] = -1.0
+    y[:, 5:, :] = -1.0
+
+    ref = -tf.math.log_sigmoid(y_pred[:5, :5])
+    assert np.all(np.isclose(
+        loss(y, y_pred),
+        tf.math.reduce_mean(ref),
+        rtol=1e-3
+    ))
 
 def test_training_with_dataloader():
     """

@@ -20,7 +20,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras import layers
 from tensorflow.keras.layers import Dense, Activation, deserialize
 from tensorflow.keras.optimizers import SGD
-from tensorflow.keras.losses import SparseCategoricalCrossentropy
+from tensorflow.keras.losses import Loss, BinaryCrossentropy, SparseCategoricalCrossentropy
 
 from quantnn.common import (
     QuantnnException,
@@ -82,21 +82,58 @@ def load_model(file):
 LOGGER = logging.getLogger(__name__)
 
 
-class CrossEntropyLoss(SparseCategoricalCrossentropy):
+class CrossEntropyLoss(Loss):
     """
     Wrapper class around Keras' SparseCategoricalCrossEntropy class to support
     masking of input values.
     """
 
-    def __init__(self, bins, mask=None):
-        self.__name__ = "CrossEntropyLoss"
-        self.bins = [b for b in bins]
-        self.mask = mask
-        super().__init__(reduction="none", from_logits=True)
+    def __init__(self, bins_or_classes, mask=None):
+        name = "CrossEntropyLoss"
+        super().__init__(
+            reduction="none",
+            name=name
+        )
+        self.bins = None
+        self.n_classes = None
+        if isinstance(bins_or_classes, int):
+            self.n_classes = bins_or_classes
+            if self.n_classes < 1:
+                raise ValueError(
+                    "The cross entropy loss is only meaningful for more than "
+                    "1 class."
+                )
+            if bins_or_classes == 2:
+                self.loss = BinaryCrossentropy(
+                    from_logits=True,
+                    name=name,
+                    reduction="none"
+                )
+            else:
+                self.loss = SparseCategoricalCrossentropy(
+                    from_logits=True,
+                    name=name,
+                    reduction="none"
+                )
 
-    def __call__(self, y_true, y_pred, sample_weight=None):
-        y_b = tf.raw_ops.Bucketize(input=y_true, boundaries=self.bins[1:-1], name=None)
-        l = super().__call__(y_b, y_pred, sample_weight=sample_weight)
+        else:
+            self.bins = [b for b in bins_or_classes]
+            self.loss = SparseCategoricalCrossentropy(
+                from_logits=True,
+                name=name,
+                reduction="none"
+            )
+
+        self.mask = mask
+
+
+    def call(self, y_true, y_pred):
+        if self.bins is not None:
+            y_b = tf.raw_ops.Bucketize(input=y_true, boundaries=self.bins[1:-1], name=None)
+        else:
+            y_b = tf.math.maximum(y_true, 0)
+
+        l = self.loss.call(y_b, y_pred)
         if self.mask is None:
             return tf.math.reduce_mean(l)
         mask = tf.cast(y_true > self.mask, tf.float32)

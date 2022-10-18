@@ -7,19 +7,15 @@ This module implements Mixed Regression Neural Networks (MRSS), which
 allow mixing quantile, density and MSE regression within a single
 model.
 """
-from abc import ABC
-
-import numpy as np
 from quantnn import quantiles as qq
 from quantnn import density as qd
 from quantnn.neural_network_model import NeuralNetworkModel
-from quantnn.common import QuantnnException, UnsupportedBackendException
 from quantnn.generic import softmax, to_array, get_array_module
 from quantnn.utils import apply
 
 
 ###############################################################################
-# Target class
+# Target classes
 ###############################################################################
 
 
@@ -416,7 +412,9 @@ class Density():
 
 class Mean():
     """
-    Quantiles to predict.
+    Trains a neural network to predict the conditional mean using the mean sqaured
+    error. In contrast to the Quantile and Density losses, the Mean loss requires
+    only a single neuron per retrieval target.
     """
     def __init__(self):
         pass
@@ -437,20 +435,26 @@ class Mean():
         return f"Mean()"
 
 
-class MixedLoss:
-    def __init__(self,
-                 backend,
-                 losses):
-        self.losses = {
-            k: l.get_loss(backend) for k, l in losses.items()
-        }
+class Classification():
+    """
+    Trains a neural network to classify outputs using the catogrical cross-entropy
+    loss.
+    """
+    def __init__(self, classes):
+        if isinstance(classes, list):
+            self.n_classes = len(classes)
+            self.class_names = classes
+        else:
+            self.n_classes = classes
+            self.class_names = None
 
-    def to(self, device):
-        for loss in self.losses.values():
-            loss.to(device)
+    def get_loss(self, backend, mask=None):
+        return backend.CrossEntropyLoss(self.n_classes, mask=mask)
 
-    def __call__(self, y_pred, y_true, key):
-        return self.losses[key](y_pred, y_true, key)
+    def _post_process_prediction(self, y_pred, bins=None, key=None):
+        module = get_array_module(y_pred)
+        y_pred = softmax(module, y_pred, axis=1)
+        return y_pred
 
 
 ###############################################################################
@@ -536,7 +540,6 @@ class MRNN(NeuralNetworkModel):
             keys: Keys to use to determine input (``x``) and expected output
                  (``y``) when dataset elements are given as dictionaries.
         """
-        #loss = MixedLoss(self.backend, self.losses)
         losses = apply(lambda l: l.get_loss(self.backend, mask=mask), self.losses)
         return super().train(
             training_data,
@@ -787,7 +790,9 @@ class MRNN(NeuralNetworkModel):
             y_pred = self.predict(x)
 
         if not isinstance(y_pred, dict):
-            return self.losses[key].posterior_mean(y_pred)
+            if isinstance(self.losses, dict):
+                return self.losses[key].posterior_mean(y_pred)
+            return self.losses.posterior_mean(y_pred)
 
         results = {}
         for k in y_pred:
@@ -995,8 +1000,21 @@ class MRNN(NeuralNetworkModel):
             self.transformation = None
 
     def _post_process_prediction(self, y_pred, bins=None, key=None):
+        """
+        Applies post processing to network outputs.
 
+        This function iterates over the losses of the model and applies the
+        ``_post_process_prediction`` method of each loss to the corresponding
+        output.
 
+        Args:
+            y_pred: The raw neural network outputs.
+            bins: The bins for the density loss.
+            key: The key of the output the should be post-processed.
+
+        Return:
+            The post-processed outputs.
+        """
         if not isinstance(y_pred, dict):
             loss = self.losses[key]
             if hasattr(loss, "_post_process_prediction"):
