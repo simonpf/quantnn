@@ -2,7 +2,7 @@
 quantnn.models.pytorch.fully_connected
 ======================================
 
-This module provides an implementation of a fully-connected feed forward
+This module provides an implementation of fully-connected feed forward
 neural networks in pytorch.
 """
 from torch import nn
@@ -71,7 +71,7 @@ class FullyConnected(PytorchModel, nn.Module):
         super().__init__()
         nn.Module.__init__(self)
 
-        if type(activation) == str:
+        if isinstance(activation, str):
             activation = activations[activation]
 
         nominal_width = width
@@ -98,16 +98,197 @@ class FullyConnected(PytorchModel, nn.Module):
         self.mods = nn.ModuleList(modules)
 
     def forward(self, x):
-        """ Propagate input through network. """
+        """Propagate input through network."""
 
         y_p = []
         y_l = self.mods[0](x)
 
-        for l in self.mods[1:]:
+        for layer in self.mods[1:]:
             if self.skips:
                 y = torch.cat(y_p + [y_l, x], 1)
                 y_p = [y_l]
             else:
                 y = y_l
-            y_l = l(y)
+            y_l = layer(y)
         return y_l
+
+
+class MLPBlock(nn.Module):
+    """
+    A building block for a fully-connected (MLP) network.
+
+    This block expects the features to be located along the
+    last dimension of the tensor.
+    """
+
+    def __init__(
+        self,
+        features_in,
+        features_out,
+        activation_factory,
+        norm_factory,
+        residuals=None,
+    ):
+        """
+        Args:
+            features_in: The number of features of the block input.
+            features_out: The number of features of the block output.
+            activation_factory: A factory functional to create the activation
+                layers in the block.
+            norm_factory: A factory functional to create the normalization
+                layers used in the block.
+            residuals: The type of residuals to apply.
+        """
+        super().__init__()
+        if residuals is not None:
+            residuals = residuals.lower()
+        self.residuals = residuals
+        self.body = nn.Sequential(
+            nn.Linear(features_in, features_out, bias=False),
+            norm_factory(features_out),
+            activation_factory(),
+        )
+
+    def forward(self, x):
+        """
+        Propagate input through the block.
+
+        Args:
+            x: The input tensor for residuals 'None' or 'simple'. Or a tuple
+                ``(x, acc, n_acc)`` containing the input ``x``, the
+                accumulation buffer ``acc`` and the accumulation counter
+                ``n_acc``.
+
+        Return:
+            If residuals is 'None' or 'simple', the output is just the output
+            tensor ``y``. If residuals is `hyper` the output is a tuple
+            ``(y, acc, n_acc)`` containing the block output ``y``, the
+            accumulation buffer ``acc`` and the accumulation counter
+            ``n_acc``.
+        """
+        if self.residuals is None:
+            return self.body(x)
+
+        if self.residuals == "simple":
+            y = self.body(x)
+            n = min(x.shape[-1], x.shape[-1])
+            y[..., :n] += x[..., :n]
+            return y
+
+        if isinstance(x, tuple):
+            x, acc, n_acc = x
+            n = min(acc.shape[-1], x.shape[-1])
+            acc[..., :n] += x[..., :n]
+            n_acc += 1
+        else:
+            acc = x
+            n_acc = 1
+            n = x.shape[-1]
+        y = self.body(x)
+        y[..., :n] += acc[..., :n] / n_acc
+        return y, acc, n_acc
+
+
+class MLP(nn.Module):
+    """
+    A fully-connected feed-forward neural network.
+
+    The MLP can be used both as a fully-connected on 2D data as well
+    as a module in a CNN. When used with 4D output the input is
+    automatically permuted so that features are oriented along the last
+    dimension of the input tensor.
+    """
+
+    def __init__(
+        self,
+        features_in,
+        n_features,
+        features_out,
+        n_layers,
+        residuals=None,
+        activation_factory=nn.ReLU,
+        norm_factory=nn.BatchNorm1d,
+        internal=False,
+    ):
+        """
+        Create MLP module.
+
+        Args:
+            features_in: Number of features in the input.
+            n_features: Number of features of the hidden layers.
+            features_out: Number of features of the output.
+            n_layers: The number of layers.
+            residuals: The type of residual connections in the MLP:
+                None, 'simple', or 'hyper'.
+            activation_factory: Factory functional to instantiate the activation
+                functions to use in the MLP.
+            norm_factory: Factory functional to instantiate the normalization
+                layers to use in the MLP.
+            internal: If the module is not an 'internal' module no
+                 normalization or activation function are applied to the
+                 output.
+        """
+        super().__init__()
+        self.n_layers = n_layers
+        if residuals is not None:
+            residuals = residuals.lower()
+        self.residuals = residuals
+
+        self.layers = nn.ModuleList()
+        for _ in range(n_layers - 1):
+            self.layers.append(
+                MLPBlock(
+                    features_in=features_in,
+                    features_out=n_features,
+                    activation_factory=activation_factory,
+                    norm_factory=norm_factory,
+                    residuals=self.residuals,
+                )
+            )
+            features_in = n_features
+        if n_layers > 0:
+            if internal:
+                self.output_layer = nn.Sequential(
+                    MLPBlock(
+                        features_in=n_features,
+                        features_out=features_out,
+                        activation_factory=activation_factory,
+                        norm_factory=norm_factory,
+                        residuals=self.residuals,
+                    )
+                )
+            else:
+                self.output_layer = nn.Linear(n_features, features_out)
+
+    def forward(self, x):
+        """
+        Forward input through network.
+
+        Args:
+            x: The 4D or 2D input tensor to propagate through
+                the network.
+
+        Return:
+            The output tensor.
+        """
+        needs_reshape = False
+        if x.ndim == 4:
+            needs_reshape = True
+            x = torch.permute(x, (0, 2, 3, 1))
+            old_shape = x.shape
+            x = x.reshape(-1, old_shape[1])
+
+        if self.n_layers == 0:
+            return x, None
+
+        y = x
+        for l in self.layers:
+            y = l(y)
+        if self.residuals == "hyper":
+            y = y[0]
+        y = self.output_layer(y)
+
+        if needs_reshape:
+            y = y.view(old_shape[:-1] + (-1,))
+            y = torch.permute(y, (0, 3, 1, 2))
+        return y
