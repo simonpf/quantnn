@@ -94,6 +94,7 @@ class CrossEntropyLoss(Loss):
             reduction="none",
             name=name
         )
+        self.__name__ = name
         self.bins = None
         self.n_classes = None
         if isinstance(bins_or_classes, int):
