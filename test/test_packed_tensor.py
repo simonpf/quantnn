@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from torch import nn
 from quantnn.packed_tensor import PackedTensor
 
 def fill_tensor(t, indices):
@@ -11,9 +12,21 @@ def fill_tensor(t, indices):
     return t
 
 
-def make_random_packed_tensor(batch_size, samples):
-    indices = sorted(np.random.choice(np.arange(batch_size), size=samples, replace=False))
-    t = np.ones((samples, 1))
+def make_random_packed_tensor(batch_size, samples, shape=(1,)):
+    """
+    Create a sparse tensor representing a training batch with
+    missing samples. Which samples are missing is randomized.
+    The elements of the tensor correspond to the sample index.
+
+    Args:
+        batch_size: The nominal batch size of the training batch.
+        samples: The number of non-missing samples.
+        shape: The of each sample in the training batch.
+    """
+    indices = sorted(
+        np.random.choice(np.arange(batch_size), size=samples, replace=False)
+    )
+    t = np.ones((samples,) + shape, dtype=np.float32)
     t = fill_tensor(t, indices)
     return PackedTensor(t, batch_size, indices)
 
@@ -196,3 +209,17 @@ def test_sum():
 
         for i, index in enumerate(indices):
             assert (s.tensor[i] == index).all()
+
+
+def test_apply_batch_norm():
+    """
+    Test application of batch norm layer, which requires the dim() member
+    function.
+    """
+    t = make_random_packed_tensor(100, 50, (8, 16, 16))
+    norm = nn.BatchNorm2d(8)
+    norm.weight.data.fill_(0)
+    norm.bias.data.fill_(1.0)
+    y = norm(t)
+
+    assert (y.tensor == 1.0).all()

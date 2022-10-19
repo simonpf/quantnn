@@ -144,6 +144,9 @@ class PackedTensor:
         """
         return self._t
 
+    def dim(self):
+        return self._t.dim()
+
     def __repr__(self):
         s = (
             f"PackedTensor(batch_size={self.batch_size}, "
