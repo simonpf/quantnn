@@ -177,11 +177,12 @@ class MLPBlock(nn.Module):
 
         if isinstance(x, tuple):
             x, acc, n_acc = x
+            acc = acc.clone()
             n = min(acc.shape[-1], x.shape[-1])
             acc[..., :n] += x[..., :n]
             n_acc += 1
         else:
-            acc = x
+            acc = x.clone()
             n_acc = 1
             n = x.shape[-1]
         y = self.body(x)
@@ -276,7 +277,7 @@ class MLP(nn.Module):
             needs_reshape = True
             x = torch.permute(x, (0, 2, 3, 1))
             old_shape = x.shape
-            x = x.reshape(-1, old_shape[1])
+            x = x.reshape(-1, old_shape[-1])
 
         if self.n_layers == 0:
             return x, None
