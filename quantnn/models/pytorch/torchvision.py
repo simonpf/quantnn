@@ -65,6 +65,24 @@ class ConvNextBlockFactory:
     """
     Factory wrapper for ``torchvision`` ConvNext blocks.
     """
+    @classmethod
+    def layer_norm_with_permute(cls, channels_in):
+        """
+        Layer norm with permutation of channel dimension for application
+        in a CNN.
+        """
+        return nn.Sequential(
+            Permute((0, 2, 3, 1)),
+            cls.layer_norm(channels_in),
+            Permute((0, 3, 1, 2))
+        )
+
+    @classmethod
+    def layer_norm(cls, channels_in):
+        """
+        Layer norm with eps=1e-6.
+        """
+        return nn.LayerNorm(channels_in, eps=1e-6)
 
     def __init__(
         self,
@@ -83,7 +101,7 @@ class ConvNextBlockFactory:
                 removed during training.
         """
         if norm_factory is None:
-            norm_factory = partial(nn.LayerNorm, eps=1e-6)
+            norm_factory = self.layer_norm
         self.norm_factory = norm_factory
         self.layer_scale = layer_scale
         self.stochastic_depth_prob = stochastic_depth_prob
@@ -107,9 +125,7 @@ class ConvNextBlockFactory:
         blocks = []
         if downsample:
             blocks += [
-                Permute((0, 2, 3, 1)),
-                self.norm_factory(channels_in),
-                Permute((0, 3, 1, 2)),
+                self.layer_norm_with_permute(channels_in),
                 nn.Conv2d(channels_in, channels_out, stride=2, kernel_size=2),
             ]
         elif channels_in != channels_out:
