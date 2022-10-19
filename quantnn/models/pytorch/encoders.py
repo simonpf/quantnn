@@ -246,6 +246,7 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             if ind > 0:
                 self.aggregators[str(stage_ind)] = aggregator_factory(
                     channels_out,
+                    2,
                     channels_out,
                 )
 

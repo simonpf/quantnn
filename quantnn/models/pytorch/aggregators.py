@@ -36,7 +36,7 @@ class SparseAggregator(nn.Module):
         """
         super().__init__()
         self.channels_in = channels_in
-        self.aggregator = aggregator_factory(channels_in, channels_in)
+        self.aggregator = aggregator_factory(channels_in, 2, channels_in)
 
     def forward(self, x_1, x_2):
         """
@@ -119,6 +119,7 @@ class SparseAggregatorFactory:
     def __call__(
             self,
             input_channels,
+            n_inputs,
             output_channels
     ):
         """
@@ -126,7 +127,15 @@ class SparseAggregatorFactory:
 
         Args:
             input_channels: The number of channels in the inputs to merge.
+            n_inputs: The number of inputs. Must be 2.
+            output_channels: The number of output channels. Must be the same
+                as the number of input channels.
         """
+        if not n_inputs == 2:
+            raise ValueError(
+                "The SparseAggregator only support aggregation of two input"
+                " streams."
+            )
         if not input_channels == output_channels:
             raise ValueError(
                 "The 'input_channels' and 'output_channels' must be the same "
@@ -139,10 +148,15 @@ class AverageBlock(nn.Module):
     """
     Calculates the average of two inputs.
     """
-
-    def forward(self, x_1, x_2):
+    def forward(self, *args):
         """Average input 'x_1' and 'x_2'."""
-        return torch.mul(torch.add(x_1, x_2), 0.5)
+        n = len(args)
+        x_1 = args[0]
+        x_2 = args[1]
+        result = torch.add(x_1, x_2)
+        for x in args[2:]:
+            result = torch.add(result, x)
+        return torch.mul(result, 1 / n)
 
 
 class AverageAggregatorFactory:
@@ -157,8 +171,13 @@ class SumBlock(nn.Module):
     Calculates the sum of two inputs.
     """
 
-    def forward(self, x_1, x_2):
-        return torch.add(x_1, x_2)
+    def forward(self, *args):
+        x_1 = args[0]
+        x_2 = args[1]
+        result = torch.add(x_1, x_2)
+        for x in args[2:]:
+            result = torch.add(result, x)
+        return result
 
 
 class SumAggregatorFactory:
@@ -182,11 +201,11 @@ class ConcatenateBlock(nn.Module):
         super().__init__()
         self.block = block
 
-    def forward(self, x_1, x_2):
+    def forward(self, *args):
         """
-        Concatenates inputs 'x_1' and 'x_2' and applies the block.
+        Concatenates inputs and applies the block.
         """
-        return self.block(torch.cat([x_1, x_2], dim=1))
+        return self.block(torch.cat(args, dim=1))
 
 
 class BlockAggregatorFactory:
@@ -196,7 +215,6 @@ class BlockAggregatorFactory:
     The returned aggregator block combines concatenation along channels
     with a block from the objects block factory.
     """
-
     def __init__(self, block_factory):
         """
         Args: The block factory to use to produce the block applied to
@@ -204,7 +222,7 @@ class BlockAggregatorFactory:
         """
         self.block_factory = block_factory
 
-    def __call__(self, channels_in, channels_out=None):
+    def __call__(self, channels_in, n_inputs, channels_out=None):
         """
         Create an aggregator block to fuse two inputs with 'channels_in'
         channels and produce output with 'channels_out' channels.
@@ -217,7 +235,7 @@ class BlockAggregatorFactory:
         """
         if channels_out is None:
             channels_out = channels_in
-        block = self.block_factory(2 * channels_in, channels_out)
+        block = self.block_factory(n_inputs * channels_in, channels_out)
         return ConcatenateBlock(block)
 
 
@@ -239,16 +257,16 @@ class LinearAggregatorFactory:
             norm_layer = nn.BatchNorm2d
         self.norm_layer = norm_layer
 
-    def __call__(self, channels_in, channels_out=None):
+    def __call__(self, channels_in, n_inputs, channels_out=None):
         if channels_out is None:
             channels_out = channels_in
         if self.norm_layer is not None:
             return ConcatenateBlock(
                 nn.Sequential(
-                    nn.Conv2d(2 * channels_in, channels_out, kernel_size=1),
+                    nn.Conv2d(n_inputs * channels_in, channels_out, kernel_size=1),
                     self.norm_layer(channels_out),
                 )
             )
         return ConcatenateBlock(
-            nn.Conv2d(2 * channels_in, channels_out, kernel_size=1),
+            nn.Conv2d(n_inputs * channels_in, channels_out, kernel_size=1),
         )

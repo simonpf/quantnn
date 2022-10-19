@@ -74,6 +74,32 @@ def test_sparse_aggregator():
     for ind, batch_ind in enumerate(y.batch_indices):
         assert torch.isclose(y._t[ind], batch_ind * torch.ones(1, 1, 1)).all()
 
+    # Test aggregation with linear layer.
+    aggregator_factory = LinearAggregatorFactory()
+    aggregator = SparseAggregator(8, aggregator_factory)
+
+    # Ensure full tensor is returned if only one of the provided
+    # tensors is sparse.
+    x_1 = torch.ones((100, 8, 32, 32), dtype=torch.float32)
+    fill_tensor(x_1, range(100))
+    x_2 = make_random_packed_tensor(100, 50, (8, 32, 32))
+    y = aggregator(x_1, x_2)
+    assert not isinstance(y, PackedTensor)
+
+    x_2 = torch.ones((100, 8, 32, 32), dtype=torch.float32)
+    fill_tensor(x_2, range(100))
+    x_1 = make_random_packed_tensor(100, 50, (8, 32, 32))
+    y = aggregator(x_1, x_2)
+    assert not isinstance(y, PackedTensor)
+
+    # Make sure merging works with two packed tensors.
+    x_1 = make_random_packed_tensor(100, 50, (8, 32, 32))
+    x_2 = make_random_packed_tensor(100, 50, (8, 32, 32))
+    y = aggregator(x_1, x_2)
+    assert isinstance(y, PackedTensor)
+    batch_indices_union = sorted(list(set(x_1.batch_indices + x_2.batch_indices)))
+    assert y.batch_indices == batch_indices_union
+
 
 AGGREGATORS = [
     SumAggregatorFactory(),
@@ -87,7 +113,11 @@ AGGREGATORS = [
 def test_aggregators(aggregator):
     a = torch.ones(1, 10, 16, 16)
     b = torch.ones(1, 10, 16, 16)
-    agg = aggregator(10, 10)
+    agg = aggregator(10, 2, 10)
     c = agg(a, b)
+    assert c.shape == (1, 10, 16, 16)
 
+    c = torch.ones(1, 10, 16, 16)
+    agg = aggregator(10, 3, 10)
+    c = agg(a, b, c)
     assert c.shape == (1, 10, 16, 16)
