@@ -10,6 +10,7 @@ from typing import Optional, Callable, Union, Optional, List, Dict
 
 import torch
 from torch import nn
+from quantnn.packed_tensor import PackedTensor, forward
 
 
 @dataclass
@@ -271,16 +272,18 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             stage_s = str(stage_ind)
             if stage_ind in self.input_channels:
                 if y is None:
-                    y = self.stems[stage_s](x[input_index])
+                    x_in = x[input_index]
+                    y = forward(self.stems[stage_s], x_in)
                     skips.append(y)
                 else:
+                    x_in = x[input_index]
                     agg = self.aggregators[stage_s]
-                    y = agg(y, self.stems[stage_s](x[input_index]))
+                    y = agg(y, forward(self.stems[stage_s], x_in))
                 input_index += 1
 
             if down is not None:
-                y = down(y)
-            y = stage(y)
+                y = forward(down, y)
+            y = forward(stage, y)
             skips.append(y)
             stage_ind += 1
         return skips
@@ -319,15 +322,16 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             # Integrate input into stream.
             stage_s = str(stage_ind)
             if stage_ind in self.input_channels:
+                x_in = x[input_index]
                 if y is None:
-                    y = self.stems[stage_s](x[input_index])
+                    y = forward(self.stems[stage_s], x_in)
                 else:
                     agg = self.aggregators[stage_s]
-                    y = agg(y, self.stems[stage_s](x[input_index]))
+                    y = agg(y, forward(self.stems[stage_s], x_in))
                 input_index += 1
 
             if down is not None:
-                y = down(y)
-            y = stage(y)
+                    y = forward(down, y)
+            y = forward(stage, y)
             stage_ind = stage_ind + 1
         return y
