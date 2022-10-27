@@ -2,9 +2,9 @@
 quantnn..models.pytorch.aggregators
 ===================================
 
-This module provides 'torch.nn.modules' that merge two input tensors
-to produce a single output tensor. They can be used to merge
- separate branches (data streams) in neural networks.
+This module provides 'torch.nn.module's that merge two or more input tensors
+to produce a single output tensor. They can be used to merge separate
+ branches (data streams) in neural networks.
 """
 import torch
 from torch import nn
@@ -81,7 +81,7 @@ class SparseAggregator(nn.Module):
                 x_1 = x_1.tensor
             return x_1
 
-        x_1_comb, x_2_comb = x_2.intersection(x_1)
+        x_2_comb, x_1_comb = x_2.intersection(x_1)
 
         # No merge required, if there are no streams with complementary
         # information.
@@ -90,7 +90,11 @@ class SparseAggregator(nn.Module):
                 no_merge = no_merge.tensor
             return no_merge
 
-        merged = self.aggregator(x_1_comb, x_2_comb)
+        merged = PackedTensor(
+            self.aggregator(x_1_comb.tensor, x_2_comb.tensor),
+            x_1_comb.batch_size,
+            x_1_comb.batch_indices
+        )
         if no_merge is None:
             if return_full:
                 merged = merged.tensor
@@ -193,19 +197,31 @@ class ConcatenateBlock(nn.Module):
     inputs.
     """
 
-    def __init__(self, block):
+    def __init__(self, block, residual=True):
         """
         Args:
             block: A 'nn.Module' to apply to the concatenated inputs.
+            residual: If ``True``, ``block`` will be used to calculate
+                a residual that is added to the first input stream.
         """
         super().__init__()
         self.block = block
+        if isinstance(residual, bool):
+            if not residual:
+                self.residual = None
+            if residual:
+                self.residual = 0
+        else:
+            self.residual = residual
 
     def forward(self, *args):
         """
         Concatenates inputs and applies the block.
         """
-        return self.block(torch.cat(args, dim=1))
+        y = self.block(torch.cat(args, dim=1))
+        if self.residual is not None:
+            return y + args[self.residual]
+        return y
 
 
 class BlockAggregatorFactory:
@@ -222,7 +238,13 @@ class BlockAggregatorFactory:
         """
         self.block_factory = block_factory
 
-    def __call__(self, channels_in, n_inputs, channels_out=None):
+    def __call__(
+            self,
+            channels_in,
+            n_inputs,
+            channels_out=None,
+            residual=True
+    ):
         """
         Create an aggregator block to fuse two inputs with 'channels_in'
         channels and produce output with 'channels_out' channels.
@@ -236,7 +258,7 @@ class BlockAggregatorFactory:
         if channels_out is None:
             channels_out = channels_in
         block = self.block_factory(n_inputs * channels_in, channels_out)
-        return ConcatenateBlock(block)
+        return ConcatenateBlock(block, residual=residual)
 
 
 class LinearAggregatorFactory:
@@ -247,26 +269,34 @@ class LinearAggregatorFactory:
 
     def __init__(
         self,
-        norm_layer=None,
+        norm_factory=None,
     ):
         """
         Args:
-            norm_layer:
+            norm_factory:
         """
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        self.norm_layer = norm_layer
+        if norm_factory is None:
+            norm_factory = nn.BatchNorm2d
+        self.norm_factory = norm_factory
 
-    def __call__(self, channels_in, n_inputs, channels_out=None):
+    def __call__(
+            self,
+            channels_in,
+            n_inputs,
+            channels_out=None,
+            residual=True
+    ):
         if channels_out is None:
             channels_out = channels_in
-        if self.norm_layer is not None:
+        if self.norm_factory is not None:
             return ConcatenateBlock(
                 nn.Sequential(
                     nn.Conv2d(n_inputs * channels_in, channels_out, kernel_size=1),
-                    self.norm_layer(channels_out),
-                )
+                    self.norm_factory(channels_out),
+                ),
+                residual=residual
             )
         return ConcatenateBlock(
             nn.Conv2d(n_inputs * channels_in, channels_out, kernel_size=1),
+            residual=residual
         )
