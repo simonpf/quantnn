@@ -426,8 +426,22 @@ def test_training_multi_mrnn():
         "classification": Classification(10)
     }
 
+    metrics = [
+        "Bias",
+        "CRPS",
+        "MeanSquaredError",
+        "ScatterPlot",
+        "CalibrationPlot",
+        "Correlation"
+    ]
+
     mrnn = MRNN(losses=losses, model=model)
-    mrnn.train(batched_data, n_epochs=4)
+    mrnn.train(
+        batched_data,
+        validation_data=batched_data[:10],
+        n_epochs=4,
+        metrics=metrics
+    )
 
     x = batched_data[0][0].to(torch.float)
     with torch.no_grad():

@@ -34,6 +34,32 @@ def _check_input_dimensions(y_pred, y):
         )
 
 
+def calculate_posterior_mean(model, y_pred, key, cache=None):
+    """
+    Lookup posterior mean from cache or try to calculate it.
+
+    Args:
+        model: The neural network model to use to calculate the posterior mean.
+        y_pred: The post-processed predictions.
+        key: The key of the output that is currently processed.
+        cache: Optional cache to use to look up the posterior mean.
+
+    Return:
+        A ``torch.Tensor`` containing the posterior mean or None if the
+        model doesn't provide this functionality.
+    """
+    try:
+        if cache is not None and "y_mean" in cache:
+            y_mean = cache["y_mean"]
+        else:
+            y_mean = model.posterior_mean(y_pred=y_pred, key=key)
+            if cache is not None:
+                cache["y_mean"] = y_mean
+    except NotImplementedError:
+        return None
+    return y_mean
+
+
 class Metric(ABC):
     """
     The Metric abstract base class defines the basic interface for metric
@@ -157,20 +183,16 @@ class Bias(ScalarMetric):
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
+        y_mean = calculate_posterior_mean(self.model, y_pred, key, cache=cache)
+        if y_mean is None:
+            return None
+
         self.keys.add(key)
 
         if self.tensor_backend is None:
             self.tensor_backend = get_tensor_backend(y_pred)
         xp = self.tensor_backend
 
-        # Get deviation from mean from cache
-        # if not already computed.
-        if cache is not None and "y_mean" in cache:
-            y_mean = cache["y_mean"]
-        else:
-            y_mean = self.model.posterior_mean(y_pred=y_pred, key=key)
-        if cache is not None:
-            cache["y_mean"] = y_mean
 
         if len(y.shape) > len(y_mean.shape):
             if hasattr(self.model, "quantile_axis"):
@@ -230,14 +252,9 @@ class MeanSquaredError(ScalarMetric):
             self.tensor_backend = get_tensor_backend(y_pred)
         xp = self.tensor_backend
 
-        # Get deviation from mean from cache
-        # if not already computed.
-        if cache is not None and "y_mean" in cache:
-            y_mean = cache["y_mean"]
-        else:
-            y_mean = self.model.posterior_mean(y_pred=y_pred, key=key)
-        if cache is not None:
-            cache["y_mean"] = y_mean
+        y_mean = calculate_posterior_mean(self.model, y_pred, key, cache=cache)
+        if y_mean is None:
+            return None
 
         if len(y.shape) > len(y_mean.shape):
             if hasattr(self.model, "quantile_axis"):
@@ -304,14 +321,9 @@ class Correlation(ScalarMetric):
             self.tensor_backend = get_tensor_backend(y_pred)
         xp = self.tensor_backend
 
-        # Get deviation from mean from cache
-        # if not already computed.
-        if cache is not None and "y_mean" in cache:
-            y_mean = cache["y_mean"]
-        else:
-            y_mean = self.model.posterior_mean(y_pred=y_pred, key=key)
-        if cache is not None:
-            cache["y_mean"] = y_mean
+        y_mean = calculate_posterior_mean(self.model, y_pred, key, cache=cache)
+        if y_mean is None:
+            return None
 
         if len(y.shape) > len(y_mean.shape):
             if hasattr(self.model, "quantile_axis"):
@@ -608,14 +620,9 @@ class ScatterPlot(Metric):
             self.tensor_backend = get_tensor_backend(y_pred)
         xp = self.tensor_backend
 
-        # Get deviation from mean from cache
-        # if not already computed.
-        if cache is not None and "y_mean" in cache:
-            y_mean = cache["y_mean"]
-        else:
-            y_mean = self.model.posterior_mean(y_pred=y_pred, key=key)
-            if cache is not None:
-                cache["y_mean"] = y_mean
+        y_mean = calculate_posterior_mean(self.model, y_pred, key, cache=cache)
+        if y_mean is None:
+            return None
 
         y_mean = xp.to_numpy(y_mean)
         y = xp.to_numpy(y)

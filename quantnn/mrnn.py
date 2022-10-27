@@ -451,6 +451,9 @@ class Classification():
     def get_loss(self, backend, mask=None):
         return backend.CrossEntropyLoss(self.n_classes, mask=mask)
 
+    def posterior_mean(self, *args):
+        raise NotImplementedError
+
     def _post_process_prediction(self, y_pred, bins=None, key=None):
         module = get_array_module(y_pred)
         y_pred = softmax(module, y_pred, axis=1)
