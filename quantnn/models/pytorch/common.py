@@ -858,7 +858,7 @@ class PytorchModel:
 
                             x, y = _get_x_y(data, keys)
                             x = to_device(x, device)
-                            y = to_device(y, device, to_float=True)
+                            y = to_device(y, device, to_float=False)
                             y_pred = self(x)
 
                             avg_loss, tot_loss, losses, n_samples = self._train_step(
