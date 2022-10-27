@@ -131,6 +131,13 @@ class PackedTensor:
         return self._t.shape
 
     @property
+    def empty(self):
+        """
+        Checks whether batch contains data.
+        """
+        return len(self._batch_indices) == 0
+
+    @property
     def not_empty(self):
         """
         Checks whether batch contains data.
@@ -375,3 +382,14 @@ class PackedTensor:
         return PackedTensor(
             self._t.to(*args, **kwargs), self.batch_size, self.batch_indices
         )
+
+def forward(module, x):
+    if isinstance(x, PackedTensor):
+        if x.empty:
+            return x
+        return PackedTensor(
+            module(x.tensor),
+            x.batch_size,
+            x.batch_indices
+        )
+    return module(x)
