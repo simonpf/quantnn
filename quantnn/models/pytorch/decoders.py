@@ -13,17 +13,27 @@ from quantnn.models.pytorch.encoders import (
     SequentialStageFactory,
     StageConfig
 )
+from quantnn.models.pytorch.aggregators import (
+    SparseAggregatorFactory,
+    LinearAggregatorFactory
+)
+from quantnn.packed_tensor import forward
 
 ###############################################################################
 # Upsampling module.
 ###############################################################################
 
 
-class Bilinear:
+class Bilinear(nn.Sequential):
     """
     A factory for producing bilinear upsampling layers.
     """
-    def __call__(self, factor):
+    def __call__(self, factor, channels_in=None, channels_out=None):
+        if channels_in is not None:
+            return nn.Sequential(
+                nn.Conv2d(channels_in, channels_out, kernel_size=1),
+                nn.UpsamplingBilinear2d(scale_factor=factor)
+            )
         return nn.UpsamplingBilinear2d(scale_factor=factor)
 
 
@@ -51,6 +61,29 @@ class SpatialDecoder(nn.Module):
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
             upsampler_factory: Callable[[int], nn.Module] = Bilinear(),
     ):
+        """
+        Args:
+            output_channels: The output channels of the decoder.
+            stages: A list of ``int`` or ``StageConfig`` specifying the
+                properties of the stages in the encoder and decoder.
+            block_factory: Factory functional to use to create the blocks
+                in the encoders' stages.
+            channel_scaling: Factor specifying the decrease in channels with
+                each stage.
+            max_channels: The maximum number of channels.
+            skip_connections: If bool, should specify whether the decoder
+                should make use of skip connections. If an ``int`` it should
+                specify up to which stage of the decoder skip connections will
+                be provided. This can be used to implement a decoder with
+                skip connects that yields a higher resolution than the input
+                encoder.
+            stage_factory: Factory functional to use to create the stages in
+                the decoder.
+            upsampler_factory: Factory functional to use to create the
+                upsampling modules in the decoder.
+        """
+
+
         super().__init__()
         n_stages = len(stages)
         self.n_stages = n_stages
@@ -135,4 +168,152 @@ class SpatialDecoder(nn.Module):
             y = x
             for up, stage in zip(self.upsamplers, self.stages):
                 y = stage(up(y))
+        return y
+
+
+class SparseSpatialDecoder(nn.Module):
+    """
+    A decoder for spatial information which supports missing skip
+    connections.
+
+    The decoder uses explicit aggregation block that combine the inputs
+    from the encoder with the decoders own upsampling data stream. By
+    using when a SparseAggregator, the decoder can handle cases
+    where certain input samples are missing from the skip connections.
+    """
+    def __init__(
+            self,
+            output_channels: int,
+            stages: List[Union[int, StageConfig]],
+            block_factory: Optional[Callable[[int, int], nn.Module]],
+            channel_scaling: int = 2,
+            max_channels: int = None,
+            skip_connections: int = -1,
+            multi_scale_output: int = None,
+            stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
+            upsampler_factory: Callable[[int], nn.Module] = Bilinear(),
+            aggregator_factory: Callable[[int, int], nn.Module] = None
+    ):
+        super().__init__()
+        n_stages = len(stages)
+        self.n_stages = n_stages
+        self.upsamplers = nn.ModuleList()
+        self.stages = nn.ModuleList()
+        self.aggregators = nn.ModuleList()
+        if skip_connections < 0:
+            skip_connections = n_stages
+        self.skip_connections = skip_connections
+
+        if multi_scale_output is not None:
+            self.projections = nn.ModuleList()
+        else:
+            self.projections = None
+
+        input_channels = output_channels * channel_scaling ** n_stages
+
+        if stage_factory is None:
+            stage_factory = SequentialStageFactory()
+        if aggregator_factory is None:
+            aggregator_factory = SparseAggregatorFactory(
+                LinearAggregatorFactory()
+            )
+
+        try:
+            stages = [
+                stage if isinstance(stage, StageConfig) else StageConfig(stage)
+                for stage in stages
+            ]
+        except ValueError:
+            raise ValueError(
+                "'stages' must be a list of 'StageConfig' or 'int'  objects."
+            )
+
+        channels = input_channels
+        for index, config in enumerate(stages):
+            if max_channels is None:
+                channels_in = channels
+                channels_out = channels // channel_scaling
+            else:
+                channels_in = min(channels, max_channels)
+                channels_out = min(channels // channel_scaling, max_channels)
+
+            self.upsamplers.append(
+                upsampler_factory(2, channels_in, channels_out)
+            )
+            channels_combined = channels_in
+            if index < self.skip_connections:
+                self.aggregators.append(
+                    aggregator_factory(
+                        channels_out, 2, channels_out
+                    )
+                )
+            else:
+                self.aggregators.append(None)
+
+            self.stages.append(
+                stage_factory(
+                    channels_out,
+                    channels_out,
+                    config.n_blocks,
+                    block_factory,
+                    downsample=False
+                )
+            )
+            if self.projections is not None:
+                if channels_out != multi_scale_output:
+                    self.projections.append(
+                        nn.Sequential(
+                            nn.Conv2d(channels_out, multi_scale_output, kernel_size=1),
+                        )
+                    )
+                else:
+                    self.projections.append(
+                        nn.Sequential(
+                            nn.Identity(),
+                        )
+                    )
+            channels = channels // channel_scaling
+
+    def forward(
+            self,
+            x: Union[torch.Tensor, List[torch.Tensor]]
+    ) -> torch.Tensor:
+        """
+        Args:
+            x: The output from the encoder. This should be a single tensor
+               if no skip connections are used. If skip connections are used,
+               x should be list containing the outputs from each stage in the
+               encoder.
+
+        Return:
+            The output tensor from the last decoder stage.
+        """
+        if not isinstance(x, list):
+            raise ValueError(
+                f"For a decoder with skip connections the input must "
+                f"be a list of tensors."
+            )
+
+        # Pad input with None
+        if len(x) < self.n_stages + 1:
+            x = [None] * (self.n_stages + 1 - len(x)) + x
+
+        y = x[-1]
+        results = []
+        for ind, (x_skip, up, agg, stage) in enumerate(zip(
+                x[-2::-1],
+                self.upsamplers,
+                self.aggregators,
+                self.stages
+        )):
+            y_up = forward(up, y)
+            if x_skip is None:
+                y = forward(stage, y_up)
+            else:
+                y_agg = agg(y_up, x_skip)
+                y = forward(stage, y_agg)
+            if self.projections is not None:
+                results.append(self.projections[ind](y))
+        if self.projections is not None:
+            return results
         return y
