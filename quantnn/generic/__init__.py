@@ -615,6 +615,29 @@ def softmax(module, x, axis=None):
     raise UnknownModuleException(f"Module {module.__name__} not supported.")
 
 
+def sigmoid(module, x):
+    """
+    Apply element-wise sigmoid to tensor.
+
+    Arguments:
+        module: The backend array corresponding to the given array.
+        x: The tensor to apply the softmax to.
+
+    Return:
+         sigmoid(x)
+    """
+    _import_modules()
+    if module in [np, ma]:
+        return sp.special.sigmoid(x)
+    elif module == torch:
+        return module.sigmoid(x)
+    elif module == jnp:
+        return jax.nn.sigmoid(x)
+    elif module == tf:
+        return module.nn.sigmoid(x)
+    raise UnknownModuleException(f"Module {module.__name__} not supported.")
+
+
 def exp(module, x):
     """
     Calculate exponential of tensor.

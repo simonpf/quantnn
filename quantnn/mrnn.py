@@ -10,7 +10,7 @@ model.
 from quantnn import quantiles as qq
 from quantnn import density as qd
 from quantnn.neural_network_model import NeuralNetworkModel
-from quantnn.generic import softmax, to_array, get_array_module
+from quantnn.generic import sigmoid, softmax, to_array, get_array_module
 from quantnn.utils import apply
 
 
@@ -24,13 +24,18 @@ class Quantiles():
     Represents a regression target for which a given selection of quantiles
     should be predicted.
     """
-    def __init__(self, quantiles):
+    def __init__(self, quantiles, sparse=False):
         """
         Args:
             quantiles: Array containing the quantiles to predict.
+            sparse: Whether or not to use sparse loss calculation for the
+                quantile loss. The sparse calculation may be slower in cases
+                where only few pixels are invalid but significantly reduces
+                the memory footprint when most pixels are invalid.
         """
         self.quantile_axis = 1
         self.quantiles = quantiles
+        self.sparse = sparse
 
     def get_loss(self, backend, mask=None):
         """
@@ -44,7 +49,7 @@ class Quantiles():
         Return:
             The loss function to use to train this target.
         """
-        return backend.QuantileLoss(self.quantiles, mask=mask)
+        return backend.QuantileLoss(self.quantiles, mask=mask, sparse=self.sparse)
 
     def predict(self, y_pred):
         """
@@ -188,6 +193,7 @@ class Quantiles():
         """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
+        new_quantiles = to_array(module, new_quantiles, like=y_pred)
         return qq.posterior_quantiles(
             y_pred,
             quantiles=quantiles,
@@ -440,19 +446,29 @@ class Classification():
     Trains a neural network to classify outputs using the catogrical cross-entropy
     loss.
     """
-    def __init__(self, classes):
+    def __init__(self, classes, sparse=False):
         if isinstance(classes, list):
             self.n_classes = len(classes)
             self.class_names = classes
         else:
             self.n_classes = classes
             self.class_names = None
+        self.sparse = sparse
 
     def get_loss(self, backend, mask=None):
-        return backend.CrossEntropyLoss(self.n_classes, mask=mask)
+        return backend.CrossEntropyLoss(self.n_classes, mask=mask, sparse=self.sparse)
 
     def posterior_mean(self, *args):
         raise NotImplementedError
+
+    def predict(self, y_pred):
+        module = get_array_module(y_pred)
+        if self.n_classes == 2:
+            y_pred = sigmoid(module, y_pred)
+        else:
+            y_pred = softmax(module, y_pred, axis=1)
+        return y_pred
+
 
     def _post_process_prediction(self, y_pred, bins=None, key=None):
         module = get_array_module(y_pred)
@@ -1030,3 +1046,20 @@ class MRNN(NeuralNetworkModel):
             if hasattr(loss, "_post_process_prediction"):
                 results[k] = loss._post_process_prediction(y_pred, bins=bins, key=key)
         return results
+
+    def lightning(self, mask, optimizer=None, scheduler=None, metrics=None, name=None):
+        """
+        Get Pytorch Lightning module.
+        """
+        from quantnn.models.pytorch.lightning import QuantnnLightning
+        losses = apply(lambda l: l.get_loss(self.backend, mask=mask), self.losses)
+        return QuantnnLightning(
+            self,
+            losses,
+            scheduler=scheduler,
+            optimizer=optimizer,
+            metrics=metrics,
+            transformation=self.transformation,
+            name=name,
+            mask=mask
+        )

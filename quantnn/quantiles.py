@@ -379,7 +379,7 @@ def posterior_quantiles(y_pred, quantiles, new_quantiles, quantile_axis=1):
     xp = get_array_module(y_pred)
 
     n = len(y_pred.shape)
-    indices = arange(xp, 0, len(quantiles), 1.0)
+    indices = as_type(xp, arange(xp, 0, len(quantiles), 1.0), y_pred)
     selection = [slice(0, None)] * n
 
     y_qs = []

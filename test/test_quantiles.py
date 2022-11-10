@@ -209,6 +209,7 @@ def test_pdf_binned(xp):
     y_pdf_binned = pdf_binned(y_pred, quantiles, bins, quantile_axis=0)
     assert np.all(np.isclose(y_pdf_binned, 0.0, 1e-3))
 
+
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_posterior_mean(xp):
     """
@@ -251,6 +252,7 @@ def test_posterior_mean(xp):
     y_pred = eo.repeat(arange(xp, 1.0, 9.1, 1.0), 'q -> h q w', h=10, w=10)
     means = posterior_mean(y_pred, quantiles, quantile_axis=1)
     assert np.all(np.isclose(means, 5.0 * xp.ones_like(means)))
+
 
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_crps(xp):

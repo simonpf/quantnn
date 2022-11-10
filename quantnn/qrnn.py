@@ -584,4 +584,5 @@ class QRNN(NeuralNetworkModel):
             metrics=metrics,
             transformation=self.transformation,
             name=name,
+            mask=mask
         )
