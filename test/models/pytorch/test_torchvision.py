@@ -26,7 +26,7 @@ def test_resnet_block():
     y = block(x)
     assert y.shape == (1, 2, 8, 8)
 
-    block = factory(1, 2, downsample=True)
+    block = factory(1, 2, downsample=2)
     y = block(x)
     assert y.shape == (1, 2, 4, 4)
 
@@ -44,6 +44,6 @@ def test_convnext_block():
     y = block(x)
     assert y.shape == (1, 2, 8, 8)
 
-    block = factory(1, 2, downsample=True)
+    block = factory(1, 2, downsample=2)
     y = block(x)
     assert y.shape == (1, 2, 4, 4)

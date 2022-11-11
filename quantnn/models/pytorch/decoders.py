@@ -52,7 +52,7 @@ class SpatialDecoder(nn.Module):
     """
     def __init__(
             self,
-            output_channels: int,
+            channels: Union[List[int], int],
             stages: List[Union[int, StageConfig]],
             block_factory: Optional[Callable[[int, int], nn.Module]],
             channel_scaling: int = 2,
@@ -63,14 +63,18 @@ class SpatialDecoder(nn.Module):
     ):
         """
         Args:
-            output_channels: The output channels of the decoder.
-            stages: A list of ``int`` or ``StageConfig`` specifying the
-                properties of the stages in the encoder and decoder.
+            channels: A list specifying the channels before and after all
+                stages in the decoder. Alternatively, channels can be an
+                integer specifying the number of channels of the output from
+                the last stage of the encoder. In this case, the number
+                of channels of previous stages is computed by scaling
+                the number of channels in each stage with 'channel_scaling'.
             block_factory: Factory functional to use to create the blocks
                 in the encoders' stages.
             channel_scaling: Factor specifying the decrease in channels with
                 each stage.
-            max_channels: The maximum number of channels.
+            max_channels: Cutoff value to limit the number of channels. Only
+                used if channels is an integer.
             skip_connections: If bool, should specify whether the decoder
                 should make use of skip connections. If an ``int`` it should
                 specify up to which stage of the decoder skip connections will
@@ -82,8 +86,6 @@ class SpatialDecoder(nn.Module):
             upsampler_factory: Factory functional to use to create the
                 upsampling modules in the decoder.
         """
-
-
         super().__init__()
         n_stages = len(stages)
         self.n_stages = n_stages
@@ -91,7 +93,12 @@ class SpatialDecoder(nn.Module):
         self.stages = nn.ModuleList()
         self.skip_connections = skip_connections
 
-        input_channels = output_channels * channel_scaling ** n_stages
+        if isinstance(channels, int):
+           channels = [
+               channels * channel_scaling ** i for i in range(n_stages + 1)
+           ][::-1]
+           if max_channels is not None:
+               channels = [min(ch, max_channels) for ch in channels]
 
         if stage_factory is None:
             stage_factory = SequentialStageFactory()
@@ -106,14 +113,8 @@ class SpatialDecoder(nn.Module):
                 "'stages' must be a list of 'StageConfig' or 'int'  objects."
             )
 
-        channels = input_channels
-        for index, config in enumerate(stages):
-            if max_channels is None:
-                channels_in = channels
-                channels_out = channels // channel_scaling
-            else:
-                channels_in = min(channels, max_channels)
-                channels_out = min(channels // channel_scaling, max_channels)
+        channels_in = channels[0]
+        for index, (config, channels_out) in enumerate(zip(stages, channels[1:])):
 
             self.upsamplers.append(
                 upsampler_factory(2)
@@ -132,7 +133,7 @@ class SpatialDecoder(nn.Module):
                     downsample=False
                 )
             )
-            channels = channels // channel_scaling
+            channels_in = channels_out
 
     def forward(
             self,
@@ -183,7 +184,7 @@ class SparseSpatialDecoder(nn.Module):
     """
     def __init__(
             self,
-            output_channels: int,
+            channels: int,
             stages: List[Union[int, StageConfig]],
             block_factory: Optional[Callable[[int, int], nn.Module]],
             channel_scaling: int = 2,
@@ -194,6 +195,33 @@ class SparseSpatialDecoder(nn.Module):
             upsampler_factory: Callable[[int], nn.Module] = Bilinear(),
             aggregator_factory: Callable[[int, int], nn.Module] = None
     ):
+        """
+        Args:
+            channels: A list specifying the channels before and after all
+                stages in the decoder. Alternatively, channels can be an
+                integer specifying the number of channels of the output from
+                the last stage of the encoder. In this case, the number
+                of channels of previous stages is computed by scaling
+                the number of channels in each stage with 'channel_scaling'.
+            block_factory: Factory functional to use to create the blocks
+                in the encoders' stages.
+            channel_scaling: Factor specifying the decrease in channels with
+                each stage.
+            max_channels: Cutoff value to limit the number of channels. Only
+                used if channels is an integer.
+            skip_connections: If bool, should specify whether the decoder
+                should make use of skip connections. If an ``int`` it should
+                specify up to which stage of the decoder skip connections will
+                be provided. This can be used to implement a decoder with
+                skip connects that yields a higher resolution than the input
+                encoder.
+            stage_factory: Factory functional to use to create the stages in
+                the decoder.
+            upsampler_factory: Factory functional to use to create the
+                upsampling modules in the decoder.
+            aggregator_factory: Factory functional to create aggregation
+                blocks.
+        """
         super().__init__()
         n_stages = len(stages)
         self.n_stages = n_stages
@@ -204,12 +232,16 @@ class SparseSpatialDecoder(nn.Module):
             skip_connections = n_stages
         self.skip_connections = skip_connections
 
+        if isinstance(channels, int):
+           channels = [
+               channels * channel_scaling ** i for i in range(n_stages + 1)
+           ][::-1]
+           if max_channels is not None:
+               channels = [min(ch, max_channels) for ch in channels]
         if multi_scale_output is not None:
             self.projections = nn.ModuleList()
         else:
             self.projections = None
-
-        input_channels = output_channels * channel_scaling ** n_stages
 
         if stage_factory is None:
             stage_factory = SequentialStageFactory()
@@ -228,15 +260,8 @@ class SparseSpatialDecoder(nn.Module):
                 "'stages' must be a list of 'StageConfig' or 'int'  objects."
             )
 
-        channels = input_channels
-        for index, config in enumerate(stages):
-            if max_channels is None:
-                channels_in = channels
-                channels_out = channels // channel_scaling
-            else:
-                channels_in = min(channels, max_channels)
-                channels_out = min(channels // channel_scaling, max_channels)
-
+        channels_in = channels[0]
+        for index, (config, channels_out) in enumerate(zip(stages, channels[1:])):
             self.upsamplers.append(
                 upsampler_factory(2, channels_in, channels_out)
             )
@@ -272,7 +297,7 @@ class SparseSpatialDecoder(nn.Module):
                             nn.Identity(),
                         )
                     )
-            channels = channels // channel_scaling
+            channels_in = channels_out
 
     def forward(
             self,

@@ -71,7 +71,7 @@ class SpatialEncoder(nn.Module):
     """
     def __init__(
             self,
-            input_channels: int,
+            channels: Union[int, List[int]],
             stages: List[Union[int, StageConfig]],
             block_factory: Optional[Callable[[int, int], nn.Module]],
             channel_scaling: int = 2,
@@ -81,13 +81,20 @@ class SpatialEncoder(nn.Module):
     ):
         """
         Args:
-            input_channels: The number of input channels to the encoder.
+            channels: A list specifying the channels before and after all
+                stages in the encoder. Alternatively, channels can be an
+                integer specifying the number of channels of the input to
+                the first stage of the encoder. In this case, the number
+                of channels of subsequent stages is computed by scaling
+                the number of channels in each stage with 'channel_scaling'.
             stages: A list containing the stage specifications for each
                 stage in the encoder.
             block_factory: Factory to create the blocks in each stage.
             channel_scaling: Scaling factor specifying the increase of the
-                number of channels after every downsampling layer.
-            max_channels: Cutoff value to limit the number of channels.
+                number of channels after every downsampling layer. Only used
+                if channels is an integer.
+            max_channels: Cutoff value to limit the number of channels. Only
+                used if channels is an integer.
             stage_factory: Optional stage factory to create the encoder
                 stages. Defaults to ``SequentialStageFactory``.
             downsampler_factory: Optional factory to create downsampling
@@ -98,7 +105,20 @@ class SpatialEncoder(nn.Module):
         self.channel_scaling = channel_scaling
         self.downsamplers = nn.ModuleList()
         self.stages = nn.ModuleList()
-        channels = input_channels
+
+        n_stages = len(stages)
+        if isinstance(channels, int):
+            channels = [
+                channels * channel_scaling ** i for i in range(n_stages + 1)
+            ]
+            if max_channels is not None:
+                channels = [min(ch, max_channels) for ch in channels]
+
+        if not len(channels) == len(stages) + 1:
+            raise ValueError(
+                "The list of given channel numbers must match the number "
+                "of stages plus 1."
+            )
 
         if stage_factory is None:
             stage_factory = SequentialStageFactory()
@@ -114,22 +134,19 @@ class SpatialEncoder(nn.Module):
             )
 
 
-        for stage in stages:
-            if max_channels is None:
-                channels_out = channels * channel_scaling
-            else:
-                channels_out = min(channels * channel_scaling, max_channels)
+        channels_in = channels[0]
+        for stage, channels_out in zip(stages, channels[1:]):
 
             # Downsampling layer is included in stage.
             if downsampler_factory is None:
                 self.downsamplers.append(None)
                 self.stages.append(
                     stage_factory(
-                        channels,
+                        channels_in,
                         channels_out,
                         stage.n_blocks,
                         block_factory,
-                        downsample=True
+                        downsample=2
                     )
                 )
             # Explicit downsampling layer.
@@ -143,10 +160,10 @@ class SpatialEncoder(nn.Module):
                         channels_out,
                         stage.n_blocks,
                         block_factory,
-                        downsample=False
+                        downsample=2
                     )
                 )
-            channels = channels_out
+            channels_in = channels_out
 
     def forward_with_skips(self, x: torch.Tensor) -> List[torch.Tensor]:
         """
@@ -206,7 +223,7 @@ class MultiInputSpatialEncoder(SpatialEncoder):
     def __init__(
             self,
             input_channels: Dict[int, int],
-            base_channels: int,
+            channels: Union[int, List[int]],
             stages: List[Union[int, StageConfig]],
             block_factory: Optional[Callable[[int, int], nn.Module]],
             aggregator_factory: Optional[Callable[[int], nn.Module]],
@@ -215,18 +232,40 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
             downsampler_factory: Callable[[int, int], nn.Module] = None,
     ):
+        """
+            input_channels: A dictionary mapping stage indices to numbers
+                of channels that are inputs to this stage.
+            channels: A list specifying the channels before and after all
+                stages in the encoder. Alternatively, channels can be an
+                integer specifying the number of channels of the input to
+                the first stage of the encoder. In this case, the number
+                of channels of subsequent stages is computed by scaling
+                the number of channels in each stage with 'channel_scaling'.
+            stages: A list containing the stage specifications for each
+                stage in the encoder.
+            block_factory: Factory to create the blocks in each stage.
+            channel_scaling: Scaling factor specifying the increase of the
+                number of channels after every downsampling layer. Only used
+                if channels is an integer.
+            max_channels: Cutoff value to limit the number of channels. Only
+                used if channels is an integer.
+            stage_factory: Optional stage factory to create the encoder
+                stages. Defaults to ``SequentialStageFactory``.
+            downsampler_factory: Optional factory to create downsampling
+                layers. If not provided, the block factory must provide
+                downsampling functionality.
+        """
         n_stages = len(stages)
-        if max_channels is None:
-            max_channels = base_channels * channel_scaling ** n_stages
-
         keys = list(input_channels.keys())
         first_stage = min(keys)
-        true_input_channels = min(
-            base_channels * channel_scaling ** first_stage,
-            max_channels
-        )
+
+        if isinstance(channels, int):
+            channels = [channels * channel_scaling ** i for i in range(n_stages + 1)]
+            if max_channels is not None:
+                channels = [min(ch, max_channels) for ch in channels]
+
         super().__init__(
-            true_input_channels,
+            channels[first_stage:],
             stages[first_stage:],
             block_factory,
             channel_scaling=channel_scaling,
@@ -240,9 +279,7 @@ class MultiInputSpatialEncoder(SpatialEncoder):
         self.first_stage = first_stage
 
         for ind, (stage_ind, channels_in) in enumerate(input_channels.items()):
-            channels_out = min(
-                base_channels * channel_scaling ** stage_ind,
-                max_channels)
+            channels_out = channels[stage_ind]
             self.stems[str(stage_ind)] = block_factory(channels_in, channels_out)
             if ind > 0:
                 self.aggregators[str(stage_ind)] = aggregator_factory(
@@ -335,3 +372,4 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             y = forward(stage, y)
             stage_ind = stage_ind + 1
         return y
+

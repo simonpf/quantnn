@@ -37,7 +37,8 @@ class ConvBlockFactory:
     def __call__(
             self,
             channels_in,
-            channels_out=None
+            channels_out=None,
+            downsample=False
     ):
         """
         Args:
@@ -52,12 +53,17 @@ class ConvBlockFactory:
         if self.kernel_size > 1:
             padding = (self.kernel_size - 1) // 2
 
+        stride = 1
+        if downsample:
+            stride = 2
+
         blocks = [
             nn.Conv2d(
                 channels_in,
                 channels_out,
                 kernel_size=self.kernel_size,
-                padding=padding
+                padding=padding,
+                stride=stride
             )
         ]
 

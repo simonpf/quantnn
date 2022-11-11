@@ -25,14 +25,14 @@ def test_spatial_decoder():
     """
     block_factory = ResNetBlockFactory()
     encoder = SpatialEncoder(
-        input_channels=1,
+        channels=1,
         stages=[4] * 4,
         channel_scaling=2,
         max_channels=8,
         block_factory=block_factory,
     )
     decoder = SpatialDecoder(
-        output_channels=1,
+        channels=1,
         stages=[4] * 4,
         channel_scaling=2,
         max_channels=8,
@@ -47,7 +47,7 @@ def test_spatial_decoder():
     assert y.shape == (1, 1, 32, 32)
 
     decoder = SpatialDecoder(
-        output_channels=1,
+        channels=1,
         stages=[4] * 4,
         channel_scaling=2,
         max_channels=8,
@@ -73,7 +73,7 @@ def test_encoder_decoder_asymmetric():
     }
     encoder = MultiInputSpatialEncoder(
         input_channels=input_channels,
-        base_channels=4,
+        channels=4,
         stages=[4] * 4,
         block_factory=block_factory,
         channel_scaling=2,
@@ -81,7 +81,7 @@ def test_encoder_decoder_asymmetric():
         aggregator_factory=aggregator_factory
     )
     decoder = SpatialDecoder(
-        output_channels=4,
+        channels=4,
         stages=[4] * 4,
         channel_scaling=2,
         max_channels=16,
@@ -113,7 +113,7 @@ def test_encoder_decoder_sparse():
     }
     encoder = MultiInputSpatialEncoder(
         input_channels=input_channels,
-        base_channels=4,
+        channels=4,
         stages=[4] * 4,
         block_factory=block_factory,
         channel_scaling=2,
@@ -121,7 +121,7 @@ def test_encoder_decoder_sparse():
         aggregator_factory=aggregator_factory
     )
     decoder = SparseSpatialDecoder(
-        output_channels=4,
+        channels=4,
         stages=[4] * 4,
         channel_scaling=2,
         max_channels=16,
@@ -161,7 +161,7 @@ def test_encoder_decoder_multi_scale_output():
     }
     encoder = MultiInputSpatialEncoder(
         input_channels=input_channels,
-        base_channels=4,
+        channels=4,
         stages=[4] * 4,
         block_factory=block_factory,
         channel_scaling=2,
@@ -169,7 +169,7 @@ def test_encoder_decoder_multi_scale_output():
         aggregator_factory=aggregator_factory
     )
     decoder = SparseSpatialDecoder(
-        output_channels=4,
+        channels=4,
         stages=[4] * 4,
         channel_scaling=2,
         max_channels=16,

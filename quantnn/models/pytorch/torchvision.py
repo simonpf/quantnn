@@ -31,7 +31,7 @@ class ResNetBlockFactory:
         self.norm_factory = norm_factory
 
     def __call__(
-        self, channels_in: int, channels_out: int, downsample: bool = False
+        self, channels_in: int, channels_out: int, downsample: int = 1
     ) -> nn.Module:
         """
         Create ResNet block.
@@ -40,16 +40,16 @@ class ResNetBlockFactory:
             channels_in: The number of channels in the input.
             channels_out: The number of channels used in the remaining
                 layers in the block.
-            downsample: Whether the block should perform spatial
-                downsampling by a factor of 2.
+            downsample: Degree of downsampling to be performed by the block.
+                No downsampling is performed if <= 1.
 
         Return:
             The ResNet block.
         """
         stride = 1
         projection = None
-        if downsample:
-            stride = 2
+        if downsample >= 1:
+            stride = downsample
         if downsample or channels_in != channels_out:
             projection = nn.Sequential(
                 nn.Conv2d(channels_in, channels_out, stride=stride, kernel_size=1),
@@ -107,7 +107,7 @@ class ConvNextBlockFactory:
         self.stochastic_depth_prob = stochastic_depth_prob
 
     def __call__(
-        self, channels_in: int, channels_out: int, downsample: bool = False
+        self, channels_in: int, channels_out: int, downsample: int = 1
     ) -> nn.Module:
         """
         Create ConvNext block.
@@ -116,8 +116,8 @@ class ConvNextBlockFactory:
             channels_in: The number of channels in the input.
             channels_out: The number of channels used in the remaining
                 layers in the block.
-            downsample: Whether the block should perform spatial
-                downsampling by a factor of 2.
+            downsample: Degree of downsampling to be performed. If <= 1
+                no downsampling is performed
 
         Return:
             The ConvNext block.
@@ -126,7 +126,12 @@ class ConvNextBlockFactory:
         if downsample:
             blocks += [
                 self.layer_norm_with_permute(channels_in),
-                nn.Conv2d(channels_in, channels_out, stride=2, kernel_size=2),
+                nn.Conv2d(
+                    channels_in,
+                    channels_out,
+                    stride=downsample,
+                    kernel_size=downsample
+                ),
             ]
         elif channels_in != channels_out:
             blocks += [nn.Conv2d(channels_in, channels_out, stride=1, kernel_size=1)]

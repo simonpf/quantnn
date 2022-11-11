@@ -171,7 +171,7 @@ class MLPBlock(nn.Module):
 
         if self.residuals == "simple":
             y = self.body(x)
-            n = min(x.shape[-1], x.shape[-1])
+            n = min(x.shape[-1], y.shape[-1])
             y[..., :n] += x[..., :n]
             return y
 
@@ -186,6 +186,7 @@ class MLPBlock(nn.Module):
             n_acc = 1
             n = x.shape[-1]
         y = self.body(x)
+        n = min(y.shape[-1], n)
         y[..., :n] += acc[..., :n] / n_acc
         return y, acc, n_acc
 
