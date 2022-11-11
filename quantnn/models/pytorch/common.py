@@ -195,8 +195,9 @@ def get_batch_size(x):
             return get_batch_size(next(iter(x)))
     return 1.0
 
+
 ################################################################################
-# Quantile loss
+# Cross-entropy loss
 ################################################################################
 
 
@@ -208,17 +209,17 @@ class CrossEntropyLoss(nn.Module):
     over the given inputs but applies an optional masking allowing
     the handling of missing values.
     """
-    def __init__(self, bins_or_classes, mask=None):
+    def __init__(self, bins_or_classes, mask=None, sparse=False):
         """
         Args:
             bins_or_classes: The bins overwich to calculate the probabilities
                  or the number of classes for which to calculate the loss.
             mask: All values that are smaller than or equal to this value will
                  be excluded from the calculation of the loss.
-
+            sparse: Whether to use sparse loss calculation.
         """
         super().__init__()
-        if mask is None:
+        if mask is None or sparse:
             reduction = "mean"
             self.mask = mask
         else:
@@ -254,8 +255,20 @@ class CrossEntropyLoss(nn.Module):
                 reduction=reduction
             )
 
+        self.sparse = sparse
+
     def __call__(self, y_pred, y_true, key=None):
         """Evaluate the loss."""
+        # Sparse masking
+        if self.mask is not None and self.sparse:
+            valid = y_true > self.mask
+            y_true = y_true[valid]
+
+            if valid.ndim == y_pred.ndim:
+                valid = valid[:, 0]
+            y_pred = y_pred.transpose(0, 1)[..., valid].transpose(0, 1)
+            y_true = y_true[..., None]
+
         if self.bins is not None:
             if not isinstance(self.bins, dict) or key is None:
                 bins = self.bins.to(y_pred.device)
@@ -274,12 +287,18 @@ class CrossEntropyLoss(nn.Module):
         if self.n_classes == 2:
             y_cat = y_cat.to(dtype=y_pred.dtype)
 
-        if self.mask is None:
+        if self.mask is None or self.sparse:
             return self.loss(y_pred, y_cat)
 
+        # Dense masking.
         loss = self.loss(y_pred, y_cat)
         mask = (y_true > self.mask).to(dtype=y_pred.dtype)
         return (loss * mask).sum() / (mask.sum() + 1e-6)
+
+
+################################################################################
+# Cross-entropy loss
+################################################################################
 
 
 class QuantileLoss(nn.Module):
@@ -305,12 +324,24 @@ class QuantileLoss(nn.Module):
     computed by taking the mean over all samples in the batch.
     """
 
-    def __init__(self, quantiles, mask=None, quantile_axis=1):
+    def __init__(
+            self,
+            quantiles,
+            mask=None,
+            quantile_axis=1,
+            sparse=False
+
+    ):
         """
         Create an instance of the quantile loss function with the given quantiles.
 
         Arguments:
             quantiles: Array or iterable containing the quantiles to be estimated.
+            mask: A mask value that can be used to mark invalid samples. Only samples
+                with values strictly larger than this one will be used in the calculation
+                of the loss.
+            quantile_axis: The axis along which the quantiles are oriented.
+            sparse: Whether or not to use sparse calculation of the loss.
         """
         super().__init__()
         self.quantiles = torch.tensor(quantiles).float()
@@ -319,6 +350,7 @@ class QuantileLoss(nn.Module):
         if self.mask:
             self.mask = np.float32(mask)
         self.quantile_axis = quantile_axis
+        self.sparse = sparse
 
     def to(self, device):
         self.quantiles = self.quantiles.to(device)
@@ -337,6 +369,18 @@ class QuantileLoss(nn.Module):
             The mean quantile loss.
         """
         y_true = y_true.to(y_pred.dtype)
+
+        # Sparse masking
+        if self.mask and self.sparse:
+            valid = y_true > self.mask
+            y_true = y_true[valid]
+
+            if valid.ndim == y_pred.ndim:
+                valid = valid[:, 0]
+            qa = self.quantile_axis
+            y_pred = y_pred.transpose(0, qa)[..., valid].transpose(0, qa)
+            y_true = y_true[..., None]
+
         dy = y_pred - y_true
 
         shape = [
@@ -345,10 +389,17 @@ class QuantileLoss(nn.Module):
         shape[self.quantile_axis] = self.n_quantiles
         qs = self.quantiles.reshape(shape).to(y_true.device)
         l = torch.where(dy >= 0.0, (1.0 - qs) * dy, (-qs) * dy)
-        if self.mask:
+
+        # Dense masking
+        if self.mask and not self.sparse:
             mask = (y_true > self.mask).to(y_true.dtype)
             return (l * mask).sum() / ((mask.sum() + 1e-6) * self.n_quantiles)
         return l.mean()
+
+
+###############################################################################
+# Mean-squared error loss
+###############################################################################
 
 
 class MSELoss(nn.Module):
@@ -390,6 +441,7 @@ class MSELoss(nn.Module):
         dy_2 = self.loss(y_pred, y_true)
         mask = (y_true > self.mask).to(y_true.dtype)
         return (dy_2 * mask).sum() / (mask.sum() + 1e-6)
+
 
 ################################################################################
 # Default scheduler and optimizer
