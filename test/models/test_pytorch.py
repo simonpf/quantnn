@@ -43,6 +43,10 @@ def test_quantile_loss():
     l_ref = loss(y_pred[:10], y[:10]).detach().numpy()
     assert np.isclose(l, l_ref)
 
+    loss = QuantileLoss([0.5], mask=-1e3, sparse=True)
+    l = loss(y_pred, y).detach().numpy()
+    assert np.isclose(l, l_ref)
+
 
 def test_cross_entropy_loss():
     """
@@ -100,6 +104,11 @@ def test_cross_entropy_loss():
     ref = - torch.nn.functional.logsigmoid(y_pred[:5, :5])
     assert np.all(np.isclose(loss(y_pred, y).detach().numpy(),
                              ref.mean().detach().numpy()))
+
+    loss = CrossEntropyLoss(2, mask=-1, sparse=True)
+    assert np.all(np.isclose(loss(y_pred, y).detach().numpy(),
+                             ref.mean().detach().numpy()))
+
 
 
 

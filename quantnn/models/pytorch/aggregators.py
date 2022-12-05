@@ -266,7 +266,6 @@ class LinearAggregatorFactory:
     Aggregation using a pixel-wise, affine transformation applied to the
     concatenated input channels.
     """
-
     def __init__(
         self,
         norm_factory=None,

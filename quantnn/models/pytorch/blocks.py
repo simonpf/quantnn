@@ -38,13 +38,15 @@ class ConvBlockFactory:
             self,
             channels_in,
             channels_out=None,
-            downsample=False
+            downsample=1
     ):
         """
         Args:
             channels_in: The number of channels in the block input.
             channels_out: The number of channels in the block output. If not
                 given, will be the same as number of input channels.
+            downsample: Optional downsampling factor that will be used as the
+                the stride of the convolution operation.
         """
         if channels_out is None:
             channels_out = channels_in
@@ -53,17 +55,13 @@ class ConvBlockFactory:
         if self.kernel_size > 1:
             padding = (self.kernel_size - 1) // 2
 
-        stride = 1
-        if downsample:
-            stride = 2
-
         blocks = [
             nn.Conv2d(
                 channels_in,
                 channels_out,
                 kernel_size=self.kernel_size,
                 padding=padding,
-                stride=stride
+                stride=downsample
             )
         ]
 

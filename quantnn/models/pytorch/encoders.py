@@ -78,6 +78,7 @@ class SpatialEncoder(nn.Module):
             max_channels: int = None,
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
             downsampler_factory: Callable[[int, int], nn.Module] = None,
+            downsampling_factors: List[int] = None
     ):
         """
         Args:
@@ -100,6 +101,8 @@ class SpatialEncoder(nn.Module):
             downsampler_factory: Optional factory to create downsampling
                 layers. If not provided, the block factory must provide
                 downsampling functionality.
+            downsampling_factors: The downsampling factors for each encoder
+                stage.
         """
         super().__init__()
         self.channel_scaling = channel_scaling
@@ -120,6 +123,15 @@ class SpatialEncoder(nn.Module):
                 "of stages plus 1."
             )
 
+        if downsampling_factors is None:
+            downsampling_factors = [2] * n_stages
+        if not len(stages) == len(downsampling_factors):
+            raise ValueError(
+                "The list of downsampling factors  numbers must match the number "
+                "of stages."
+            )
+
+
         if stage_factory is None:
             stage_factory = SequentialStageFactory()
 
@@ -135,7 +147,11 @@ class SpatialEncoder(nn.Module):
 
 
         channels_in = channels[0]
-        for stage, channels_out in zip(stages, channels[1:]):
+        for stage, channels_out, f_dwn in zip(
+                stages,
+                channels[1:],
+                downsampling_factors
+        ):
 
             # Downsampling layer is included in stage.
             if downsampler_factory is None:
@@ -146,13 +162,13 @@ class SpatialEncoder(nn.Module):
                         channels_out,
                         stage.n_blocks,
                         block_factory,
-                        downsample=2
+                        downsample=f_dwn
                     )
                 )
             # Explicit downsampling layer.
             else:
                 self.downsamplers.append(
-                    downsampler_factory(2)
+                    downsampler_factory(ch_in, f_dwn)
                 )
                 self.stages.append(
                     stage_factory(
@@ -160,7 +176,7 @@ class SpatialEncoder(nn.Module):
                         channels_out,
                         stage.n_blocks,
                         block_factory,
-                        downsample=2
+                        downsample=False
                     )
                 )
             channels_in = channels_out
@@ -231,6 +247,7 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             max_channels: int = None,
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
             downsampler_factory: Callable[[int, int], nn.Module] = None,
+            downsampling_factors: List[int] = None
     ):
         """
             input_channels: A dictionary mapping stage indices to numbers
@@ -264,6 +281,9 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             if max_channels is not None:
                 channels = [min(ch, max_channels) for ch in channels]
 
+        if downsampling_factors is None:
+            downsampling_factors = [2] * n_stages
+
         super().__init__(
             channels[first_stage:],
             stages[first_stage:],
@@ -271,7 +291,8 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             channel_scaling=channel_scaling,
             max_channels=max_channels,
             stage_factory=stage_factory,
-            downsampler_factory=downsampler_factory
+            downsampler_factory=downsampler_factory,
+            downsampling_factors=downsampling_factors[first_stage:]
         )
         self.stems = nn.ModuleDict()
         self.aggregators = nn.ModuleDict()
@@ -372,4 +393,197 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             y = forward(stage, y)
             stage_ind = stage_ind + 1
         return y
+
+
+class ParallelEncoderLevel(nn.Module):
+    """
+    Implements a single level of a parallel encoder. Each level
+    processes features maps of a certain total processing depth until the
+    given depth at the highest scale is reached.
+    """
+    def __init__(
+            self,
+            channels: List[int],
+            scales: List[int],
+            level_index: int,
+            depth: int,
+            block_factory: Callable[[int, int], nn.Module],
+            downsampler_factory: Callable[[int, int], nn.Module],
+            aggregator_factory: Callable[[int, int, int], nn.Module],
+            input_aggregator_factory: Callable[[int, int, int], nn.Module] = None
+    ):
+        """
+        Args:
+            channels: A list containing the number of channels at each scale.
+            scales: A list defining the scales of the encoder.
+            level_index: Index specifying the level of the encoder.
+
+        """
+        super().__init__()
+        blocks = []
+        aggregators = []
+        projections = []
+        downsamplers = []
+
+        if level_index >= depth + len(scales):
+            raise ValueError(
+                "The level index of the parallel encoder level must be "
+                " strictly  less than the sum of the encoder's depth "
+                "and number of scales."
+            )
+
+        scales_start = max(0, level_index - depth + 1)
+        scales_end = min(level_index + 1, len(channels))
+        self.scales_start = scales_start
+        self.level_index = level_index
+        self.depth = depth
+
+        for scale_index in range(scales_start, scales_end):
+            if scale_index == 0:
+                ch_in = channels[scale_index]
+                blocks.append(block_factory(ch_in, ch_in))
+            else:
+                ch_in_1 = channels[scale_index - 1]
+                ch_in_2 = channels[scale_index]
+
+                # Project inputs to same channel number.
+                if ch_in_1 != ch_in_2:
+                    projections.append(
+                        nn.Conv2d(ch_in_1, ch_in_2, kernel_size=1)
+                    )
+                else:
+                    projections.append(nn.Identity())
+
+                # Downsample inputs from lower scale
+                f_down = scales[scale_index] // scales[scale_index - 1]
+                downsamplers.append(
+                    downsampler_factory(ch_in_2, f_down)
+                )
+
+                # Combine inputs
+                aggregators.append(
+                    aggregator_factory(ch_in_2, 2, ch_in_2)
+                )
+
+                blocks.append(block_factory(ch_in_2, ch_in_2))
+
+
+        self.downsamplers = nn.ModuleList(downsamplers)
+        self.projections = nn.ModuleList(projections)
+        self.aggregators = nn.ModuleList(aggregators)
+        self.blocks = nn.ModuleList(blocks)
+
+        if input_aggregator_factory is not None:
+            self.agg_in = input_aggregator_factory(
+                channels[level_index],
+                2,
+                channels[level_index],
+            )
+
+
+    def forward(self, x, x_in=None):
+        results = x[:max(self.level_index - self.depth + 1, 0)]
+        for offset, block in enumerate(self.blocks):
+            scale_index = self.scales_start + offset
+            if scale_index == 0:
+                results.append(
+                    forward(block, x[scale_index])
+                )
+            elif scale_index < len(x):
+                index = offset
+                if self.scales_start == 0:
+                    index -= 1
+                proj = self.projections[index]
+                downsampler = self.downsamplers[index]
+                agg = self.aggregators[index]
+                x_1 = forward(downsampler, forward(proj, x[scale_index - 1]))
+                x_2 = x[scale_index]
+                results.append(forward(block, agg(x_1, x_2)))
+            else:
+                index = offset
+                if self.scales_start == 0:
+                    index -= 1
+                proj = self.projections[index]
+                downsampler = self.downsamplers[index]
+                y = forward(downsampler, forward(proj, x[scale_index - 1]))
+                if x_in is not None:
+                    y = self.agg_in(y, x_in)
+                results.append(forward(block, y))
+        return results
+
+
+
+class ParallelEncoder(nn.Module):
+    """
+    The parallel encoder produces a multi-scale representation of
+    the input but processes scales in parallel.
+    """
+    def __init__(
+            self,
+            inputs: Dict[int, int],
+            channels: List[int],
+            scales: List[int],
+            depth: int,
+            block_factory: Callable[[int, int], nn.Module],
+            downsampler_factory: Callable[[int], nn.Module],
+            input_aggregator_factory: Callable[[int, int, int], nn.Module],
+            aggregator_factory: Callable[[int, int, int], nn.Module],
+    ):
+        """
+        Args:
+            inputs: A dict mapping the levels of the encoder to the corresponding
+                input channels.
+            channels: The number of channels for each encoder level.
+            n_stages: The number of stages in the encoder. For the parallel
+                encoder this means.
+
+        """
+        super().__init__()
+        self.depth = depth
+        self.n_stages = len(channels)
+        self.inputs = inputs
+        stages = []
+        for level_index in range(self.depth + self.n_stages - 1):
+            agg_in = None
+            if level_index in inputs:
+                agg_in = input_aggregator_factory
+            stages.append(
+                ParallelEncoderLevel(
+                    channels=channels,
+                    scales=scales,
+                    level_index=level_index,
+                    depth=depth,
+                    block_factory=block_factory,
+                    downsampler_factory=downsampler_factory,
+                    aggregator_factory=aggregator_factory,
+                    input_aggregator_factory=agg_in
+                )
+            )
+        self.stages = nn.ModuleList(stages)
+
+        self.stems = nn.ModuleDict({})
+        self.aggregators = nn.ModuleDict({})
+        for stage, ch_in in inputs.items():
+            self.stems[f"stem_{stage}"] = block_factory(ch_in, channels[stage])
+            if len(self.stems) > 1:
+                self.aggregators[f"aggregator_{stage}"] = input_aggregator_factory(
+                    channels[stage],
+                    2,
+                    channels[stage]
+                )
+
+    def forward(self, x):
+
+        y = [forward(self.stems[f"stem_0"], x[0])]
+        input_index = 1
+
+        for stage_index in range(self.depth + self.n_stages - 1):
+            x_in = None
+            if stage_index > 0 and stage_index in self.inputs:
+                stem = self.stems[f"stem_{stage_index}"]
+                x_in = forward(stem, x[input_index])
+                input_index += 1
+            y = self.stages[stage_index](y, x_in=x_in)
+        return y
+
 

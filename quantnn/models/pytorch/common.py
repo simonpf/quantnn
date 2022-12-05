@@ -973,7 +973,7 @@ class PytorchModel:
             x_torch = x
         else:
             x_torch = to_array(torch, x, like=w)
-        self.to(x_torch.device)
+            self.to(x_torch.device)
 
         if x_torch.requires_grad:
             y = self(x_torch)

@@ -18,29 +18,11 @@ from quantnn.models.pytorch.aggregators import (
     LinearAggregatorFactory
 )
 from quantnn.packed_tensor import forward
+from quantnn.models.pytorch.upsampling import BilinearFactory
 
 ###############################################################################
 # Upsampling module.
 ###############################################################################
-
-
-class Bilinear(nn.Sequential):
-    """
-    A factory for producing bilinear upsampling layers.
-    """
-    def __call__(self, factor, channels_in=None, channels_out=None):
-        if channels_in is not None:
-            return nn.Sequential(
-                nn.Conv2d(channels_in, channels_out, kernel_size=1),
-                nn.UpsamplingBilinear2d(scale_factor=factor)
-            )
-        return nn.UpsamplingBilinear2d(scale_factor=factor)
-
-
-###############################################################################
-# Decoders.
-###############################################################################
-
 
 class SpatialDecoder(nn.Module):
     """
@@ -59,7 +41,8 @@ class SpatialDecoder(nn.Module):
             max_channels: int = None,
             skip_connections: Union[bool, int] = False,
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
-            upsampler_factory: Callable[[int], nn.Module] = Bilinear(),
+            upsampler_factory: Callable[[int], nn.Module] = BilinearFactory(),
+            upsampling_factors: List[int] = None
     ):
         """
         Args:
@@ -85,6 +68,8 @@ class SpatialDecoder(nn.Module):
                 the decoder.
             upsampler_factory: Factory functional to use to create the
                 upsampling modules in the decoder.
+            upsampling_factors: The upsampling factors for each decoder
+                stage.
         """
         super().__init__()
         n_stages = len(stages)
@@ -100,6 +85,12 @@ class SpatialDecoder(nn.Module):
            if max_channels is not None:
                channels = [min(ch, max_channels) for ch in channels]
 
+        if not len(channels) == len(stages) + 1:
+            raise ValueError(
+                "The list of given channel numbers must match the number "
+                "of stages plus 1."
+            )
+
         if stage_factory is None:
             stage_factory = SequentialStageFactory()
 
@@ -113,11 +104,19 @@ class SpatialDecoder(nn.Module):
                 "'stages' must be a list of 'StageConfig' or 'int'  objects."
             )
 
+        if upsampling_factors is None:
+            upsampling_factors = [2] * n_stages
+        if not len(stages) == len(upsampling_factors):
+            raise ValueError(
+                "The list of upsampling factors  numbers must match the number "
+                "of stages."
+            )
+
         channels_in = channels[0]
         for index, (config, channels_out) in enumerate(zip(stages, channels[1:])):
 
             self.upsamplers.append(
-                upsampler_factory(2)
+                upsampler_factory(upsampling_factors[index])
             )
             channels_combined = channels_in
             if type(self.skip_connections) == bool and self.skip_connections:
@@ -192,8 +191,9 @@ class SparseSpatialDecoder(nn.Module):
             skip_connections: int = -1,
             multi_scale_output: int = None,
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
-            upsampler_factory: Callable[[int], nn.Module] = Bilinear(),
-            aggregator_factory: Callable[[int, int], nn.Module] = None
+            upsampler_factory: Callable[[int], nn.Module] = BilinearFactory(),
+            aggregator_factory: Callable[[int, int], nn.Module] = None,
+            upsampling_factors: List[int] = None
     ):
         """
         Args:
@@ -221,6 +221,8 @@ class SparseSpatialDecoder(nn.Module):
                 upsampling modules in the decoder.
             aggregator_factory: Factory functional to create aggregation
                 blocks.
+            upsampling_factors: The upsampling factors for each decoder
+                stage.
         """
         super().__init__()
         n_stages = len(stages)
@@ -238,6 +240,21 @@ class SparseSpatialDecoder(nn.Module):
            ][::-1]
            if max_channels is not None:
                channels = [min(ch, max_channels) for ch in channels]
+
+        if not len(channels) == len(stages) + 1:
+            raise ValueError(
+                "The list of given channel numbers must match the number "
+                "of stages plus 1."
+            )
+
+        if upsampling_factors is None:
+            upsampling_factors = [2] * n_stages
+        if not len(stages) == len(upsampling_factors):
+            raise ValueError(
+                "The list of upsampling factors  numbers must match the number "
+                "of stages."
+            )
+
         if multi_scale_output is not None:
             self.projections = nn.ModuleList()
         else:
@@ -263,9 +280,12 @@ class SparseSpatialDecoder(nn.Module):
         channels_in = channels[0]
         for index, (config, channels_out) in enumerate(zip(stages, channels[1:])):
             self.upsamplers.append(
-                upsampler_factory(2, channels_in, channels_out)
+                upsampler_factory(
+                    upsampling_factors[index],
+                    channels_in,
+                    channels_out
+                )
             )
-            channels_combined = channels_in
             if index < self.skip_connections:
                 self.aggregators.append(
                     aggregator_factory(
@@ -342,3 +362,106 @@ class SparseSpatialDecoder(nn.Module):
         if self.projections is not None:
             return results
         return y
+
+
+class DLADecoderStage(nn.Module):
+    """
+    A single stage of a DLA decoder.
+
+    Each stage of the DLA decoder acts in parallel on a list of
+    multi-scale inputs. Each input is upsampled to the subsequent
+    lower scale and merged with the input at that scale.
+    """
+    def __init__(
+            self,
+            channels: List[int],
+            scales: List[int],
+            aggregator_factory: Callable[[int, int,int], nn.Module],
+            upsampler_factory: Callable[[int, int, int], nn.Module]
+    ):
+        """
+        Args:
+            channels: List the input channels at each scale.
+            scales: The scales of each input with the largest scale
+                as the first element.
+            aggregator_factory: A factory functional to use to create
+                aggregation blocks.
+            upsampler_factory: A factory functional to use to create
+                upsampling blocks.
+        """
+        super().__init__()
+        n_scales = len(scales)
+        upsamplers = []
+        aggregators = []
+        for scale_index in range(n_scales - 1):
+            f_up = scales[scale_index] / scales[scale_index + 1]
+            ch_in_1 = channels[scale_index]
+            ch_in_2 = channels[scale_index + 1]
+
+            upsamplers.append(
+                upsampler_factory(
+                    f_up,
+                    channels_in=ch_in_1,
+                    channels_out=ch_in_2
+                )
+            )
+
+            aggregators.append(aggregator_factory(ch_in_2, 2, ch_in_2))
+
+        self.upsamplers = nn.ModuleList(upsamplers)
+        self.aggregators = nn.ModuleList(aggregators)
+
+    def forward(self, x):
+        """
+        Propagate multi-scale inputs through decoder.
+
+        Args:
+            x: A list of multi-scale input containing the coarsest scale
+                as the first element.
+
+        Return:
+            A list containing the outputs from the decoder stage.
+        """
+        results = []
+        for scale_index in range(len(x) - 1):
+            up = self.upsamplers[scale_index]
+            x_1 = forward(up, x[scale_index])
+            agg = self.aggregators[scale_index]
+            x_2 = x[scale_index + 1]
+            results.append(agg(x_1, x_2))
+        return results
+
+
+class DLADecoder(nn.Sequential):
+    """
+    The decoder proposed in the deep layer-aggregation paper.
+
+    This decoder iteratively upsamples and aggregates multi-scale
+    features until the highest scale is reached.
+    """
+    def __init__(
+            self,
+            channels: List[int],
+            scales: List[int],
+            aggregator_factory: Callable[[int, int,int], nn.Module],
+            upsampler_factory: Callable[[int, int, int], nn.Module]
+    ):
+        blocks = []
+        for scale_index in range(len(scales) - 1):
+            blocks.append(
+                DLADecoderStage(
+                    channels[scale_index:],
+                    scales[scale_index:],
+                    aggregator_factory,
+                    upsampler_factory
+                )
+            )
+        super().__init__(*blocks)
+
+    def forward(self, x):
+        return super().forward(x)[0]
+
+
+
+
+
