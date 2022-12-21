@@ -133,10 +133,10 @@ def test_intersection():
     assert u_i_p is None
     assert v_i_p is None
 
-    for i in range(10):
+    for i in range(100):
         l = make_random_packed_tensor(100, 50)
         r = make_random_packed_tensor(100, 50)
-        indices = list(set(l.batch_indices) & set(r.batch_indices))
+        indices = sorted(list(set(l.batch_indices) & set(r.batch_indices)))
         l, r = l.intersection(r)
         for i, index in enumerate(indices):
             assert (l.tensor[i] == index).all()
@@ -201,7 +201,7 @@ def test_sum():
     assert (s_e[2] == 2.0).all()
     assert (s_e[3] == 1.0).all()
 
-    for i in range(10):
+    for i in range(100):
         l = make_random_packed_tensor(100, 50)
         r = make_random_packed_tensor(100, 50)
         indices = sorted(list(set(l.batch_indices) | set(r.batch_indices)))
