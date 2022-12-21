@@ -5,21 +5,21 @@ import einops as eo
 import numpy as np
 import pytest
 
-from quantnn.generic import (sample_uniform,
-                             to_array,
-                             arange,
-                             reshape,
-                             concatenate)
-from quantnn.density import (posterior_quantiles,
-                             posterior_cdf,
-                             posterior_mean,
-                             probability_larger_than,
-                             probability_less_than,
-                             sample_posterior,
-                             crps,
-                             quantile_function,
-                             posterior_maximum,
-                             add)
+from quantnn.generic import sample_uniform, to_array, arange, reshape, concatenate
+from quantnn.density import (
+    posterior_quantiles,
+    posterior_cdf,
+    posterior_mean,
+    posterior_std_dev,
+    probability_larger_than,
+    probability_less_than,
+    sample_posterior,
+    crps,
+    quantile_function,
+    posterior_maximum,
+    add,
+)
+
 
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_posterior_cdf(xp):
@@ -45,7 +45,7 @@ def test_posterior_cdf(xp):
 
     bins = arange(xp, 0.0, 10.1, 0.1)
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> w q', w=10)
+    y_pred = eo.repeat(y_pred, "q -> w q", w=10)
 
     y_cdf = posterior_cdf(y_pred, bins)
 
@@ -55,7 +55,7 @@ def test_posterior_cdf(xp):
     assert y_cdf.shape[1] == 101
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> q w', w=10)
+    y_pred = eo.repeat(y_pred, "q -> q w", w=10)
 
     y_cdf = posterior_cdf(y_pred, bins, bin_axis=0)
 
@@ -70,7 +70,7 @@ def test_posterior_cdf(xp):
 
     bins = arange(xp, 0.0, 10.1, 0.1)
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> v w q', v=10, w=10)
+    y_pred = eo.repeat(y_pred, "q -> v w q", v=10, w=10)
 
     y_cdf = posterior_cdf(y_pred, bins, bin_axis=-1)
 
@@ -80,7 +80,7 @@ def test_posterior_cdf(xp):
     assert y_cdf.shape[-1] == 101
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> q v w', v=10, w=10)
+    y_pred = eo.repeat(y_pred, "q -> q v w", v=10, w=10)
 
     y_cdf = posterior_cdf(y_pred, bins, bin_axis=0)
 
@@ -88,6 +88,7 @@ def test_posterior_cdf(xp):
     assert np.all(np.isclose(y_cdf[-1, :, :], 1.0))
     assert y_cdf.shape[0] == 101
     assert y_cdf.shape[-1] == 10
+
 
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_posterior_quantiles(xp):
@@ -109,13 +110,12 @@ def test_posterior_quantiles(xp):
     assert np.isclose(y_q[0], 1.1)
     assert np.isclose(y_q[-1], 10.0)
 
-
     #
     # 2D predictions
     #
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> w q', w=10)
+    y_pred = eo.repeat(y_pred, "q -> w q", w=10)
 
     y_q = posterior_quantiles(y_pred, bins, quantiles)
 
@@ -126,7 +126,7 @@ def test_posterior_quantiles(xp):
     assert y_q.shape[1] == 90
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> q w', w=10)
+    y_pred = eo.repeat(y_pred, "q -> q w", w=10)
 
     y_q = posterior_quantiles(y_pred, bins, quantiles, bin_axis=0)
 
@@ -140,7 +140,7 @@ def test_posterior_quantiles(xp):
     #
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> v w q', v=10, w=10)
+    y_pred = eo.repeat(y_pred, "q -> v w q", v=10, w=10)
 
     y_q = posterior_quantiles(y_pred, bins, quantiles, bin_axis=-1)
 
@@ -150,7 +150,7 @@ def test_posterior_quantiles(xp):
     assert y_q.shape[-1] == 90
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> q v w', v=10, w=10)
+    y_pred = eo.repeat(y_pred, "q -> q v w", v=10, w=10)
 
     y_q = posterior_quantiles(y_pred, bins, quantiles, bin_axis=0)
 
@@ -159,11 +159,12 @@ def test_posterior_quantiles(xp):
     assert y_q.shape[0] == 90
     assert y_q.shape[-1] == 10
 
+
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_posterior_mean(xp):
     """
-    Tests the calculation of the pdf for different shapes of input
-    arrays.
+    Tests the calculation of the posterior mean of the pdf for different shapes
+    of input arrays.
     """
 
     #
@@ -182,13 +183,13 @@ def test_posterior_mean(xp):
     #
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> w q', w=10)
+    y_pred = eo.repeat(y_pred, "q -> w q", w=10)
 
     mean = posterior_mean(y_pred, bins)
     assert np.all(np.isclose(mean, 6.0))
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> q w', w=10)
+    y_pred = eo.repeat(y_pred, "q -> q w", w=10)
 
     mean = posterior_mean(y_pred, bins, bin_axis=0)
     assert np.all(np.isclose(mean, 6.0))
@@ -198,15 +199,81 @@ def test_posterior_mean(xp):
     #
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> v w q', v=10, w=10)
+    y_pred = eo.repeat(y_pred, "q -> v w q", v=10, w=10)
 
     mean = posterior_mean(y_pred, bins, bin_axis=-1)
     assert np.all(np.isclose(mean, 6.0))
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> q v w', v=10, w=10)
+    y_pred = eo.repeat(y_pred, "q -> q v w", v=10, w=10)
     mean = posterior_mean(y_pred, bins, bin_axis=0)
     assert np.all(np.isclose(mean, 6.0))
+
+
+@pytest.mark.parametrize("xp", pytest.backends)
+def test_posterior_std_dev(xp):
+    """
+    Tests the calculation of the posterior std. dev. of the pdf for different
+    shapes of input arrays.
+    """
+
+    #
+    # 1D predictions
+    #
+
+    samples = np.random.normal(size=1_000_000)
+    bins = np.linspace(-6, 6, 201)
+    y_pred = np.histogram(samples, bins, density=True)[0]
+
+    y_pred = to_array(xp, y_pred)
+    bins = to_array(xp, bins)
+
+    std_dev = posterior_std_dev(y_pred, bins)
+
+    assert np.isclose(std_dev, 1.0, rtol=1e-2)
+
+    #
+    # 2D predictions
+    #
+
+    y_pred = np.histogram(samples, bins, density=True)[0]
+    y_pred = np.tile(y_pred, (10, 1))
+
+    y_pred = to_array(xp, y_pred)
+    bins = to_array(xp, bins)
+
+    std_dev = posterior_std_dev(y_pred, bins)
+
+    assert np.all(np.isclose(std_dev, 1.0, rtol=1e-2))
+
+    #
+    # 3D predictions, bins along last axis
+    #
+
+    y_pred = np.histogram(samples, bins, density=True)[0]
+    y_pred = np.tile(y_pred, (10, 10, 1))
+
+    y_pred = to_array(xp, y_pred)
+    bins = to_array(xp, bins)
+
+    std_dev = posterior_std_dev(y_pred, bins, bin_axis=-1)
+
+    assert np.all(np.isclose(std_dev, 1.0, rtol=1e-2))
+
+    #
+    # 3D predictions, bins along first axis
+    #
+
+    y_pred = np.histogram(samples, bins, density=True)[0]
+    y_pred = np.tile(y_pred.reshape(1, -1, 1), (10, 1, 10))
+
+    y_pred = to_array(xp, y_pred)
+    bins = to_array(xp, bins)
+
+    std_dev = posterior_std_dev(y_pred, bins, bin_axis=1)
+
+    assert np.all(np.isclose(std_dev, 1.0, rtol=1e-2))
+
 
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_probability_less_and_larger_than(xp):
@@ -232,13 +299,13 @@ def test_probability_less_and_larger_than(xp):
     #
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> w q', w=10)
+    y_pred = eo.repeat(y_pred, "q -> w q", w=10)
 
     p = probability_less_than(y_pred, bins, 6.0)
     assert np.all(np.isclose(p, 0.5))
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> q w', w=10)
+    y_pred = eo.repeat(y_pred, "q -> q w", w=10)
 
     p = probability_less_than(y_pred, bins, 6.0, bin_axis=0)
     assert np.all(np.isclose(p, 0.5))
@@ -251,7 +318,7 @@ def test_probability_less_and_larger_than(xp):
     #
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> v w q', v=10, w=10)
+    y_pred = eo.repeat(y_pred, "q -> v w q", v=10, w=10)
 
     p = probability_less_than(y_pred, bins, 6.0, bin_axis=-1)
     assert np.all(np.isclose(p, 0.5))
@@ -260,13 +327,14 @@ def test_probability_less_and_larger_than(xp):
     assert np.all(np.isclose(p, 0.5))
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> q v w', v=10, w=10)
+    y_pred = eo.repeat(y_pred, "q -> q v w", v=10, w=10)
 
     p = probability_less_than(y_pred, bins, 6.0, bin_axis=0)
     assert np.all(np.isclose(p, 0.5))
 
     p = probability_larger_than(y_pred, bins, 6.0, bin_axis=0)
     assert np.all(np.isclose(p, 0.5))
+
 
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_sample_posterior(xp):
@@ -292,7 +360,7 @@ def test_sample_posterior(xp):
     #
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> w q', w=10)
+    y_pred = eo.repeat(y_pred, "q -> w q", w=10)
 
     samples = sample_posterior(y_pred, bins, n_samples=10000)
     assert np.isclose(samples.mean(), 6.0, rtol=1e-1)
@@ -302,21 +370,21 @@ def test_sample_posterior(xp):
     #
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> w q h', w=10, h=10)
+    y_pred = eo.repeat(y_pred, "q -> w q h", w=10, h=10)
 
     samples = sample_posterior(y_pred, bins, n_samples=1000)
     assert np.isclose(samples.mean(), 6.0, rtol=1e-1)
-
 
     #
     # 3D predictions, bins along last dimension
     #
 
     y_pred = 0.1 * xp.ones(100)
-    y_pred = eo.repeat(y_pred, 'q -> w h q', w=10, h=10)
+    y_pred = eo.repeat(y_pred, "q -> w h q", w=10, h=10)
 
     samples = sample_posterior(y_pred, bins, n_samples=1000, bin_axis=-1)
     assert np.isclose(samples.mean(), 6.0, rtol=1e-1)
+
 
 @pytest.mark.parametrize("xp", pytest.backends)
 def test_crps(xp):
@@ -335,7 +403,7 @@ def test_crps(xp):
     y_true = 5.0 * xp.ones(1)
 
     c = crps(y_pred, y_true, bins)
-    c_ref = 10.0 * 2.0 * 0.5 ** 3 / 3.0
+    c_ref = 10.0 * 2.0 * 0.5**3 / 3.0
 
     assert np.isclose(c, c_ref, rtol=1e-3)
 
@@ -348,7 +416,7 @@ def test_crps(xp):
     y_true = 5.0 * xp.ones((21, 1))
 
     c = crps(y_pred, y_true, bins)
-    c_ref = 10.0 * 2.0 * 0.5 ** 3 / 3.0
+    c_ref = 10.0 * 2.0 * 0.5**3 / 3.0
     assert np.isclose(c[0], c_ref, rtol=1e-3)
 
     #
@@ -360,7 +428,7 @@ def test_crps(xp):
     y_true = 5.0 * xp.ones((21, 1, 10))
 
     c = crps(y_pred, y_true, bins)
-    c_ref = 10.0 * 2.0 * 0.5 ** 3 / 3.0
+    c_ref = 10.0 * 2.0 * 0.5**3 / 3.0
     assert np.isclose(c[0, 0], c_ref, rtol=1e-3)
 
     bins = arange(xp, 0.0, 10.001, 0.01)
@@ -368,7 +436,7 @@ def test_crps(xp):
     y_true = 5.0 * xp.ones((21, 10, 1))
 
     c = crps(y_pred, y_true, bins, bin_axis=-1)
-    c_ref = 10.0 * 2.0 * 0.5 ** 3 / 3.0
+    c_ref = 10.0 * 2.0 * 0.5**3 / 3.0
     assert np.isclose(c[0, 0], c_ref, rtol=1e-3)
 
 
@@ -411,7 +479,7 @@ def test_quantile_function(xp):
     bins = arange(xp, 0.0, 10.1, 1.0)
     y_pred = xp.ones((21, 10, 10))
     y_true = arange(xp, 0.0, 10.1, 0.5)
-    y_true = eo.repeat(y_true, 'q -> q h', h=10)
+    y_true = eo.repeat(y_true, "q -> q h", h=10)
 
     qf = quantile_function(y_pred, y_true, bins)
 
@@ -421,7 +489,7 @@ def test_quantile_function(xp):
     bins = arange(xp, 0.0, 10.1, 1.0)
     y_pred = xp.ones((21, 10, 10))
     y_true = arange(xp, 0.0, 10.1, 0.5)
-    y_true = eo.repeat(y_true, 'q -> q h', h=10)
+    y_true = eo.repeat(y_true, "q -> q h", h=10)
 
     qf = quantile_function(y_pred, y_true, bins, bin_axis=-1)
 
@@ -441,11 +509,7 @@ def test_posterior_maximum(xp):
 
     bins = arange(xp, 0.0, 10.001, 1.0)
 
-    y_pred = [
-        xp.ones(4),
-        to_array(xp, [2.0]),
-        xp.ones(4)
-    ]
+    y_pred = [xp.ones(4), to_array(xp, [2.0]), xp.ones(4)]
     y_pred = concatenate(xp, y_pred, 0)
     pm = posterior_maximum(y_pred, bins)
     assert np.isclose(pm, 4.5)
@@ -456,13 +520,9 @@ def test_posterior_maximum(xp):
 
     bins = arange(xp, 0.0, 10.001, 1.0)
 
-    y_pred = [
-        xp.ones(4),
-        to_array(xp, [2.0]),
-        xp.ones(4)
-    ]
+    y_pred = [xp.ones(4), to_array(xp, [2.0]), xp.ones(4)]
     y_pred = concatenate(xp, y_pred, 0)
-    y_pred = eo.repeat(y_pred, 'q -> h q', h=10)
+    y_pred = eo.repeat(y_pred, "q -> h q", h=10)
 
     pm = posterior_maximum(y_pred, bins)
     assert np.isclose(pm[0], 4.5)
@@ -473,26 +533,18 @@ def test_posterior_maximum(xp):
 
     bins = arange(xp, 0.0, 10.001, 1.0)
 
-    y_pred = [
-        xp.ones(4),
-        to_array(xp, [2.0]),
-        xp.ones(4)
-    ]
+    y_pred = [xp.ones(4), to_array(xp, [2.0]), xp.ones(4)]
     y_pred = concatenate(xp, y_pred, 0)
-    y_pred = eo.repeat(y_pred, 'q -> h q w', h=10, w=10)
+    y_pred = eo.repeat(y_pred, "q -> h q w", h=10, w=10)
 
     pm = posterior_maximum(y_pred, bins)
     assert np.isclose(pm[0, 0], 4.5)
 
     bins = arange(xp, 0.0, 10.001, 1.0)
 
-    y_pred = [
-        xp.ones(4),
-        to_array(xp, [2.0]),
-        xp.ones(4)
-    ]
+    y_pred = [xp.ones(4), to_array(xp, [2.0]), xp.ones(4)]
     y_pred = concatenate(xp, y_pred, 0)
-    y_pred = eo.repeat(y_pred, 'q -> h w q', h=10, w=10)
+    y_pred = eo.repeat(y_pred, "q -> h w q", h=10, w=10)
 
     pm = posterior_maximum(y_pred, bins, -1)
     assert np.isclose(pm[0, 0], 4.5)
@@ -511,10 +563,7 @@ def test_add(xp):
     bins = arange(xp, 0.0, 10.001, 1.0)
     bins_out = arange(xp, 0.5, 10.001, 1.0)
 
-    y_pred = [
-        0.5 * xp.ones(2),
-        xp.zeros(8)
-    ]
+    y_pred = [0.5 * xp.ones(2), xp.zeros(8)]
     y_pred = concatenate(xp, y_pred, 0)
     y_s = add(y_pred, bins, y_pred, bins, bins_out)
 
@@ -526,7 +575,7 @@ def test_add(xp):
     # 2D predictions
     #
 
-    y_pred = eo.repeat(y_pred, 'q -> h q', h=10)
+    y_pred = eo.repeat(y_pred, "q -> h q", h=10)
 
     y_s = add(y_pred, bins, y_pred, bins, bins_out, bin_axis=1)
     assert np.isclose(y_s[0, 0], 0.25)

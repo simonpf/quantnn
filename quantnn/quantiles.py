@@ -38,6 +38,10 @@ def cdf(y_pred, quantiles, quantile_axis=1):
     Calculates the cumulative distribution function (CDF) from predicted
     quantiles.
 
+    This method  extends the quantiles in 'y_pred' to  0 and 1 by
+    extending the first and last segments with a 50% reduction in the
+    slope.
+
     Args:
         y_pred: Array containing a range of predicted quantiles. The array
             is expected to contain the quantiles along the axis given by
@@ -305,6 +309,32 @@ def posterior_mean(y_pred, quantiles, quantile_axis=1):
 
     x_cdf, y_cdf = cdf(y_pred, quantiles, quantile_axis=quantile_axis)
     return trapz(xp, x_cdf, y_cdf, quantile_axis)
+
+
+def posterior_std_dev(y_pred, quantiles, quantile_axis=1):
+    r"""
+    Computes the standard deviation of the posterior distribution defined by
+    an array of predicted quantiles.
+
+    Args:
+        y_pred: A tensor of predicted quantiles with the quantiles located
+             along the axis given by ``quantile_axis``.
+        quantiles: The quantile fractions corresponding to the quantiles
+             located along the quantile axis.
+        quantile_axis: The axis along which the quantiles are located.
+
+    Returns:
+
+        Array containing the posterior means for the provided inputs.
+    """
+    if len(y_pred.shape) == 1:
+        quantile_axis = 0
+    xp = get_array_module(y_pred)
+
+    x_cdf, y_cdf = cdf(y_pred, quantiles, quantile_axis=quantile_axis)
+    x_mean =  trapz(xp, x_cdf, y_cdf, quantile_axis)
+    x2_mean =  trapz(xp, x_cdf * x_cdf, y_cdf, quantile_axis)
+    return x2_mean - x_mean ** 2
 
 
 def posterior_median(y_pred, quantiles, quantile_axis=1):

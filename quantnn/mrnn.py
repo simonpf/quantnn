@@ -3,9 +3,9 @@ r"""
 quantnn.mrnn
 ============
 
-This module implements Mixed Regression Neural Networks (MRSS), which
-allow mixing quantile, density and MSE regression within a single
-model.
+This module implements Mixed Regression Neural Networks (MRNNs), which
+allow mixing quantile, density, MSE regression and classification within
+ a single model.
 """
 from quantnn import quantiles as qq
 from quantnn import density as qd
@@ -65,6 +65,12 @@ class Quantiles():
         Args:
             y_pred: Tensor containing the quantiles predicted by the NN
                 model.
+
+        Return:
+            A tuple ``(x_cdf, y_cdf)`` containing piece-wise-linear
+            representations of the CDFs of the distributions represented by y_pred.
+            See 'quantnn.quantiles.cdf' for a detailed description of the
+            output values.
         """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
@@ -79,6 +85,12 @@ class Quantiles():
         Args:
             y_pred: Tensor containing the quantiles predicted by the NN
                 model.
+
+        Return:
+            A tuple ``(x_pdf, y_pdf)`` containing piece-wise-linear
+            representations of the PDFs of the distributions represented by y_pred.
+            See 'quantnn.quantiles.cdf' for a detailed description of the
+            output values.
         """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
@@ -94,6 +106,11 @@ class Quantiles():
             y_pred: Tensor containing the quantiles predicted by the NN
                 model.
             n_samples: The number of samples to produce.
+
+        Return:
+            A tensor with the same rank as ``y_pred`` with the axis
+            containing the quantiles of each distribution replaced with
+            random samples from the corresponding distribution.
         """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
@@ -111,6 +128,11 @@ class Quantiles():
             y_pred: Tensor containing the quantiles predicted by the NN
                 model.
             n_samples: The number of samples to produce.
+
+        Return:
+            A tensor with the same rank as ``y_pred`` with the axis
+            containing the quantiles of each distribution replaced with
+            random samples from the corresponding distribution.
         """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
@@ -124,12 +146,34 @@ class Quantiles():
         Calculate the posterior mean from predicted quantiles.
 
         Args:
-            y_pred: Tensor containing the quantiles predicted by the NN
+            y_pred: A rank-n Tensor containing the quantiles predicted by the NN
                 model.
+
+        Return:
+            A tensor ``y_mean`` with rank n - 1 containing the posterior mean
+            of the distributions in ``y_pred``.
         """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
         return qq.posterior_mean(
+            y_pred, quantiles, quantile_axis=self.quantile_axis
+        )
+
+    def posterior_std_dev(self, y_pred):
+        """
+        Calculate the posterior standard deviation from predicted quantiles.
+
+        Args:
+            y_pred: A rank-n Tensor containing the quantiles predicted by the
+                NN model.
+
+        Return:
+            A tensor ``y_std_dev`` with rank n - 1 containing the posterior
+            std. dev. of the distributions in ``y_pred``.
+        """
+        module = get_array_module(y_pred)
+        quantiles = to_array(module, self.quantiles, like=y_pred)
+        return qq.posterior_std_dev(
             y_pred, quantiles, quantile_axis=self.quantile_axis
         )
 
@@ -138,9 +182,13 @@ class Quantiles():
         Calculate the CRPS score from predicted quantiles.
 
         Args:
-            y_pred: Tensor containing the quantiles predicted by the NN
+            y_pred: A rank-n tensor containing the quantiles predicted by the NN
                 model.
-            y_true: Tensor containing the true values.
+            y_true: A rank-(n-1) Tensor containing the true values.
+
+        Return:
+            A tensor ``y_crps`` with rank n - 1 containing the CRPS
+             of the distributions in ``y_pred`` calculated w.r.t. ``y_true``.
         """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
@@ -154,9 +202,14 @@ class Quantiles():
         a given threshold.
 
         Args:
-            y_pred: Tensor containing the quantiles predicted by the NN
-                model.
+            y_pred: A rank-n tensor containing the quantiles predicted by the
+                NN model.
             y: The scalar threshold value.
+
+        Return:
+            A tensor ``y_p`` with rank n - 1 containing the probabilities
+            that a random sample from any of the distributions represented by
+            ``y_pred`` are larger than ``y``.
         """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
@@ -171,9 +224,14 @@ class Quantiles():
         a given threshold.
 
         Args:
-            y_pred: Tensor containing the quantiles predicted by the NN
-                model.
+            y_pred: A rank-n tensor containing the quantiles predicted by the
+                NN model.
             y: The scalar threshold value.
+
+        Return:
+            A tensor ``y_p`` with rank n - 1 containing the probabilities
+            that a random sample from any of the distributions represented by
+            ``y_pred`` are less than ``y``.
         """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
@@ -190,6 +248,10 @@ class Quantiles():
             y_pred: Tensor containing the quantiles predicted by the NN
                 model.
             new_quantiles: Array containing the new quantiles to compute.
+
+        Return:
+            A tensor ``y_pred_new`` of the same rank as ``y_pred`` containing
+            the new quantiles.
         """
         module = get_array_module(y_pred)
         quantiles = to_array(module, self.quantiles, like=y_pred)
@@ -244,6 +306,9 @@ class Density():
         Args:
             y_pred: Tensor containing the logit values predicted by
                 the neural network model.
+
+        Return:
+            A new tensor ``y_p`` containing normalized probability densities.
         """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
@@ -258,6 +323,12 @@ class Density():
         Args:
             y_pred: Tensor containing the logit values predicted by
                 the neural network model.
+
+        Return:
+            A tuple ``(x_cdf, y_cdf)`` containing piece-wise-linear
+            representations of the CDFs of the distributions represented by y_pred.
+            See 'quantnn.density.cdf' for a detailed description of the
+            output values.
         """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
@@ -272,6 +343,9 @@ class Density():
         Args:
             y_pred: Tensor containing the logit values predicted by
                 the neural network model.
+
+        Return:
+            A tensor ``y_cdf`` containing the CDF evaluated at all bin edges.
         """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
@@ -287,6 +361,11 @@ class Density():
             y_pred: Tensor containing the logit values predicted by
                 the neural network model.
             n_samples: The number of samples to produce.
+
+        Return:
+            A tensor with the same rank as ``y_pred`` with the axis
+            containing the quantiles of each distribution replaced with
+            random samples from the corresponding distribution.
         """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
@@ -304,6 +383,11 @@ class Density():
             y_pred: Tensor containing the logit values predicted by
                 the neural network model.
             n_samples: The number of samples to produce.
+
+        Return:
+            A tensor with the same rank as ``y_pred`` with the axis
+            containing the quantiles of each distribution replaced with
+            random samples from the corresponding distribution.
         """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
@@ -317,8 +401,12 @@ class Density():
         Calculate the posterior mean from predicted quantiles.
 
         Args:
-            y_pred: Tensor containing the logit values predicted by
+            y_pred: A rank-n tensor containing the logit values predicted by
                 the neural network model.
+
+        Return:
+            A tensor ``y_mean`` with rank n - 1 containing the posterior mean
+            of the distributions in ``y_pred``.
         """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
@@ -332,9 +420,13 @@ class Density():
         Calculate the CRPS score from predicted quantiles.
 
         Args:
-            y_pred: Tensor containing the logit values predicted by
+            y_pred: A rank-n tensor containing the logit values predicted by
                 the neural network model.
-            y_true: Tensor containing the true values.
+            y_true: A rank-(n-1) Tensor containing the true values.
+
+        Return:
+            A tensor ``y_crps`` with rank n - 1 containing the CRPS
+             of the distributions in ``y_pred`` calculated w.r.t. ``y_true``.
         """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
@@ -351,6 +443,11 @@ class Density():
             y_pred: Tensor containing the logit values predicted by
                 the neural network model.
             y: The scalar threshold value.
+
+        Return:
+            A tensor ``y_p`` with rank n - 1 containing the probabilities
+            that a random sample from any of the distributions represented by
+            ``y_pred`` are larger than ``y``.
         """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
@@ -368,6 +465,11 @@ class Density():
             y_pred: Tensor containing the logit values predicted by
                 the neural network model.
             y: The scalar threshold value.
+
+        Return:
+            A tensor ``y_p`` with rank n - 1 containing the probabilities
+            that a random sample from any of the distributions represented by
+            ``y_pred`` are less than ``y``.
         """
         return qd.probability_less_than(
             y_pred=y_pred, y=y,
@@ -382,6 +484,10 @@ class Density():
             y_pred: Tensor containing the logit values predicted by
                 the neural network model.
             y: The scalar threshold value.
+
+        Return:
+            A tensor ``y_pred_new`` of the same rank as ``y_pred`` containing
+            the quantiles corresponding to the quantile fractions in ``new_quantiles``.
         """
         module = get_array_module(y_pred)
         bins = to_array(module, self.bins, like=y_pred)
@@ -426,12 +532,32 @@ class Mean():
         pass
 
     def predict(self, y_pred):
+        """
+        Apply post processing to model prediction. Does nothing
+        for posterior mean.
+        """
         return y_pred
 
     def get_loss(self, backend, mask=None):
+        """
+        Return loss function for this target for a specific backend.
+
+        Args:
+            backend: The backend from which to retrieve the loss
+                function.
+            mask: Optional mask value to use during training.
+
+        Return:
+            The MSE loss function from the given backend.
+        """
         return backend.MSELoss(mask=mask)
 
     def posterior_mean(self, y_pred):
+        """
+        Calculate the posterior mean.
+
+        This is no-op for MSE loss.
+        """
         return y_pred
 
     def __repr__(self):

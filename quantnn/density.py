@@ -137,6 +137,38 @@ def posterior_mean(y_pdf, bins, bin_axis=1):
     return trapz(xp, bins_r * y_pdf, bins, bin_axis)
 
 
+def posterior_std_dev(y_pdf, bins, bin_axis=1):
+    """
+    Calculate posterior standard deviation from predicted PDFs.
+
+    Args:
+        y_pdf: Tensor containing the predicted PDFs.
+        bins: The bin-boundaries corresponding to the predictions.
+        bin_axis: The index of the tensor axis which contains the predictions
+            for each bin.
+
+    Return:
+        Tensor with rank reduced by one compared to ``y_pdf`` and with
+        the values along ``bin_axis`` of ``y_pdf`` replaced with the
+        std. dev. of the corresponding PDF.
+    """
+    if len(y_pdf.shape) == 1:
+        bin_axis = 0
+    n_y = y_pdf.shape[bin_axis]
+    n_b = len(bins)
+    _check_dimensions(n_y, n_b)
+    xp = get_array_module(y_pdf)
+    n = len(y_pdf.shape)
+
+    shape = [1] * n
+    shape[bin_axis] = -1
+    bins_r = reshape(xp, 0.5 * (bins[1:] + bins[:-1]), shape)
+
+    x = trapz(xp, bins_r * y_pdf, bins, bin_axis)
+    x2 = trapz(xp, bins_r * bins_r * y_pdf, bins, bin_axis)
+    return x2 - x ** 2
+
+
 def posterior_median(y_pred, bins, bin_axis=1):
     """
     Calculate the posterior median from predicted PDFs.
