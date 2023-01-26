@@ -100,8 +100,8 @@ def load_model(file):
             )
         model = torch.load(filename, map_location=torch.device("cpu"))
     finally:
-        shutil.rmtree(path)
         tar_file.close()
+        shutil.rmtree(path)
     return model
 
 

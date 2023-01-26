@@ -334,7 +334,7 @@ def posterior_std_dev(y_pred, quantiles, quantile_axis=1):
     x_cdf, y_cdf = cdf(y_pred, quantiles, quantile_axis=quantile_axis)
     x_mean =  trapz(xp, x_cdf, y_cdf, quantile_axis)
     x2_mean =  trapz(xp, x_cdf * x_cdf, y_cdf, quantile_axis)
-    return x2_mean - x_mean ** 2
+    return xp.sqrt(x2_mean - x_mean ** 2)
 
 
 def posterior_median(y_pred, quantiles, quantile_axis=1):
