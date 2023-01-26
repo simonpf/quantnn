@@ -923,6 +923,10 @@ class MRNN(NeuralNetworkModel):
             y_pred: Optional pre-computed quantile predictions, which, when
                  provided, will be used to avoid repeated propagation of the
                  the inputs through the network.
+            key: If this function is used to calculate the posterior mean
+                of a specific target and 'y_pred' is provided, then the
+                corresponding 'key' must be provided to identify the loss
+                that defines how to calculate the posterior mean.
         Returns:
 
             Tensor or rank k-1 the posterior means for all provided inputs.
@@ -944,6 +948,47 @@ class MRNN(NeuralNetworkModel):
             loss = self.losses[k]
             if hasattr(loss, "posterior_mean"):
                 results[k] = loss.posterior_mean(
+                    y_pred[k]
+                )
+
+        return results
+
+
+    def posterior_std_dev(self, x=None, y_pred=None, key=None):
+        r"""
+        Computes the standard deviation of the posterior distribution.
+
+        Arguments:
+            x: Rank-k tensor containing the input data with the input channels
+                (or features) for each sample located along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
+            key: If this function is used to calculate the posterior mean
+                of a specific target and 'y_pred' is provided, then the
+                corresponding 'key' must be provided to identify the loss
+                that defines how to calculate the standard deviation.
+        Returns:
+
+            Tensor or rank k-1 the posterior means for all provided inputs.
+        """
+        if y_pred is None:
+            if x is None:
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
+            y_pred = self.predict(x)
+
+        if not isinstance(y_pred, dict):
+            if isinstance(self.losses, dict):
+                return self.losses[key].posterior_std_dev(y_pred)
+            return self.losses.posterior_std_dev(y_pred)
+
+        results = {}
+        for k in y_pred:
+            loss = self.losses[k]
+            if hasattr(loss, "posterior_std_dev"):
+                results[k] = loss.posterior_std_dev(
                     y_pred[k]
                 )
 

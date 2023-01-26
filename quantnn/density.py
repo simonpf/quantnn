@@ -166,7 +166,7 @@ def posterior_std_dev(y_pdf, bins, bin_axis=1):
 
     x = trapz(xp, bins_r * y_pdf, bins, bin_axis)
     x2 = trapz(xp, bins_r * bins_r * y_pdf, bins, bin_axis)
-    return x2 - x ** 2
+    return xp.sqrt(x2 - x ** 2)
 
 
 def posterior_median(y_pred, bins, bin_axis=1):
