@@ -56,7 +56,7 @@ def test_expand_dims(backend):
 
 @pytest.mark.parametrize("backend", TENSOR_BACKENDS)
 def test_exp(backend):
-    x = np.arange(10).astype(np.float)
+    x = np.arange(10).astype(np.float32)
     x = backend.from_numpy(x)
     y = backend.exp(x)
 
@@ -64,7 +64,7 @@ def test_exp(backend):
 
 @pytest.mark.parametrize("backend", TENSOR_BACKENDS)
 def test_log(backend):
-    x = np.arange(10).astype(np.float)
+    x = np.arange(10).astype(np.float32)
     x = backend.from_numpy(x)
     y = backend.log(x)
 
