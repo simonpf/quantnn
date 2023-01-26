@@ -550,7 +550,7 @@ class LogCallback(keras.callbacks.Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         """Log epoch end."""
-        lr = self.model.optimizer._decayed_lr("float32").numpy()
+        lr = self.model.optimizer.lr.numpy()
         self.logger.epoch(lr)
 
 
