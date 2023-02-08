@@ -638,7 +638,7 @@ def test_training_transformation_mrnn_density():
         "y_2": Mean()
     }
 
-    mrnn = MRNN(losses=losses, model=model)
+    mrnn = MRNN(losses=losses, model=model, transformation=transformations)
     metrics = [
         "Bias",
         "CRPS",
@@ -655,8 +655,7 @@ def test_training_transformation_mrnn_density():
 
 def test_qrnn_training_metrics_conv():
     """
-    E
-
+    Test metrics for a CNN.
     """
     set_default_backend("pytorch")
 
