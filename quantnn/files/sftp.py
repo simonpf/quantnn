@@ -13,8 +13,12 @@ import logging
 import os
 from pathlib import Path
 import tempfile
+import warnings
 
-import paramiko
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore")
+    import paramiko
+
 from quantnn.common import MissingAuthenticationInfo
 
 _LOGGER = logging.getLogger("quantnn.files.sftp")
