@@ -168,11 +168,11 @@ class SpatialEncoder(nn.Module):
             # Explicit downsampling layer.
             else:
                 self.downsamplers.append(
-                    downsampler_factory(ch_in, f_dwn)
+                    downsampler_factory(channels_in, f_dwn)
                 )
                 self.stages.append(
                     stage_factory(
-                        channels_out,
+                        channels_in,
                         channels_out,
                         stage.n_blocks,
                         block_factory,
@@ -299,15 +299,30 @@ class MultiInputSpatialEncoder(SpatialEncoder):
         self.input_channels = input_channels
         self.first_stage = first_stage
 
-        for ind, (stage_ind, channels_in) in enumerate(input_channels.items()):
+        for stage_ind, channels_in in input_channels.items():
             channels_out = channels[stage_ind]
-            self.stems[str(stage_ind)] = block_factory(channels_in, channels_out)
-            if ind > 0:
-                self.aggregators[str(stage_ind)] = aggregator_factory(
-                    channels_out,
-                    2,
-                    channels_out,
-                )
+            if not isinstance(channels_in, list):
+                channels_in = [channels_in]
+
+            for ch_in in channels_in:
+                stage_s = str(stage_ind)
+                if stage_ind not in self.stems:
+                    self.stems[stage_s] = nn.ModuleList(
+                        [block_factory(ch_in, channels_out)]
+                    )
+                    self.aggregators[stage_s] = nn.ModuleList(
+                        [aggregator_factory(channels_out, 2, channels_out,)]
+                    )
+
+                else:
+                    self.stems[stage_s].append(
+                        block_factory(ch_in, channels_out)
+                    )
+                    self.aggregators[stage_s].append(
+                        aggregator_factory(channels_out, 2, channels_out,)
+                    )
+        # No aggregator needed for first input
+        self.aggregators[str(0)][0] = None
 
 
     def forward_with_skips(self, x: torch.Tensor) -> List[torch.Tensor]:
@@ -329,14 +344,15 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             # Integrate input into stream.
             stage_s = str(stage_ind)
             if stage_ind in self.input_channels:
-                if y is None:
-                    x_in = x[input_index]
-                    y = forward(self.stems[stage_s], x_in)
-                    skips.append(y)
-                else:
-                    x_in = x[input_index]
-                    agg = self.aggregators[stage_s]
-                    y = agg(y, forward(self.stems[stage_s], x_in))
+                x_ins = x[input_index]
+                if not isinstance(x_ins, list):
+                    x_ins = [x_ins]
+                for x_in, stem, agg in zip(x_ins, self.stems[stage_s], self.aggregators[stage_s]):
+                    if y is None:
+                        y = forward(stem, x_in)
+                        skips.append(y)
+                    else:
+                        y = agg(y, forward(stem, x_in))
                 input_index += 1
 
             if down is not None:
@@ -380,16 +396,19 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             # Integrate input into stream.
             stage_s = str(stage_ind)
             if stage_ind in self.input_channels:
-                x_in = x[input_index]
-                if y is None:
-                    y = forward(self.stems[stage_s], x_in)
-                else:
-                    agg = self.aggregators[stage_s]
-                    y = agg(y, forward(self.stems[stage_s], x_in))
+                x_ins = x[input_index]
+                if not isinstance(x_ins, list):
+                    x_ins = [x_ins]
+                for x_in, stem, agg in zip(x_ins, self.stems[stage_s], self.aggregators[stage_s]):
+                    if y is None:
+                        y = forward(stem, x_in)
+                    else:
+                        y = agg(y, forward(stem, x_in))
                 input_index += 1
 
             if down is not None:
                     y = forward(down, y)
+            print("SHAPE DOWN :: ", y.shape)
             y = forward(stage, y)
             stage_ind = stage_ind + 1
         return y
