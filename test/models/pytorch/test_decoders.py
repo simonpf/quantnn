@@ -95,12 +95,12 @@ def test_encoder_decoder_asymmetric():
     """
     block_factory = ResNetBlockFactory()
     aggregator_factory = LinearAggregatorFactory()
-    input_channels = {
-        1: 16,
-        2: 32
+    inputs = {
+        "input_0": (1, 16),
+        "input_1": (2, 32)
     }
     encoder = MultiInputSpatialEncoder(
-        input_channels=input_channels,
+        inputs=inputs,
         channels=4,
         stages=[4] * 4,
         block_factory=block_factory,
@@ -117,10 +117,10 @@ def test_encoder_decoder_asymmetric():
         skip_connections=3
     )
     # Test forward without skip connections.
-    x = [
-        torch.ones((1, 16, 16, 16)),
-        torch.ones((1, 32, 8, 8)),
-    ]
+    x = {
+        "input_0": torch.ones((1, 16, 16, 16)),
+        "input_1": torch.ones((1, 32, 8, 8)),
+    }
     y = encoder(x, return_skips=True)
     y = decoder(y)
     assert y.shape == (1, 4, 32, 32)
@@ -135,12 +135,12 @@ def test_encoder_decoder_sparse():
     aggregator_factory = SparseAggregatorFactory(
         LinearAggregatorFactory()
     )
-    input_channels = {
-        1: 16,
-        2: 32
+    inputs = {
+        "input_0": (1, 16),
+        "input_1": (2, 32)
     }
     encoder = MultiInputSpatialEncoder(
-        input_channels=input_channels,
+        inputs=inputs,
         channels=4,
         stages=[4] * 4,
         block_factory=block_factory,
@@ -157,18 +157,18 @@ def test_encoder_decoder_sparse():
         skip_connections=3
     )
     # Test forward without skip connections.
-    x = [
-        PackedTensor(
+    x = {
+        "input_0": PackedTensor(
             torch.ones((0, 16, 16, 16)),
             batch_size=4,
             batch_indices=[]
         ),
-        PackedTensor(
+        "input_1": PackedTensor(
             torch.ones((1, 32, 8, 8)),
             batch_size=4,
             batch_indices=[0]
         )
-    ]
+    }
     y = encoder(x, return_skips=True)
     y = decoder(y)
     assert y.shape == (1, 4, 32, 32)
@@ -183,12 +183,12 @@ def test_encoder_decoder_multi_scale_output():
     aggregator_factory = SparseAggregatorFactory(
         LinearAggregatorFactory()
     )
-    input_channels = {
-        1: 16,
-        2: 32
+    inputs = {
+        "input_1": (1, 16),
+        "input_2": (2, 32)
     }
     encoder = MultiInputSpatialEncoder(
-        input_channels=input_channels,
+        inputs=inputs,
         channels=4,
         stages=[4] * 4,
         block_factory=block_factory,
@@ -206,18 +206,18 @@ def test_encoder_decoder_multi_scale_output():
         multi_scale_output=16
     )
     # Test forward without skip connections.
-    x = [
-        PackedTensor(
+    x = {
+        "input_1": PackedTensor(
             torch.ones((0, 16, 16, 16)),
             batch_size=4,
             batch_indices=[]
         ),
-        PackedTensor(
+        "input_2": PackedTensor(
             torch.ones((1, 32, 8, 8)),
             batch_size=4,
             batch_indices=[0]
         )
-    ]
+    }
     y = encoder(x, return_skips=True)
     y = decoder(y)
     assert len(y) == 4

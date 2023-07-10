@@ -178,7 +178,7 @@ class SparseSpatialDecoder(nn.Module):
 
     The decoder uses explicit aggregation block that combine the inputs
     from the encoder with the decoders own upsampling data stream. By
-    using when a SparseAggregator, the decoder can handle cases
+    using a SparseAggregator, the decoder can handle cases
     where certain input samples are missing from the skip connections.
     """
     def __init__(
@@ -460,8 +460,3 @@ class DLADecoder(nn.Sequential):
 
     def forward(self, x):
         return super().forward(x)[0]
-
-
-
-
-

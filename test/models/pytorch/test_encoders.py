@@ -207,13 +207,13 @@ def test_multi_input_spatial_encoder():
     block_factory = ResNetBlockFactory()
     aggregator_factory = AverageAggregatorFactory()
     stages = [2, 2, 2, 2]
-    input_channels = {
-        0: 12,
-        2: 8,
-        3: 4
+    inputs = {
+        "input_0" : (0, 12),
+        "input_1" : (2, 8),
+        "input_2" : (3, 4)
     }
     encoder = MultiInputSpatialEncoder(
-        input_channels=input_channels,
+        inputs=inputs,
         channels=1,
         stages=stages,
         block_factory=block_factory,
@@ -222,11 +222,11 @@ def test_multi_input_spatial_encoder():
         max_channels=8
     )
     # Test forward without skip connections.
-    x = [
-        torch.ones((1, 12, 32, 32)),
-        torch.ones((1, 8, 8, 8)),
-        torch.ones((1, 4, 4, 4)),
-    ]
+    x = {
+        "input_0": torch.ones((1, 12, 32, 32)),
+        "input_1": torch.ones((1, 8, 8, 8)),
+        "input_2": torch.ones((1, 4, 4, 4)),
+    }
     y = encoder(x)
     # Width and height should be reduced by 16.
     # Number of channels should be maximum.

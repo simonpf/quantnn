@@ -156,7 +156,6 @@ class SpatialEncoder(nn.Module):
                 channels[1:],
                 downsampling_factors
         ):
-
             # Downsampling layer is included in stage.
             if downsampler_factory is None:
                 self.downsamplers.append(None)
@@ -185,13 +184,20 @@ class SpatialEncoder(nn.Module):
                 )
             channels_in = channels_out
 
-            if stem_factory is not None:
-                self.stem = stem_factory(channels[0])
-            else:
-                self.stem = None
+        if stem_factory is not None:
+            self.stem = stem_factory(channels[0])
+        else:
+            self.stem = None
+
+    def __setstate__(self, dct):
+        self.__dict__ = dct
+        selt.stem = dct.pop("stem", None)
 
     def forward_with_skips(self, x: torch.Tensor) -> List[torch.Tensor]:
         """
+        Legacy implementation of the forward_with_skips function of the
+        SpatialEncoder.
+
         Args:
             x: A ``torch.Tensor`` to feed into the encoder.
 
@@ -203,9 +209,9 @@ class SpatialEncoder(nn.Module):
         y = x
         skips = [y]
         for down, stage in zip(self.downsamplers, self.stages):
+            y = stage(y)
             if down is not None:
                 y = down(y)
-            y = stage(y)
             skips.append(y)
         return skips
 
@@ -234,10 +240,17 @@ class SpatialEncoder(nn.Module):
 
         y = x
         for down, stage in zip(self.downsamplers, self.stages):
+            y = stage(y)
             if down is not None:
                 y = down(y)
-            y = stage(y)
         return y
+
+
+@dataclass
+class InputConfig:
+    stage: int
+    n_channels: int
+    stem_factory: int
 
 
 class MultiInputSpatialEncoder(SpatialEncoder):
@@ -251,7 +264,7 @@ class MultiInputSpatialEncoder(SpatialEncoder):
     """
     def __init__(
             self,
-            input_channels: Dict[int, int],
+            inputs: Dict[str, Union[InputConfig, int]],
             channels: Union[int, List[int]],
             stages: List[Union[int, StageConfig]],
             block_factory: Optional[Callable[[int, int], nn.Module]],
@@ -264,8 +277,14 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             downsampling_factors: List[int] = None
     ):
         """
-            input_channels: A dictionary mapping stage indices to numbers
-                of channels that are inputs to this stage.
+            inputs: A dictionary mapping inputs names to either InputConfig
+                or tuples ``(stage, n_channels, stem_factory)`` containing
+                an index ``stage`` identifying the stage at which the input
+                is ingested, ``n_channels`` the number of channels in the input
+                and ``stem_factory`` a factory functional to create the stem
+                for the input. If only a lenth-two tuple ``(stage, n_channels)``
+                is provided, the block factory will be used to create the stem
+                for the respective input.
             channels: A list specifying the channels before and after all
                 stages in the encoder. Alternatively, channels can be an
                 integer specifying the number of channels of the input to
@@ -290,11 +309,14 @@ class MultiInputSpatialEncoder(SpatialEncoder):
                 downsampling functionality.
         """
         n_stages = len(stages)
-        keys = list(input_channels.keys())
-        first_stage = min(keys)
+
+        stage_inds = list(val[0] for val in inputs.values())
+        first_stage = min(stage_inds)
 
         if isinstance(channels, int):
-            channels = [channels * channel_scaling ** i for i in range(n_stages + 1)]
+            channels = [
+                channels * channel_scaling ** i for i in range(n_stages + 1)
+            ]
             if max_channels is not None:
                 channels = [min(ch, max_channels) for ch in channels]
 
@@ -313,38 +335,46 @@ class MultiInputSpatialEncoder(SpatialEncoder):
         )
         self.stems = nn.ModuleDict()
         self.aggregators = nn.ModuleDict()
-        self.input_channels = input_channels
+
+        # Parse inputs into stage_inputs, which maps stage indices to
+        # input names, and create stems.
+        self.stems = nn.ModuleDict()
+        self.stage_inputs = {stage_ind: [] for stage_ind in range(n_stages)}
+        for input_name, stage_conf in inputs.items():
+            if isinstance(stage_conf, InputConfig):
+                pass
+            elif isinstance(stage_conf, tuple):
+                if len(stage_conf) == 2:
+                    stage_ind, ch_in = stage_conf
+                    stage_conf = InputConfig(
+                        stage_ind,
+                        ch_in,
+                        lambda ch_out: block_factory(ch_in, ch_out)
+                    )
+                elif len(stage_conf) == 3:
+                    stage_conf = InputConfig(*stage_conf)
+                else:
+                    raise ValueError(
+                        "Values of the 'inputs' dict should be tuple of length"
+                        "two or three."
+                    )
+
+                stage_ind = stage_conf.stage
+                stage_channels = channels[stage_ind]
+
+                self.stems[input_name] = stage_conf.stem_factory(
+                    stage_channels
+                )
+                self.aggregators[input_name] = aggregator_factory(
+                    stage_channels, 2, stage_channels
+                )
+                self.stage_inputs[stage_ind].append(input_name)
+
+
         self.first_stage = first_stage
 
-        if stem_factory is None:
-            stem_factory = block_factory
-
-        for stage_ind, channels_in in input_channels.items():
-
-            channels_out = channels[stage_ind]
-            if not isinstance(channels_in, list):
-                channels_in = [channels_in]
-
-            for ch_in in channels_in:
-                stage_s = str(stage_ind)
-                if stage_s not in self.stems:
-                    self.stems[stage_s] = nn.ModuleList(
-                        [stem_factory(ch_in, channels_out)]
-                    )
-                    self.aggregators[stage_s] = nn.ModuleList(
-                        [aggregator_factory(channels_out, 2, channels_out,)]
-                    )
-
-                else:
-                    self.stems[stage_s].append(
-                        stem_factory(ch_in, channels_out)
-                    )
-                    self.aggregators[stage_s].append(
-                        aggregator_factory(channels_out, 2, channels_out,)
-                    )
-        # No aggregator needed for first input
-        k_0 = next(iter(self.aggregators))
-        self.aggregators[k_0][0] = None
+        first_input = self.stage_inputs[self.first_stage][0]
+        del self.aggregators[first_input]
 
 
     def forward_with_skips(self, x: torch.Tensor) -> List[torch.Tensor]:
@@ -360,25 +390,21 @@ class MultiInputSpatialEncoder(SpatialEncoder):
         stage_ind = self.first_stage
         skips = []
         y = None
-        input_index = 0
 
         for down, stage in zip(self.downsamplers, self.stages):
-            # Integrate input into stream.
 
-            stage_s = str(stage_ind)
-            if stage_ind in self.input_channels:
-                x_ins = x[input_index]
-                input_index += 1
-                if not isinstance(x_ins, list):
-                    x_ins = [x_ins]
-                for x_in, stem, agg in zip(x_ins, self.stems[stage_s], self.aggregators[stage_s]):
-                    if x_in is None:
-                        continue
-                    if y is None:
-                        y = forward(stem, x_in)
-                        skips.append(y)
-                    else:
-                        y = agg(y, forward(stem, x_in))
+            inputs = self.stage_inputs[stage_ind]
+            for inpt in inputs:
+
+                if not inpt in x:
+                    continue
+
+                x_in = forward(self.stems[inpt], x[inpt])
+                if y is not None:
+                    y = self.aggregators[inpt](y, x_in)
+                else:
+                    y = x_in
+                    skips.append(y)
 
             if down is not None:
                 y = forward(down, y)
@@ -404,10 +430,11 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             the feature maps from all stages are returned with the last element
             in the list corresponding to the output of the last encoder stage.
         """
-        if not len(x) == len(self.input_channels):
+        if not isinstance(x, dict):
             raise ValueError(
-                "Multi-input encoder expects a list of tensors with the same "
-                " number of elements as the 'input_channels' dict."
+                "A multi-input encoder expects a dict of tensors "
+                " mapping input names to corresponding input "
+                " tensors."
             )
 
         if return_skips:
@@ -420,16 +447,16 @@ class MultiInputSpatialEncoder(SpatialEncoder):
         for down, stage in zip(self.downsamplers, self.stages):
             # Integrate input into stream.
             stage_s = str(stage_ind)
-            if stage_ind in self.input_channels:
-                x_ins = x[input_index]
-                if not isinstance(x_ins, list):
-                    x_ins = [x_ins]
-                for x_in, stem, agg in zip(x_ins, self.stems[stage_s], self.aggregators[stage_s]):
-                    if y is None:
-                        y = forward(stem, x_in)
-                    else:
-                        y = agg(y, forward(stem, x_in))
-                input_index += 1
+            for inpt in self.stage_inputs[stage_ind]:
+
+                if not inpt in x:
+                    continue
+
+                x_in = forward(self.stems[inpt], x[inpt])
+                if y is not None:
+                    y = self.aggregators[inpt](x_in, y)
+                else:
+                   y = x_in
 
             if down is not None:
                     y = forward(down, y)
