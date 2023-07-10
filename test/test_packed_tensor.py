@@ -78,8 +78,8 @@ def test_set_get_item():
     assert t_e[2, 1] == 1.0
 
     # Test getting data from tensor.
-    assert (t_p[:, 0] == 4.0).all()
-    assert (t_p[..., 0] == 4.0).all()
+    assert (t_p[:, 0].tensor == 4.0).all()
+    assert (t_p[..., 0].tensor == 4.0).all()
 
 
 def test_expand():

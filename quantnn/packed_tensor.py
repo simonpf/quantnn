@@ -151,6 +151,13 @@ class PackedTensor:
         """
         return self._t
 
+    @property
+    def ndim(self):
+        """
+        The rank of the tensor
+        """
+        return self._t.ndim
+
     def dim(self):
         return self._t.dim()
 
@@ -169,14 +176,22 @@ class PackedTensor:
         """
         sl = slices[0]
         if sl == Ellipsis:
-            return self._t.__getitem__(slices)
+            return PackedTensor(
+                self._t.__getitem__(slices),
+                self.batch_size,
+                self.batch_indices
+            )
         if isinstance(sl, slice):
             if sl.start not in [0, None] or sl.stop is not None:
                 raise ValueError(
                     "Slicing of PackedTensors only possible if no slicing"
                     "is performed along the first axis."
                 )
-            return self._t.__getitem__(slices)
+            return PackedTensor(
+                self._t.__getitem__(slices),
+                self.batch_size,
+                self.batch_indices
+            )
         raise ValueError(
             "Slicing of PackedTensors only possible if no slicing"
             "is performed along the first axis."
