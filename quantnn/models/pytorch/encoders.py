@@ -11,6 +11,23 @@ from typing import Optional, Callable, Union, Optional, List, Dict
 import torch
 from torch import nn
 from quantnn.packed_tensor import PackedTensor, forward
+from quantnn.models.pytorch.blocks import ConvBlockFactory
+from quantnn.models.pytorch.aggregators import BlockAggregatorFactory
+
+
+DEFAULT_BLOCK_FACTORY = ConvBlockFactory(
+    kernel_size=3,
+    norm_factory=nn.BatchNorm2d,
+    activation_factory=nn.ReLU
+)
+
+DEFAULT_AGGREGATOR_FACTORY = BlockAggregatorFactory(
+    ConvBlockFactory(
+        kernel_size=1,
+        norm_factory=None,
+        activation_factory=None
+    )
+)
 
 
 @dataclass
@@ -33,7 +50,7 @@ class SequentialStageFactory(nn.Sequential):
             channels_out,
             n_blocks,
             block_factory,
-            downsample=False
+            downsample=1,
     ):
         """
         Args:
@@ -45,10 +62,10 @@ class SequentialStageFactory(nn.Sequential):
             block_factory: The factory to use to create the blocks
                 in the stage.
             downsample: Whether to include a downsampling layer
-                in the stage.
+                at the beginning of the stage.
         """
         blocks = []
-        for _ in range(n_blocks):
+        for block_ind in range(n_blocks):
             blocks.append(
                 block_factory(
                     channels_in,
@@ -57,7 +74,11 @@ class SequentialStageFactory(nn.Sequential):
                 )
             )
             channels_in = channels_out
-            downsample = False
+            downsample = 1
+
+        if len(blocks) == 1:
+            return blocks[0]
+
         return nn.Sequential(*blocks)
 
 
@@ -73,21 +94,21 @@ class SpatialEncoder(nn.Module):
             self,
             channels: Union[int, List[int]],
             stages: List[Union[int, StageConfig]],
-            block_factory: Optional[Callable[[int, int], nn.Module]],
+            block_factory: Optional[Callable[[int, int], nn.Module]] = None,
             channel_scaling: int = 2,
             max_channels: int = None,
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
             downsampler_factory: Callable[[int, int], nn.Module] = None,
             downsampling_factors: List[int] = None,
-            stem_factory: Callable[[int], nn.Module] = None
+            stem_factory: Callable[[int], nn.Module] = None,
     ):
         """
         Args:
-            channels: A list specifying the channels before and after all
-                stages in the encoder. Alternatively, channels can be an
-                integer specifying the number of channels of the input to
+            channels: A list specifying the number of features (or channels)
+                in each stages of the encoder. Alternatively, channels can
+                be an integer specifying the number of channels of the first
                 the first stage of the encoder. In this case, the number
-                of channels of subsequent stages is computed by scaling
+                of feature channels in subsequent stages is computed by scaling
                 the number of channels in each stage with 'channel_scaling'.
             stages: A list containing the stage specifications for each
                 stage in the encoder.
@@ -102,13 +123,19 @@ class SpatialEncoder(nn.Module):
             downsampler_factory: Optional factory to create downsampling
                 layers. If not provided, the block factory must provide
                 downsampling functionality.
-            downsampling_factors: The downsampling factors for each encoder
-                stage.
+            downsampling_factors: The downsampling factors applied to the outputs
+                of all but the last stage. For a constant downsampling factor
+                between all layers this can be set to a single 'int'. Otherwise
+                a list of length ``len(channels) - 1`` should be provided.
             stem_factory: A factory that takes a number of output channels and
                 produces a stem module that is applied to the inputs prior
                 to feeding them into the first stage of the encoder.
         """
         super().__init__()
+
+        if block_factory is None:
+            block_factory = DEFAULT_BLOCK_FACTORY
+
         self.channel_scaling = channel_scaling
         self.downsamplers = nn.ModuleList()
         self.stages = nn.ModuleList()
@@ -116,24 +143,26 @@ class SpatialEncoder(nn.Module):
         n_stages = len(stages)
         if isinstance(channels, int):
             channels = [
-                channels * channel_scaling ** i for i in range(n_stages + 1)
+                channels * channel_scaling ** i for i in range(n_stages)
             ]
             if max_channels is not None:
                 channels = [min(ch, max_channels) for ch in channels]
 
-        if not len(channels) == len(stages) + 1:
+        if not len(channels) == len(stages):
             raise ValueError(
                 "The list of given channel numbers must match the number "
-                "of stages plus 1."
+                "of stages."
             )
 
         if downsampling_factors is None:
-            downsampling_factors = [2] * n_stages
-        if not len(stages) == len(downsampling_factors):
+            downsampling_factors = [2] * (n_stages - 1)
+        if len(stages) != len(downsampling_factors) + 1:
             raise ValueError(
-                "The list of downsampling factors  numbers must match the number "
-                "of stages."
+                "The list of downsampling factors numbers must have one "
+                "element less than the number of stages."
             )
+        # No downsampling applied in last layer.
+        downsampling_factors = [1] + downsampling_factors
 
 
         if stage_factory is None:
@@ -153,7 +182,7 @@ class SpatialEncoder(nn.Module):
         channels_in = channels[0]
         for stage, channels_out, f_dwn in zip(
                 stages,
-                channels[1:],
+                channels,
                 downsampling_factors
         ):
             # Downsampling layer is included in stage.
@@ -165,17 +194,22 @@ class SpatialEncoder(nn.Module):
                         channels_out,
                         stage.n_blocks,
                         block_factory,
-                        downsample=f_dwn
+                        downsample=f_dwn,
                     )
                 )
             # Explicit downsampling layer.
             else:
                 self.downsamplers.append(
-                    downsampler_factory(channels_in, f_dwn)
+                    downsampler_factory(
+                        channels_in,
+                        channels_out,
+                        f_dwn)
+                    if f_dwn > 1
+                    else None
                 )
                 self.stages.append(
                     stage_factory(
-                        channels_in,
+                        channels_out,
                         channels_out,
                         stage.n_blocks,
                         block_factory,
@@ -207,7 +241,7 @@ class SpatialEncoder(nn.Module):
             last encoder stage.
         """
         y = x
-        skips = [y]
+        skips = []
         for down, stage in zip(self.downsamplers, self.stages):
             y = stage(y)
             if down is not None:
@@ -239,10 +273,12 @@ class SpatialEncoder(nn.Module):
             return self.forward_with_skips(x)
 
         y = x
+
         for down, stage in zip(self.downsamplers, self.stages):
-            y = stage(y)
             if down is not None:
                 y = down(y)
+            y = stage(y)
+
         return y
 
 
@@ -267,14 +303,13 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             inputs: Dict[str, Union[InputConfig, int]],
             channels: Union[int, List[int]],
             stages: List[Union[int, StageConfig]],
-            block_factory: Optional[Callable[[int, int], nn.Module]],
-            aggregator_factory: Optional[Callable[[int], nn.Module]],
-            stem_factory: Optional[Callable[[int, int], nn.Module]] = None,
+            block_factory: Optional[Callable[[int, int], nn.Module]] = None,
+            aggregator_factory: Optional[Callable[[int], nn.Module]] = None,
             channel_scaling: int = 2,
             max_channels: int = None,
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
             downsampler_factory: Callable[[int, int], nn.Module] = None,
-            downsampling_factors: List[int] = None
+            downsampling_factors: List[int] = None,
     ):
         """
             inputs: A dictionary mapping inputs names to either InputConfig
@@ -285,8 +320,8 @@ class MultiInputSpatialEncoder(SpatialEncoder):
                 for the input. If only a lenth-two tuple ``(stage, n_channels)``
                 is provided, the block factory will be used to create the stem
                 for the respective input.
-            channels: A list specifying the channels before and after all
-                stages in the encoder. Alternatively, channels can be an
+            channels: A list specifying the channels in each stage of the
+                 encoder. Can alternatively be an
                 integer specifying the number of channels of the input to
                 the first stage of the encoder. In this case, the number
                 of channels of subsequent stages is computed by scaling
@@ -295,8 +330,6 @@ class MultiInputSpatialEncoder(SpatialEncoder):
                 stage in the encoder.
             block_factory: Factory to create the blocks in each stage.
             aggregator_factory: Factory to create block to merge inputs.
-            stem_factory: Factory to create the stems that are applied to
-                the network inputs.
             channel_scaling: Scaling factor specifying the increase of the
                 number of channels after every downsampling layer. Only used
                 if channels is an integer.
@@ -313,15 +346,18 @@ class MultiInputSpatialEncoder(SpatialEncoder):
         stage_inds = list(val[0] for val in inputs.values())
         first_stage = min(stage_inds)
 
+        if aggregator_factory is None:
+            aggregator_factory = DEFAULT_AGGREGATOR_FACTORY
+
         if isinstance(channels, int):
             channels = [
-                channels * channel_scaling ** i for i in range(n_stages + 1)
+                channels * channel_scaling ** i for i in range(n_stages)
             ]
             if max_channels is not None:
                 channels = [min(ch, max_channels) for ch in channels]
 
         if downsampling_factors is None:
-            downsampling_factors = [2] * n_stages
+            downsampling_factors = [2] * (n_stages - 1)
 
         super().__init__(
             channels[first_stage:],
@@ -331,7 +367,7 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             max_channels=max_channels,
             stage_factory=stage_factory,
             downsampler_factory=downsampler_factory,
-            downsampling_factors=downsampling_factors[first_stage:]
+            downsampling_factors=downsampling_factors[first_stage:],
         )
         self.stems = nn.ModuleDict()
         self.aggregators = nn.ModuleDict()
@@ -359,16 +395,32 @@ class MultiInputSpatialEncoder(SpatialEncoder):
                         "two or three."
                     )
 
-                stage_ind = stage_conf.stage
-                stage_channels = channels[stage_ind]
+            stage_ind = stage_conf.stage
+            stage_channels = channels[stage_ind]
 
-                self.stems[input_name] = stage_conf.stem_factory(
-                    stage_channels
+            if stage_ind > len(channels) - 1:
+                raise ValueError(
+                    "Stage index for input cannot exceed the number "
+                    " of stages in the encoder minus 1."
                 )
-                self.aggregators[input_name] = aggregator_factory(
-                    stage_channels, 2, stage_channels
+
+            if downsampler_factory is None and stage_ind > len(channels) - 2:
+                raise ValueError(
+                    "Stage index for input cannot exceed the number "
+                    " of stages in the encoder minus 2 if no explicity."
+                    " downsampler factory is provided."
                 )
-                self.stage_inputs[stage_ind].append(input_name)
+
+            if stage_ind > 0 and downsampler_factory is None:
+                stage_ind = stage_ind + 1
+
+            self.stems[input_name] = stage_conf.stem_factory(
+                stage_channels
+            )
+            self.aggregators[input_name] = aggregator_factory(
+                stage_channels, 2, stage_channels
+            )
+            self.stage_inputs[stage_ind].append(input_name)
 
 
         self.first_stage = first_stage
@@ -394,6 +446,10 @@ class MultiInputSpatialEncoder(SpatialEncoder):
         for down, stage in zip(self.downsamplers, self.stages):
 
             inputs = self.stage_inputs[stage_ind]
+
+            if y is not None and down is not None:
+                y = forward(down, y)
+
             for inpt in inputs:
 
                 if not inpt in x:
@@ -404,13 +460,11 @@ class MultiInputSpatialEncoder(SpatialEncoder):
                     y = self.aggregators[inpt](y, x_in)
                 else:
                     y = x_in
-                    skips.append(y)
 
-            if down is not None:
-                y = forward(down, y)
             y = forward(stage, y)
             skips.append(y)
             stage_ind += 1
+
         return skips
 
     def forward(
@@ -445,8 +499,10 @@ class MultiInputSpatialEncoder(SpatialEncoder):
         input_index = 0
 
         for down, stage in zip(self.downsamplers, self.stages):
-            # Integrate input into stream.
-            stage_s = str(stage_ind)
+
+            if y is not None and down is not None:
+                y = forward(down, y)
+
             for inpt in self.stage_inputs[stage_ind]:
 
                 if not inpt in x:
@@ -458,10 +514,9 @@ class MultiInputSpatialEncoder(SpatialEncoder):
                 else:
                    y = x_in
 
-            if down is not None:
-                    y = forward(down, y)
             y = forward(stage, y)
             stage_ind = stage_ind + 1
+
         return y
 
 
@@ -478,7 +533,7 @@ class ParallelEncoderLevel(nn.Module):
             level_index: int,
             depth: int,
             block_factory: Callable[[int, int], nn.Module],
-            downsampler_factory: Callable[[int, int], nn.Module],
+            downsampler_factory: Callable[[int, int, int], nn.Module],
             aggregator_factory: Callable[[int, int, int], nn.Module],
             input_aggregator_factory: Callable[[int, int, int], nn.Module] = None
     ):
@@ -527,7 +582,7 @@ class ParallelEncoderLevel(nn.Module):
                 # Downsample inputs from lower scale
                 f_down = scales[scale_index] // scales[scale_index - 1]
                 downsamplers.append(
-                    downsampler_factory(ch_in_2, f_down)
+                    downsampler_factory(ch_in_2, ch_in_2, f_down)
                 )
 
                 # Combine inputs
@@ -595,7 +650,7 @@ class ParallelEncoder(nn.Module):
             scales: List[int],
             depth: int,
             block_factory: Callable[[int, int], nn.Module],
-            downsampler_factory: Callable[[int], nn.Module],
+            downsampler_factory: Callable[[int, int, int], nn.Module],
             input_aggregator_factory: Callable[[int, int, int], nn.Module],
             aggregator_factory: Callable[[int, int, int], nn.Module],
     ):

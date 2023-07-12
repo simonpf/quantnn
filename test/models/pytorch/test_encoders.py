@@ -117,8 +117,8 @@ def test_multi_input_spatial_encoder():
     stages = [2, 2, 2, 2]
     inputs = {
         "input_0": (0, 12),
-        "input_1": (2, 8),
-        "input_2": (3, 4)
+        "input_1": (1, 8),
+        "input_2": (2, 4)
     }
     encoder = MultiInputSpatialEncoder(
         inputs=inputs,
@@ -159,8 +159,8 @@ def test_zero_depth_stage():
     stages = [0, 2, 2, 2]
     inputs = {
         "input_0": (0, 12),
-        "input_1": (2, 8),
-        "input_2": (3, 4)
+        "input_1": (1, 8),
+        "input_2": (2, 4)
     }
     encoder = MultiInputSpatialEncoder(
         inputs=inputs,
@@ -190,6 +190,42 @@ def test_zero_depth_stage():
     assert y[0].shape == (1, 1, 32, 32)
     # First element is output from last layer.
     assert y[-1].shape == (1, 8, 4, 4)
+
+
+def test_multi_input_spatial_encoder_downsampler_factory():
+    """
+    Test propagation through a spatial encoder and make sure that
+    dimensions are changed as expected.
+    """
+    block_factory = ResNetBlockFactory()
+    downsampler_factory = factories.MaxPooling()
+    aggregator_factory = AverageAggregatorFactory()
+    stages = [2, 2, 2, 2]
+    inputs = {
+        "input_0": (0, 12),
+        "input_1": (1, 8),
+        "input_2": (2, 4)
+    }
+    encoder = MultiInputSpatialEncoder(
+        inputs=inputs,
+        channels=1,
+        stages=stages,
+        block_factory=block_factory,
+        aggregator_factory=aggregator_factory,
+        channel_scaling=2,
+        max_channels=8,
+        downsampler_factory=downsampler_factory
+    )
+    # Test forward without skip connections.
+    x = {
+        "input_0": torch.ones((1, 12, 32, 32)),
+        "input_1": torch.ones((1, 8, 16, 16)),
+        "input_2": torch.ones((1, 4, 8, 8)),
+    }
+    y = encoder(x)
+    # Width and height should be reduced by 8.
+    # Number of channels should be maximum.
+    assert y.shape == (1, 8, 4, 4)
 
 
 def test_spatial_encoder_w_stem():
