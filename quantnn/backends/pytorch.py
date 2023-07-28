@@ -31,6 +31,9 @@ class PyTorch(TensorBackend):
 
     @classmethod
     def to_numpy(cls, array):
+        import torch
+        if array.dtype in [torch.bfloat16]:
+            array = array.float()
         return array.cpu().detach().numpy()
 
     @classmethod
