@@ -680,7 +680,7 @@ class PytorchModel:
                 mask = None
 
             if isinstance(transformation, dict):
-                transform_k = transformation[k]
+                transform_k = transformation.get(k, None)
             else:
                 transform_k = transformation
 
