@@ -473,9 +473,10 @@ def quantile_function(y_pdf, y_true, bins, bin_axis=1):
     return result
 
 
-def posterior_maximum(y_pdf, bins, bin_axis=1):
+def map_estimate(y_pdf, bins, bin_axis=1):
     """
-    Calculate maximum of the posterior distribution.
+    Calculate the maximum a-posteriori (MAP) estimate from the posterior
+    distribution.
 
     Args:
         y_pdf: Rank-``k`` Tensor containing the normalized, discrete

@@ -16,7 +16,7 @@ from quantnn.density import (
     sample_posterior,
     crps,
     quantile_function,
-    posterior_maximum,
+    map_estimate,
     add,
 )
 
@@ -498,7 +498,7 @@ def test_quantile_function(xp):
 
 
 @pytest.mark.parametrize("xp", pytest.backends)
-def test_posterior_maximum(xp):
+def test_map_estimate(xp):
     """
     Ensure that the maximum of the posterior is computed correctly.
     """
@@ -511,7 +511,7 @@ def test_posterior_maximum(xp):
 
     y_pred = [xp.ones(4), to_array(xp, [2.0]), xp.ones(4)]
     y_pred = concatenate(xp, y_pred, 0)
-    pm = posterior_maximum(y_pred, bins)
+    pm = map_estimate(y_pred, bins)
     assert np.isclose(pm, 4.5)
 
     #
@@ -524,7 +524,7 @@ def test_posterior_maximum(xp):
     y_pred = concatenate(xp, y_pred, 0)
     y_pred = eo.repeat(y_pred, "q -> h q", h=10)
 
-    pm = posterior_maximum(y_pred, bins)
+    pm = map_estimate(y_pred, bins)
     assert np.isclose(pm[0], 4.5)
 
     #
@@ -537,7 +537,7 @@ def test_posterior_maximum(xp):
     y_pred = concatenate(xp, y_pred, 0)
     y_pred = eo.repeat(y_pred, "q -> h q w", h=10, w=10)
 
-    pm = posterior_maximum(y_pred, bins)
+    pm = map_estimate(y_pred, bins)
     assert np.isclose(pm[0, 0], 4.5)
 
     bins = arange(xp, 0.0, 10.001, 1.0)
@@ -546,7 +546,7 @@ def test_posterior_maximum(xp):
     y_pred = concatenate(xp, y_pred, 0)
     y_pred = eo.repeat(y_pred, "q -> h w q", h=10, w=10)
 
-    pm = posterior_maximum(y_pred, bins, -1)
+    pm = map_estimate(y_pred, bins, -1)
     assert np.isclose(pm[0, 0], 4.5)
 
 

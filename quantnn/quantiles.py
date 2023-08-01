@@ -883,7 +883,20 @@ def correct_a_priori(y_pred, quantiles, r, quantile_axis=1):
     return y_pred_new
 
 
-def posterior_maximum(y_pred, quantiles, quantile_axis=1):
+def map_estimate(y_pred, quantiles, quantile_axis=1):
+    """
+    Calculate the maximum a-posteriori (MAP) estimate from the posterior
+    distribution.
+
+    Args:
+        y_pred: Tensor containing the predicted quantiles.
+        quantiles: Rank-1 tensor containing the quantile fractions.
+        quantile_axis: The axis of 'y_pred' which contains the quantiles.
+
+    Return:
+        A tensor with the quantile_axis replaced by the value at the
+        maximum of the posterior distribution.
+    """
     if len(y_pred.shape) == 1:
         quantile_axis = 0
     xp = get_array_module(y_pred)

@@ -159,6 +159,24 @@ class Quantiles():
             y_pred, quantiles, quantile_axis=self.quantile_axis
         )
 
+    def map_estimate(self, y_pred):
+        """
+        Calculate the MAP estimate from predicted quantiles.
+
+        Args:
+            y_pred: A rank-n Tensor containing the quantiles predicted by the NN
+                model.
+
+        Return:
+            A tensor with rank n - 1 containing the MAP estimate mean
+            of the distributions represented ``y_pred``.
+        """
+        module = get_array_module(y_pred)
+        quantiles = to_array(module, self.quantiles, like=y_pred)
+        return qq.map_estimate(
+            y_pred, quantiles, quantile_axis=self.quantile_axis
+        )
+
     def posterior_std_dev(self, y_pred):
         """
         Calculate the posterior standard deviation from predicted quantiles.
@@ -318,10 +336,10 @@ class Density():
 
     def cdf(self, y_pred):
         """
-        Calculate CDF from predicted logits.
+        Calculate CDF from predicted, normalized probabilities..
 
         Args:
-            y_pred: Tensor containing the logit values predicted by
+            y_pred: Tensor containing the binned probability values predicted by
                 the neural network model.
 
         Return:
@@ -338,10 +356,10 @@ class Density():
 
     def pdf(self, y_pred):
         """
-        Calculate PDF from predicted logits.
+        Calculate PDF from predicted binned probability values..
 
         Args:
-            y_pred: Tensor containing the logit values predicted by
+            y_pred: Tensor containing the binned probability values predicted by
                 the neural network model.
 
         Return:
@@ -358,7 +376,7 @@ class Density():
         Sample retrieval values from posterior distribution.
 
         Args:
-            y_pred: Tensor containing the logit values predicted by
+            y_pred: Tensor containing the binned probabilities predicted by
                 the neural network model.
             n_samples: The number of samples to produce.
 
@@ -380,7 +398,7 @@ class Density():
         a Gaussian fit.
 
         Args:
-            y_pred: Tensor containing the logit values predicted by
+            y_pred: Tensor containing the binned probabilities predicted by
                 the neural network model.
             n_samples: The number of samples to produce.
 
@@ -401,7 +419,7 @@ class Density():
         Calculate the posterior mean from predicted quantiles.
 
         Args:
-            y_pred: A rank-n tensor containing the logit values predicted by
+            y_pred: A rank-n tensor containing the binned probabilities predicted by
                 the neural network model.
 
         Return:
@@ -415,12 +433,30 @@ class Density():
             bin_axis=self.bin_axis
         )
 
+    def map_estimate(self, y_pred):
+        """
+        Calculate the MAP estimate from a binned probability distribution.
+
+        Args:
+            y_pred: A rank-n Tensor containing the binned PD predicted by
+                the NN model.
+
+        Return:
+            A tensor with rank n - 1 containing the MAP estimate mean
+            of the distributions represented ``y_pred``.
+        """
+        module = get_array_module(y_pred)
+        quantiles = to_array(module, self.quantiles, like=y_pred)
+        return qd.map_estimate(
+            y_pred, quantiles, quantile_axis=self.quantile_axis
+        )
+
     def crps(self, y_pred, y_true):
         """
         Calculate the CRPS score from predicted quantiles.
 
         Args:
-            y_pred: A rank-n tensor containing the logit values predicted by
+            y_pred: A rank-n tensor containing the binned probabilities predicted by
                 the neural network model.
             y_true: A rank-(n-1) Tensor containing the true values.
 
@@ -440,7 +476,7 @@ class Density():
         a given threshold.
 
         Args:
-            y_pred: Tensor containing the logit values predicted by
+            y_pred: Tensor containing the binned probabilities predicted by
                 the neural network model.
             y: The scalar threshold value.
 
@@ -462,7 +498,7 @@ class Density():
         a given threshold.
 
         Args:
-            y_pred: Tensor containing the logit values predicted by
+            y_pred: Tensor containing the binned probabilities predicted by
                 the neural network model.
             y: The scalar threshold value.
 
@@ -481,7 +517,7 @@ class Density():
         Calculate quantiles of the posterior distribution.
 
         Args:
-            y_pred: Tensor containing the logit values predicted by
+            y_pred: Tensor containing the binned probabilities predicted by
                 the neural network model.
             y: The scalar threshold value.
 
@@ -522,10 +558,10 @@ class Density():
 
 
 
-class Mean():
+class MSE():
     """
     Trains a neural network to predict the conditional mean using the mean sqaured
-    error. In contrast to the Quantile and Density losses, the Mean loss requires
+    error. In contrast to the Quantile and Density losses, the MSE loss requires
     only a single neuron per retrieval target.
     """
     def __init__(self):
@@ -560,11 +596,21 @@ class Mean():
         """
         return y_pred
 
+    def map_estimate(self, y_pred):
+        """
+        For a Gaussian distribution the MAP is identical to the
+        posterior mean.
+        """
+        return y_pred
+
     def __repr__(self):
-        return f"Mean()"
+        return f"MSE()"
 
     def __str__(self):
-        return f"Mean()"
+        return f"MSE()"
+
+
+Mean = MSE
 
 
 class Classification():
@@ -583,9 +629,6 @@ class Classification():
 
     def get_loss(self, backend, mask=None):
         return backend.CrossEntropyLoss(self.n_classes, mask=mask, sparse=self.sparse)
-
-    def posterior_mean(self, *args):
-        raise NotImplementedError
 
     def predict(self, y_pred):
         module = get_array_module(y_pred)
@@ -953,6 +996,46 @@ class MRNN(NeuralNetworkModel):
 
         return results
 
+    def map_estimate(self, x=None, y_pred=None, key=None):
+        r"""
+        Compute the maximum a-posteriori (MAP) estimate.
+
+        Arguments:
+            x: Rank-k tensor containing the input data with the input channels
+                (or features) for each sample located along its first dimension.
+            y_pred: Optional pre-computed quantile predictions, which, when
+                 provided, will be used to avoid repeated propagation of the
+                 the inputs through the network.
+            key: If this function is used to calculate the maximum a-posteriori
+                estimate of a specific target and 'y_pred' is provided, then the
+                corresponding 'key' must be provided to identify the loss
+                that defines how to calculate the posterior mean.
+        Returns:
+
+            Tensor of rank k-1 the MAP estimate for all provided inputs.
+        """
+        if y_pred is None:
+            if x is None:
+                raise ValueError(
+                    "One of the input arguments x or y_pred must be " " provided."
+                )
+            y_pred = self.predict(x)
+
+        if not isinstance(y_pred, dict):
+            if isinstance(self.losses, dict):
+                return self.losses[key].map_estimate(y_pred)
+            return self.losses.map_estimate(y_pred)
+
+        results = {}
+        for k in y_pred:
+            loss = self.losses[k]
+            if hasattr(loss, "map_estimate"):
+                results[k] = loss.map_estimate(
+                    y_pred[k]
+                )
+
+        return results
+
 
     def posterior_std_dev(self, x=None, y_pred=None, key=None):
         r"""
@@ -970,7 +1053,7 @@ class MRNN(NeuralNetworkModel):
                 that defines how to calculate the standard deviation.
         Returns:
 
-            Tensor or rank k-1 the posterior means for all provided inputs.
+            Tensor of rank k-1 the posterior means for all provided inputs.
         """
         if y_pred is None:
             if x is None:
@@ -993,7 +1076,7 @@ class MRNN(NeuralNetworkModel):
                 )
 
         return results
-
+ 
     def crps(self, x=None, y_pred=None, y_true=None, key=None):
         r"""
         Compute the Continuous Ranked Probability Score (CRPS).
@@ -1225,9 +1308,23 @@ class MRNN(NeuralNetworkModel):
             scheduler=None,
             metrics=None,
             name=None
+            name=None,
+            log_dir=None
     ):
         """
-        Get Pytorch Lightning module.
+        Get lightning module for the training of the MRNN model.
+
+        Args:
+            mask: Mask value used for masking outputs.
+            optimizer: A torch optimizer to use for training.
+            scheduler: The LR scheduler for the training.
+            metrics: List of metric objects to track during training.
+            name: Name of the experiment to use during logging.
+            log_dir: Path pointing to the directory at which to store
+                the tensorboard logs.
+
+        Return:
+            The lightning module.
         """
         from quantnn.models.pytorch.lightning import QuantnnLightning
         losses = apply(lambda l: l.get_loss(self.backend, mask=mask), self.losses)

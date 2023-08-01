@@ -20,7 +20,7 @@ from quantnn.quantiles import (
     quantile_loss,
     posterior_quantiles,
     correct_a_priori,
-    posterior_maximum,
+    map_estimate,
 )
 
 
@@ -784,7 +784,7 @@ def test_correct_a_priori(xp):
 
 
 @pytest.mark.parametrize("xp", pytest.backends)
-def test_posterior_maximum(xp):
+def test_map_estimate(xp):
     """
     Test calculation of posterior maximum
     """
@@ -801,7 +801,7 @@ def test_posterior_maximum(xp):
     ]
     y_pred = concatenate(xp, y_pred, 0)
 
-    pm = posterior_maximum(y_pred, quantiles)
+    pm = map_estimate(y_pred, quantiles)
 
     assert np.isclose(pm, 4.45)
 
@@ -812,7 +812,7 @@ def test_posterior_maximum(xp):
     quantiles = arange(xp, 0.1, 0.91, 0.1)
     y_pred = eo.repeat(y_pred, "q -> h q", h=10)
 
-    pm = posterior_maximum(y_pred, quantiles)
+    pm = map_estimate(y_pred, quantiles)
     assert np.isclose(pm[0], 4.45)
 
     #
@@ -828,7 +828,7 @@ def test_posterior_maximum(xp):
     y_pred = concatenate(xp, y_pred, 0)
     y_pred = eo.repeat(y_pred, "q -> h q w", h=10, w=10)
 
-    pm = posterior_maximum(y_pred, quantiles)
+    pm = map_estimate(y_pred, quantiles)
     assert np.isclose(pm[0, 0], 4.45)
 
     quantiles = arange(xp, 0.1, 0.91, 0.1)
@@ -840,5 +840,5 @@ def test_posterior_maximum(xp):
     y_pred = concatenate(xp, y_pred, 0)
     y_pred = eo.repeat(y_pred, "q -> h w q", h=10, w=10)
 
-    pm = posterior_maximum(y_pred, quantiles, quantile_axis=-1)
+    pm = map_estimate(y_pred, quantiles, quantile_axis=-1)
     assert np.isclose(pm[0, 0], 4.45)

@@ -55,7 +55,7 @@ def calculate_posterior_mean(model, y_pred, key, cache=None):
             y_mean = model.posterior_mean(y_pred=y_pred, key=key)
             if cache is not None:
                 cache["y_mean"] = y_mean
-    except NotImplementedError:
+    except AttributeError:
         return None
     return y_mean
 
@@ -142,7 +142,10 @@ class ScalarMetric(Metric):
             maps the target keys to metric values.
         """
         if len(self.keys) == 1:
-            return self.get_value(next(iter(self.keys)))
+            try:
+                return self.get_value(next(iter(self.keys)))
+            except KeyError:
+                return {}
 
         results = {}
         for key in self.keys:
