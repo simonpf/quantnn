@@ -29,8 +29,12 @@ class SpatialDecoder(nn.Module):
     A decoder for spatial information.
 
     The decoder takes a 4D input (batch x channel x height x width),
-    and decoder the information into an output with usually less
-    channels but reduced height and width.
+    and decodes channel information input spatial information.
+
+    The decoder consists of multiple stages each preceded by an
+    upsampling layer. Features from skip connections are merged
+    after the upsamling before the convolutional block of each stage
+    are applied.
     """
     def __init__(
             self,
@@ -42,16 +46,17 @@ class SpatialDecoder(nn.Module):
             skip_connections: Union[bool, int] = False,
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
             upsampler_factory: Callable[[int], nn.Module] = BilinearFactory(),
-            upsampling_factors: List[int] = None
+            upsampling_factors: List[int] = None,
     ):
         """
         Args:
-            channels: A list specifying the channels before and after all
-                stages in the decoder. Alternatively, channels can be an
-                integer specifying the number of channels of the output from
-                the last stage of the encoder. In this case, the number
-                of channels of previous stages is computed by scaling
-                the number of channels in each stage with 'channel_scaling'.
+            channels: A list specifying the channels before the first stage
+                and within all consecutive stages. Alternatively, this can
+                be just an integer specifying the number of channels of
+                the input to the decoder. The number of channels within
+                each stage will then be computed by multiplying the input
+                channels with increasing powers of the 'channel_scaling'
+                parameter.
             block_factory: Factory functional to use to create the blocks
                 in the encoders' stages.
             channel_scaling: Factor specifying the decrease in channels with
@@ -85,10 +90,10 @@ class SpatialDecoder(nn.Module):
            if max_channels is not None:
                channels = [min(ch, max_channels) for ch in channels]
 
-        if not len(channels) == len(stages) + 1:
+        if len(channels) != len(stages) + 1:
             raise ValueError(
-                "The list of given channel numbers must match the number "
-                "of stages plus 1."
+                "The list of given channel numbers must exceed the number "
+                "of stages in the decoder by one."
             )
 
         if stage_factory is None:
@@ -106,10 +111,10 @@ class SpatialDecoder(nn.Module):
 
         if upsampling_factors is None:
             upsampling_factors = [2] * n_stages
-        if not len(stages) == len(upsampling_factors):
+        if len(stages) != len(upsampling_factors):
             raise ValueError(
-                "The list of upsampling factors  numbers must match the number "
-                "of stages."
+                "The number of upsampling factors  must equal to the "
+                "number of stages."
             )
 
         channels_in = channels[0]
@@ -118,11 +123,14 @@ class SpatialDecoder(nn.Module):
             self.upsamplers.append(
                 upsampler_factory(upsampling_factors[index])
             )
+
             channels_combined = channels_in
+            channels_skip = channels_out
+
             if type(self.skip_connections) == bool and self.skip_connections:
-                channels_combined += channels_out
+                channels_combined += channels_skip
             if type(self.skip_connections) == int and index < self.skip_connections:
-                channels_combined += channels_out
+                channels_combined += channels_skip
             self.stages.append(
                 stage_factory(
                     channels_combined,
@@ -154,19 +162,28 @@ class SpatialDecoder(nn.Module):
                     f"For a decoder with skip connections the input must "
                     f"be a list of tensors."
                 )
+        else:
+            if isinstance(x, list):
+                x = x[-1]
+
 
         if isinstance(x, list):
             if len(x) < self.n_stages + 1:
                 x = [None] * (self.n_stages + 1 - len(x)) + x
+
             y = x[-1]
-            for x_skip, up, stage in zip(x[-2::-1], self.upsamplers, self.stages):
+            stages = self.stages
+
+            for x_skip, up, stage in zip(x[-2::-1], self.upsamplers, stages):
                 if x_skip is None:
                     y = stage(up(y))
                 else:
                     y = stage(torch.cat([x_skip, up(y)], dim=1))
         else:
+
             y = x
-            for up, stage in zip(self.upsamplers, self.stages):
+            stages = self.stages
+            for up, stage in zip(self.upsamplers, stages):
                 y = stage(up(y))
         return y
 
@@ -193,7 +210,7 @@ class SparseSpatialDecoder(nn.Module):
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
             upsampler_factory: Callable[[int], nn.Module] = BilinearFactory(),
             aggregator_factory: Callable[[int, int], nn.Module] = None,
-            upsampling_factors: List[int] = None
+            upsampling_factors: List[int] = None,
     ):
         """
         Args:
@@ -238,6 +255,7 @@ class SparseSpatialDecoder(nn.Module):
            channels = [
                channels * channel_scaling ** i for i in range(n_stages + 1)
            ][::-1]
+
            if max_channels is not None:
                channels = [min(ch, max_channels) for ch in channels]
 
@@ -321,14 +339,12 @@ class SparseSpatialDecoder(nn.Module):
 
     def forward(
             self,
-            x: Union[torch.Tensor, List[torch.Tensor]]
+            x: List[torch.Tensor]
     ) -> torch.Tensor:
         """
         Args:
-            x: The output from the encoder. This should be a single tensor
-               if no skip connections are used. If skip connections are used,
-               x should be list containing the outputs from each stage in the
-               encoder.
+            x: The output from the encoder. This should be a be list
+               containing the outputs from each stage in the encoder.
 
         Return:
             The output tensor from the last decoder stage.
@@ -344,12 +360,15 @@ class SparseSpatialDecoder(nn.Module):
             x = [None] * (self.n_stages + 1 - len(x)) + x
 
         y = x[-1]
+        stages = self.stages
+
         results = []
+
         for ind, (x_skip, up, agg, stage) in enumerate(zip(
                 x[-2::-1],
                 self.upsamplers,
                 self.aggregators,
-                self.stages
+                stages
         )):
             y_up = forward(up, y)
             if x_skip is None:

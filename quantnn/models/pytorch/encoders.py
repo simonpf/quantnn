@@ -225,7 +225,7 @@ class SpatialEncoder(nn.Module):
 
     def __setstate__(self, dct):
         self.__dict__ = dct
-        selt.stem = dct.pop("stem", None)
+        self.stem = dct.pop("stem", None)
 
     def forward_with_skips(self, x: torch.Tensor) -> List[torch.Tensor]:
         """

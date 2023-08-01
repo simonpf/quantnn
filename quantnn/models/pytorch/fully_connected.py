@@ -248,19 +248,18 @@ class MLP(nn.Module):
                 )
             )
             features_in = n_features
+
         if n_layers > 0:
             if internal:
-                self.output_layer = nn.Sequential(
-                    MLPBlock(
-                        features_in=n_features,
-                        features_out=features_out,
-                        activation_factory=activation_factory,
-                        norm_factory=norm_factory,
-                        residuals=self.residuals,
-                    )
+                self.output_layer = MLPBlock(
+                    features_in=features_in,
+                    features_out=features_out,
+                    activation_factory=activation_factory,
+                    norm_factory=norm_factory,
+                    residuals=self.residuals,
                 )
             else:
-                self.output_layer = nn.Linear(n_features, features_out)
+                self.output_layer = nn.Linear(features_in, features_out)
 
     def forward(self, x):
         """

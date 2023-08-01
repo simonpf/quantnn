@@ -11,7 +11,7 @@ from typing import Optional, Callable
 
 from torch import nn
 from torchvision import models
-from torchvision.ops.misc import Permute
+from torchvision.ops import Permute
 
 
 class ResNetBlockFactory:

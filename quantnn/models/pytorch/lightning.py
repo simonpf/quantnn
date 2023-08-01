@@ -12,6 +12,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 from torch import nn
+from pytorch_lightning.utilities.rank_zero import rank_zero_only
 
 
 from quantnn.packed_tensor import PackedTensor
@@ -31,11 +32,37 @@ def combine_outputs_list(y_preds, ys):
         return None
     return y_pred_c, y_c
 
+def combine_outputs_dict(y_preds, ys):
+    y_pred_c = {}
+    y_c = {}
+    for k_y_pred, k_y in zip(y_preds, ys):
+        comb = combine_outputs(y_preds[k_y_pred], ys[k_y])
+        if comb is None:
+            continue
+        y_pred, y = comb
+        y_pred_c[k_y_pred] = y_pred
+        y_c[k_y] = y
+    if len(y_pred_c) == 0:
+        return None
+    return y_pred_c, y_c
+
 
 def combine_outputs(y_pred, y):
+    """
+    Combine potentially sparse retrieval outputs.
 
+    Args:
+         y_pred: List, dict, tensor or packed tensor of predicted output.
+         y: List, dict or tensor containing reference outputs
+
+    Return:
+         The output with only
+    """
     if isinstance(y_pred, list):
         return combine_outputs_list(y_pred, y)
+
+    if isinstance(y_pred, dict):
+        return combine_outputs_dict(y_pred, y)
 
     if isinstance(y_pred, PackedTensor):
         if isinstance(y, PackedTensor):
@@ -64,24 +91,27 @@ def to_device(x, device=None, dtype=None):
         return {k: to_device(x_i, device=device, dtype=dtype) for k, x_i in x.items()}
     elif isinstance(x, PackedTensor):
         return x.to(device=device, dtype=dtype)
-    return x
-
+    return x.to(device=device, dtype=dtype)
 
 
 class QuantnnLightning(pl.LightningModule):
     """
     Pytorch Lightning module for quantnn pytorch models.
     """
-    def __init__(self,
-                 qrnn,
-                 loss,
-                 name=None,
-                 optimizer=None,
-                 scheduler=None,
-                 metrics=None,
-                 mask=None,
-                 transformation=None):
+    def __init__(
+            self,
+            qrnn,
+            loss,
+            name=None,
+            optimizer=None,
+            scheduler=None,
+            metrics=None,
+            mask=None,
+            transformation=None,
+            log_dir=None
+    ):
         super().__init__()
+        self.validation_step_outputs = []
         self.qrnn = qrnn
         self.model = qrnn.model
         self.loss = loss
@@ -97,8 +127,11 @@ class QuantnnLightning(pl.LightningModule):
             metric.mask = mask
 
         self.transformation = transformation
+
+        if log_dir is None:
+            log_dir = "lightning_logs"
         self.tensorboard = pl.loggers.TensorBoardLogger(
-            "lightning_logs",
+            log_dir,
             name=name
         )
 
@@ -176,45 +209,78 @@ class QuantnnLightning(pl.LightningModule):
             y_pred, y, self.loss, None, metrics=self.metrics,
             transformation=self.transformation
         )
-        self.log("Validation loss", avg_loss, on_epoch=True, batch_size=n_samples)
+        self.log(
+            "Validation loss",
+            avg_loss,
+            on_epoch=True,
+            batch_size=n_samples,
+            rank_zero_only=True
+        )
         losses = {f"Validation loss ({key})": loss for key, loss in losses.items()}
-        self.log_dict(losses, on_epoch=True, batch_size=n_samples)
+        self.log_dict(
+            losses,
+            on_epoch=True,
+            batch_size=n_samples,
+            rank_zero_only=True
+        )
 
     def on_validation_epoch_start(self):
         for metric in self.metrics:
             metric.reset()
 
-    def validation_epoch_end(self, validation_step_outputs):
+    @rank_zero_only
+    def on_validation_epoch_end(self):
+
+        validation_step_output = self.validation_step_outputs
+
 
         i_epoch = self.trainer.current_epoch
         writer = self.tensorboard.experiment
 
-        i_epoch = self.trainer.current_epoch
+        #if self.trainer.is_global_zero:
 
-        if self.trainer.is_global_zero:
-            for m in self.metrics:
-                # Log values.
-                if hasattr(m, "get_values"):
-                    values = m.get_values()
-                    if isinstance(values, dict):
-                        values = {
-                            f"{m.name} ({key})": value for key, value in values.items()
-                        }
-                    else:
-                        values = {m.name: values}
-                    self.tensorboard.log_metrics(values, i_epoch)
+        figures = {}
+        values = {}
 
-                # Log figures.
-                if hasattr(m, "get_figures"):
-                    figures = m.get_figures()
-                    if isinstance(figures, dict):
-                        for target in figures.keys():
-                            f = figures[target]
-                            writer.add_figure(
-                                f"{m.name} ({target})", f, i_epoch
-                            )
-                    else:
-                        writer.add_figure(f"{m.name}", figures, i_epoch)
+        for metric in self.metrics:
+            # Log values.
+            if hasattr(metric, "get_values"):
+                m_values = metric.get_values()
+                if isinstance(m_values, dict):
+                    m_values = {
+                        f"{metric.name} ({key})": value
+                        for key, value in m_values.items()
+                    }
+                else:
+                    m_values = {metric.name: m_values}
+
+                values.update(m_values)
+
+            # Log figures.
+            if hasattr(metric, "get_figures"):
+                m_figures = metric.get_figures()
+                if isinstance(m_figures, dict):
+                    m_figures = {
+                        f"{metric.name} ({key})": value
+                        for key, value in m_figures.items()
+                    }
+                else:
+                    m_figures = {metric.name: m_figures}
+                figures.update(m_figures)
+
+
+        for key, value in values.items():
+            if isinstance(value, np.ndarray):
+                values[key] = value.item()
+
+
+        log_scalar = writer.add_scalar
+        for key, value in values.items():
+            log_scalar(key, value, i_epoch)
+
+        log_image = writer.add_figure
+        for key, value in figures.items():
+            log_image(key, value, i_epoch)
 
 
     def configure_optimizers(self):
@@ -226,7 +292,19 @@ class QuantnnLightning(pl.LightningModule):
         else:
             optimizer = self.optimizer
 
+        conf = {
+            "optimizer": optimizer
+        }
         if self.scheduler is None:
-            return optimizer
-        else:
-            return [optimizer], [self.scheduler]
+            return conf
+
+        scheduler_config = {
+            "optimizer": optimizer,
+            "lr_scheduler": self.scheduler,
+            "monitor": "Validation loss",
+            "interval": "epoch",
+            "frequency": 1,
+            "strict": True,
+            "name": None,
+        }
+        return scheduler_config

@@ -1218,7 +1218,14 @@ class MRNN(NeuralNetworkModel):
                 results[k] = loss._post_process_prediction(y_pred, bins=bins, key=key)
         return results
 
-    def lightning(self, mask, optimizer=None, scheduler=None, metrics=None, name=None):
+    def lightning(
+            self,
+            mask,
+            optimizer=None,
+            scheduler=None,
+            metrics=None,
+            name=None
+    ):
         """
         Get Pytorch Lightning module.
         """
@@ -1232,5 +1239,6 @@ class MRNN(NeuralNetworkModel):
             metrics=metrics,
             transformation=self.transformation,
             name=name,
-            mask=mask
+            mask=mask,
+            log_dir=None
         )
