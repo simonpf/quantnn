@@ -48,16 +48,20 @@ class ResNetBlockFactory:
         """
         stride = 1
         projection = None
-        if downsample >= 1:
+        if downsample > 1:
             stride = downsample
-        if downsample or channels_in != channels_out:
+        if downsample > 1 or channels_in != channels_out:
             projection = nn.Sequential(
                 nn.Conv2d(channels_in, channels_out, stride=stride, kernel_size=1),
                 self.norm_factory(channels_out),
             )
 
         return models.resnet.BasicBlock(
-            channels_in, channels_out, stride=stride, downsample=projection
+            channels_in,
+            channels_out,
+            stride=stride,
+            downsample=projection,
+            norm_layer=self.norm_factory
         )
 
 
