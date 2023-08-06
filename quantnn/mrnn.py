@@ -1307,7 +1307,6 @@ class MRNN(NeuralNetworkModel):
             optimizer=None,
             scheduler=None,
             metrics=None,
-            name=None
             name=None,
             log_dir=None
     ):
@@ -1337,5 +1336,5 @@ class MRNN(NeuralNetworkModel):
             transformation=self.transformation,
             name=name,
             mask=mask,
-            log_dir=None
+            log_dir=log_dir
         )
