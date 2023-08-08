@@ -142,6 +142,59 @@ class SpatialDecoder(nn.Module):
             )
             channels_in = channels_out
 
+    def forward_w_intermediate(
+            self,
+            x: Union[torch.Tensor, List[torch.Tensor]]
+    ):
+        """
+        Same as 'forward' but also returns the intermediate activation
+        from after each stage.
+
+        Args:
+            x: The output from the encoder. This should be a single tensor
+               if no skip connections are used. If skip connections are used,
+               x should be list containing the outputs from each stage in the
+               encoder.
+
+        Return:
+            A list of tensors containing the activations after every stage
+            in the decoder.
+        """
+        if self.skip_connections:
+            if not isinstance(x, list):
+                raise ValueError(
+                    f"For a decoder with skip connections the input must "
+                    f"be a list of tensors."
+                )
+        else:
+            if isinstance(x, list):
+                x = x[-1]
+
+        activations = []
+
+        if isinstance(x, list):
+            if len(x) < self.n_stages + 1:
+                x = [None] * (self.n_stages + 1 - len(x)) + x
+
+            y = x[-1]
+            stages = self.stages
+
+            for x_skip, up, stage in zip(x[-2::-1], self.upsamplers, stages):
+                if x_skip is None:
+                    y = stage(up(y))
+                else:
+                    y = stage(torch.cat([x_skip, up(y)], dim=1))
+                activations.append(y)
+        else:
+
+            y = x
+            stages = self.stages
+            for up, stage in zip(self.upsamplers, stages):
+                y = stage(up(y))
+                activations.append(y)
+        return activations
+
+
     def forward(
             self,
             x: Union[torch.Tensor, List[torch.Tensor]]
@@ -180,7 +233,6 @@ class SpatialDecoder(nn.Module):
                 else:
                     y = stage(torch.cat([x_skip, up(y)], dim=1))
         else:
-
             y = x
             stages = self.stages
             for up, stage in zip(self.upsamplers, stages):

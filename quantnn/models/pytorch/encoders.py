@@ -161,9 +161,9 @@ class SpatialEncoder(nn.Module):
                 "The list of downsampling factors numbers must have one "
                 "element less than the number of stages."
             )
-        # No downsampling applied in last layer.
-        downsampling_factors = [1] + downsampling_factors
 
+        # No downsampling applied in first layer.
+        downsampling_factors = [1] + downsampling_factors
 
         if stage_factory is None:
             stage_factory = SequentialStageFactory()
@@ -199,14 +199,16 @@ class SpatialEncoder(nn.Module):
                 )
             # Explicit downsampling layer.
             else:
-                self.downsamplers.append(
-                    downsampler_factory(
-                        channels_in,
-                        channels_out,
-                        f_dwn)
-                    if f_dwn > 1
-                    else None
-                )
+                if f_dwn > 1:
+                    self.downsamplers.append(
+                        downsampler_factory(
+                            channels_in,
+                            channels_out,
+                            f_dwn)
+                    )
+                else:
+                    self.downsamplers.append(None)
+
                 self.stages.append(
                     stage_factory(
                         channels_out,
@@ -243,9 +245,9 @@ class SpatialEncoder(nn.Module):
         y = x
         skips = []
         for down, stage in zip(self.downsamplers, self.stages):
-            y = stage(y)
             if down is not None:
                 y = down(y)
+            y = stage(y)
             skips.append(y)
         return skips
 
@@ -407,11 +409,11 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             if downsampler_factory is None and stage_ind > len(channels) - 2:
                 raise ValueError(
                     "Stage index for input cannot exceed the number "
-                    " of stages in the encoder minus 2 if no explicity."
+                    " of stages in the encoder minus 2 if no explicit"
                     " downsampler factory is provided."
                 )
 
-            if stage_ind > 0 and downsampler_factory is None:
+            if stage_ind > first_stage and downsampler_factory is None:
                 stage_ind = stage_ind + 1
 
             self.stems[input_name] = stage_conf.stem_factory(
@@ -424,7 +426,6 @@ class MultiInputSpatialEncoder(SpatialEncoder):
 
 
         self.first_stage = first_stage
-
         first_input = self.stage_inputs[self.first_stage][0]
         del self.aggregators[first_input]
 

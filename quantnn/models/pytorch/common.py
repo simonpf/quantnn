@@ -330,7 +330,6 @@ class QuantileLoss(nn.Module):
             mask=None,
             quantile_axis=1,
             sparse=False
-
     ):
         """
         Create an instance of the quantile loss function with the given quantiles.

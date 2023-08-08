@@ -274,8 +274,6 @@ class LinearAggregatorFactory:
         Args:
             norm_factory:
         """
-        if norm_factory is None:
-            norm_factory = nn.BatchNorm2d
         self.norm_factory = norm_factory
 
     def __call__(
@@ -288,11 +286,11 @@ class LinearAggregatorFactory:
         if channels_out is None:
             channels_out = channels_in
         if self.norm_factory is not None:
+            blocks = nn.Conv2d(n_inputs * channels_in, channels_out, kernel_size=1)
+            if self.norm_factory is not None:
+                blocks.append(self.norm_factory(channels_out))
             return ConcatenateBlock(
-                nn.Sequential(
-                    nn.Conv2d(n_inputs * channels_in, channels_out, kernel_size=1),
-                    self.norm_factory(channels_out),
-                ),
+                nn.Sequential(blocks),
                 residual=residual
             )
         return ConcatenateBlock(
