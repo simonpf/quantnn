@@ -115,8 +115,11 @@ class QuantnnLightning(pl.LightningModule):
         self.qrnn = qrnn
         self.model = qrnn.model
         self.loss = loss
+        self._stage = 0
+        self._stage_name = "Stage 0"
 
         self.optimizer = optimizer
+        self.current_optimizer = None
         self.scheduler = scheduler
 
         self.metrics = metrics
@@ -128,12 +131,38 @@ class QuantnnLightning(pl.LightningModule):
 
         self.transformation = transformation
 
+
         if log_dir is None:
             log_dir = "lightning_logs"
+        self.log_dir = log_dir
+        self.name = name
         self.tensorboard = pl.loggers.TensorBoardLogger(
-            log_dir,
-            name=name
+            self.log_dir,
+            name=self.name + f"@ {self.stage_name}"
         )
+
+    @property
+    def stage(self):
+        return self._stage
+
+    @stage.setter
+    def stage(self, stage):
+        self._stage = stage
+        self.stage_name = f"Stage {stage}"
+
+    @property
+    def stage_name(self):
+        """Name of the stage used for logging."""
+        return self._stage_name
+
+    @stage_name.setter
+    def stage_name(self, new_name):
+        self._stage_name = new_name
+        self.tensorboard = pl.loggers.TensorBoardLogger(
+            self.log_dir,
+            name=self.name + f" ({self.stage_name})"
+        )
+
 
     def training_step(self, batch, batch_idx):
         x, y = batch
@@ -282,29 +311,55 @@ class QuantnnLightning(pl.LightningModule):
         for key, value in figures.items():
             log_image(key, value, i_epoch)
 
+        self.log(
+            "Learning rate",
+            self.current_optimizer.param_groups[0]["lr"],
+            on_epoch=True,
+            rank_zero_only=True
+        )
+
 
     def configure_optimizers(self):
+
+        staged = False
+        if isinstance(self.optimizer, list) or isinstace(self.scheduler, list):
+            staged = True
+
         if self.optimizer is None:
             optimizer = torch.optim.Adam(
                 self.model.parameters(),
                 lr=1e-3
             )
         else:
-            optimizer = self.optimizer
+            if staged and isinstance(self.optimizer, list):
+                optimizer = self.optimizer[self.stage]
+            else:
+                optimizer = self.optimizer
 
         conf = {
             "optimizer": optimizer
         }
+        self.current_optimizer = optimizer
+
         if self.scheduler is None:
             return conf
 
+        if staged and isinstance(self.scheduler, list):
+            scheduler = self.scheduler[self.stage]
+        else:
+            scheduler = self.scheduler
+
         scheduler_config = {
-            "optimizer": optimizer,
-            "lr_scheduler": self.scheduler,
+            "scheduler": scheduler,
             "monitor": "Validation loss",
             "interval": "epoch",
             "frequency": 1,
             "strict": True,
-            "name": None,
+            "name": "learning_rate",
         }
-        return scheduler_config
+        if hasattr(scheduler, "stepwise"):
+            if scheduler.stepwise:
+                scheduler_config["interval"] = "step"
+
+        conf["lr_scheduler"] = scheduler_config
+        return conf
