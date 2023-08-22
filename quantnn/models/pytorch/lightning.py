@@ -363,3 +363,18 @@ class QuantnnLightning(pl.LightningModule):
 
         conf["lr_scheduler"] = scheduler_config
         return conf
+
+    def on_train_end(self):
+        self.stage += 1
+
+    def on_save_checkpoint(self, checkpoint) -> None:
+        """
+        Hook used to store 'stage' attribute in checkpoint.
+        """
+        checkpoint["stage"] = self.stage
+
+    def on_load_checkpoint(self, checkpoint) -> None:
+        """
+        Hook used load store 'stage' attribute from checkpoint.
+        """
+        self.stage = checkpoint["stage"]
