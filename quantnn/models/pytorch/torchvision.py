@@ -6,6 +6,7 @@ Wrapper for models defined in torchvision models.
 
 Using this module obviously requires torchvision to be installed.
 """
+from copy import copy
 from functools import partial
 from typing import Optional, Callable
 
@@ -65,9 +66,78 @@ class ResNetBlockFactory:
         )
 
 
-class ConvNextBlockFactory:
+class ResNeXtBlockFactory:
     """
-    Factory wrapper for ``torchvision`` ConvNext blocks.
+    Factory wrapper for ``torchvision`` ResNeXt blocks.
+    """
+
+    def __init__(
+            self,
+            cardinality=32,
+            norm_factory: Optional[Callable[[int], nn.Module]] = None
+    ):
+        """
+        Args:
+            cardinality: The cardinality of the block as defined
+                in the ResNeXt paper.
+            norm_factory: A factory object to produce the normalization
+                layers used in the ResNet blocks. Defaults to batch
+                norm.
+        """
+        self.cardinality = cardinality
+        if norm_factory is None:
+            norm_factory = nn.BatchNorm2d
+        self.norm_factory = norm_factory
+        self.resnext_class = copy(models.resnet.Bottleneck)
+        # Increase width of bottleneck.
+        self.resnext_class.expansion = 2
+
+    def __call__(
+        self, channels_in: int, channels_out: int, downsample: int = 1
+    ) -> nn.Module:
+        """
+        Create ResNeXt block.
+
+        Args:
+            channels_in: The number of channels in the input.
+            channels_out: The number of channels used in the remaining
+                layers in the block.
+            downsample: Degree of downsampling to be performed by the block.
+                No downsampling is performed if <= 1.
+
+        Return:
+            The ResNeXt block.
+        """
+        stride = 1
+        projection = None
+        if downsample > 1:
+            stride = downsample
+        if downsample > 1 or channels_in != channels_out:
+            if stride > 1:
+                projection = nn.Sequential(
+                    nn.AvgPool2d(kernel_size=stride, stride=stride),
+                    nn.Conv2d(channels_in, channels_out, kernel_size=1),
+                    self.norm_factory(channels_out),
+                )
+            else:
+                projection = nn.Sequential(
+                    nn.Conv2d(channels_in, channels_out, kernel_size=1),
+                    self.norm_factory(channels_out),
+                )
+
+        return self.resnext_class(
+            channels_in,
+            channels_out // models.resnet.Bottleneck.expansion,
+            stride=stride,
+            downsample=projection,
+            groups=self.cardinality,
+            norm_layer=self.norm_factory
+        )
+
+
+class ConvNeXtBlockFactory:
+    """
+    Factory wrapper for ``torchvision`` ConvNeXt blocks.
     """
     @classmethod
     def layer_norm_with_permute(cls, channels_in):
@@ -97,9 +167,9 @@ class ConvNextBlockFactory:
         """
         Args:
             norm_factory: A factory object to produce the normalization
-                layers used in the ConvNext blocks. NOTE: The norm layer
+                layers used in the ConvNeXt blocks. NOTE: The norm layer
                 should normalize along the last dimension because the
-                ConvNext blocks permute the input dimensions.
+                ConvNeXt blocks permute the input dimensions.
             layer_scale: Layer scaling applied to the residual block.
             stochastic_depth_prob: Probability of the residual block being
                 removed during training.
@@ -114,7 +184,7 @@ class ConvNextBlockFactory:
         self, channels_in: int, channels_out: int, downsample: int = 1
     ) -> nn.Module:
         """
-        Create ConvNext block.
+        Create ConvNeXt block.
 
         Args:
             channels_in: The number of channels in the input.
@@ -124,7 +194,7 @@ class ConvNextBlockFactory:
                 no downsampling is performed
 
         Return:
-            The ConvNext block.
+            The ConvNeXt block.
         """
         blocks = []
         if downsample:
