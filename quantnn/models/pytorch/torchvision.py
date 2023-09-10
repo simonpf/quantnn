@@ -125,9 +125,10 @@ class ResNeXtBlockFactory:
                     self.norm_factory(channels_out),
                 )
 
+        planes = channels_out // self.resnext_class.expansion // self.cardinality
         return self.resnext_class(
             channels_in,
-            channels_out // models.resnet.Bottleneck.expansion,
+            planes,
             stride=stride,
             downsample=projection,
             groups=self.cardinality,
