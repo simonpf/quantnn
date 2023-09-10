@@ -28,7 +28,7 @@ class UpsampleFactory:
         self.kwargs = kwargs
 
     def __call__(self, factor, channels_in=None, channels_out=None):
-        if channels_in is not None:
+        if channels_in is not None and channels_out is not None:
             return nn.Sequential(
                 nn.Conv2d(channels_in, channels_out, kernel_size=1),
                 nn.Upsample(scale_factor=factor, **self.kwargs)

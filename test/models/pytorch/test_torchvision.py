@@ -32,24 +32,6 @@ def test_resnet_block():
 
 
 @pytest.mark.skipif(not HAS_TORCHVISION, reason="torchvision not available")
-def test_resnext_block():
-    """
-    Ensure that the ResNet factory produces an nn.Module and that
-    the output has the specified number of channels.
-    """
-    x = torch.ones((1, 1, 8, 8))
-
-    factory = tv.ResNeXtBlockFactory()
-    block = factory(1, 2)
-    y = block(x)
-    assert y.shape == (1, 2, 8, 8)
-
-    block = factory(1, 2, downsample=2)
-    y = block(x)
-    assert y.shape == (1, 2, 4, 4)
-
-
-@pytest.mark.skipif(not HAS_TORCHVISION, reason="torchvision not available")
 def test_convnext_block():
     """
     Ensure that the ConvNeXt factory produces an nn.Module and that

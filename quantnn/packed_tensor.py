@@ -398,13 +398,19 @@ class PackedTensor:
             self._t.to(*args, **kwargs), self.batch_size, self.batch_indices
         )
 
-def forward(module, x):
+def forward(module, x, **kwargs):
     if isinstance(x, PackedTensor):
         if x.empty:
             return x
+        y = module(x.tensor, **kwargs)
+        if isinstance(y, list):
+            return [
+                PackedTensor(y_i, x.batch_size, x.batch_indices)
+                for y_i in y
+            ]
         return PackedTensor(
-            module(x.tensor),
+            y,
             x.batch_size,
             x.batch_indices
         )
-    return module(x)
+    return module(x, **kwargs)
