@@ -299,7 +299,7 @@ class SparseSpatialDecoder(nn.Module):
         self.upsamplers = nn.ModuleList()
         self.stages = nn.ModuleList()
         self.aggregators = nn.ModuleList()
-        if skip_connections < 0:
+        if isinstance(skip_connections, bool) or skip_connections < 0:
             skip_connections = n_stages
         self.skip_connections = skip_connections
 
@@ -473,11 +473,10 @@ class DLADecoderStage(nn.Module):
                 upsampler_factory(
                     f_up,
                     channels_in=ch_in_1,
-                    channels_out=ch_in_2
                 )
             )
 
-            aggregators.append(aggregator_factory(ch_in_2, 2, ch_in_2))
+            aggregators.append(aggregator_factory(ch_in_1 + ch_in_2, ch_in_2))
 
         self.upsamplers = nn.ModuleList(upsamplers)
         self.aggregators = nn.ModuleList(aggregators)
@@ -499,7 +498,7 @@ class DLADecoderStage(nn.Module):
             x_1 = forward(up, x[scale_index])
             agg = self.aggregators[scale_index]
             x_2 = x[scale_index + 1]
-            results.append(agg(x_1, x_2))
+            results.append(agg(torch.cat([x_1, x_2], 1)))
         return results
 
 
@@ -530,4 +529,4 @@ class DLADecoder(nn.Sequential):
         super().__init__(*blocks)
 
     def forward(self, x):
-        return super().forward(x)[0]
+        return super().forward(x[::-1])[0]

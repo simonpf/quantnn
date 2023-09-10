@@ -82,6 +82,8 @@ class SequentialStageFactory(nn.Sequential):
         return nn.Sequential(*blocks)
 
 
+
+
 class SpatialEncoder(nn.Module):
     """
     An encoder for spatial information.
@@ -314,7 +316,7 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             downsampling_factors: List[int] = None,
     ):
         """
-            inputs: A dictionary mapping inputs names to either InputConfig
+            inputs: A dictionary mapping input names to either InputConfig
                 or tuples ``(stage, n_channels, stem_factory)`` containing
                 an index ``stage`` identifying the stage at which the input
                 is ingested, ``n_channels`` the number of channels in the input
