@@ -8,6 +8,8 @@ import numpy as np
 import torch
 from torch import nn
 
+from quantnn.models.pytorch import blocks
+
 
 class AggregationTreeNode(nn.Module):
     """
@@ -77,7 +79,7 @@ class AggregationTreeNode(nn.Module):
         """
         Forward input through tree and aggregate results from child nodes.
         """
-        if self.level == 0:
+        if self.level <= 0:
             return self.left(x)
 
         if pass_through is None:
@@ -114,7 +116,7 @@ class AggregationTreeRoot(AggregationTreeNode):
             block_factory,
             aggregator_factory,
             channels_agg=channels_agg,
-            downsample=downsample
+            downsample=1
         )
 
         self.downsampler = None
@@ -125,20 +127,38 @@ class AggregationTreeRoot(AggregationTreeNode):
         """
         Forward input through tree and aggregate results from child nodes.
         """
-        y_1 = self.left(x)
+        if self.level == 0:
+            return self.left(x)
+
         if self.downsampler is not None:
             x = self.downsampler(x)
-        return self.right(y_1, [x, y_1])
+
+        print(x.shape, self.downsampler)
+
+        pass_through = []
+
+        y_1 = self.left(x)
+        if self.aggregator is not None:
+            y_2 = self.right(y_1)
+            pass_through = pass_through + [y_1, y_2, x]
+            return self.aggregator(torch.cat(pass_through, 1))
+
+        return self.right(y_1, pass_through + [y_1, x])
 
 
 class AggregationTreeFactory:
     """
-    An aggregation tree implementing hierarchical aggregation of block in a stage.
+    An aggregation tree implementing hierarchical aggregation of blocks in a stage.
     """
     def __init__(
             self,
-            aggregator_factory
+            aggregator_factory=None
     ):
+        if aggregator_factory is None:
+            aggregator_factory = blocks.ConvBlockFactory(
+                norm_factory=nn.BatchNorm2d,
+                activation_factory=nn.ReLU
+            )
         self.aggregator_factory = aggregator_factory
 
     def __call__(
@@ -149,7 +169,7 @@ class AggregationTreeFactory:
             block_factory,
             downsample=1
     ):
-        n_levels = np.log2(n_blocks) + 1
+        n_levels = np.log2(n_blocks)
         return AggregationTreeRoot(
             channels_in,
             channels_out,
