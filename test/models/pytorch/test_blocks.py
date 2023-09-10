@@ -1,6 +1,7 @@
 from quantnn.models.pytorch.blocks import (
     ConvBlockFactory,
-    ConvTransposedBlockFactory
+    ConvTransposedBlockFactory,
+    ResNeXtBlockFactory
 )
 
 import torch
@@ -49,3 +50,20 @@ def test_conv_transposed_block_factory():
     input = torch.ones(8, 8, 8, 8)
     output = block(input)
     assert output.shape == (8, 16, 8, 8)
+
+
+def test_resnext_block():
+    """
+    Ensure that the ResNet factory produces an nn.Module and that
+    the output has the specified number of channels.
+    """
+    x = torch.ones((1, 1, 8, 8))
+
+    factory = ResNeXtBlockFactory()
+    block = factory(1, 64)
+    y = block(x)
+    assert y.shape == (1, 64, 8, 8)
+
+    block = factory(1, 64, downsample=2)
+    y = block(x)
+    assert y.shape == (1, 64, 4, 4)
