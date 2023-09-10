@@ -116,7 +116,7 @@ class QuantnnLightning(pl.LightningModule):
         self.model = qrnn.model
         self.loss = loss
         self._stage = 0
-        self._stage_name = "Stage 0"
+        self._stage_name = None
 
         self.optimizer = optimizer
         self.current_optimizer = None
@@ -136,10 +136,17 @@ class QuantnnLightning(pl.LightningModule):
             log_dir = "lightning_logs"
         self.log_dir = log_dir
         self.name = name
-        self.tensorboard = pl.loggers.TensorBoardLogger(
-            self.log_dir,
-            name=self.name + f"@ {self.stage_name}"
-        )
+        self._tensorboard = None
+
+
+    @property
+    def tensorboard(self):
+        if self._tensorboard is None:
+            self._tensorboard = pl.loggers.TensorBoardLogger(
+                self.log_dir,
+                name=self.name + f" ({self.stage_name})"
+            )
+        return self._tensorboard
 
     @property
     def stage(self):
@@ -148,20 +155,17 @@ class QuantnnLightning(pl.LightningModule):
     @stage.setter
     def stage(self, stage):
         self._stage = stage
-        self.stage_name = f"Stage {stage}"
 
     @property
     def stage_name(self):
         """Name of the stage used for logging."""
+        if self._stage_name is None:
+            return f"Stage {self.stage}"
         return self._stage_name
 
     @stage_name.setter
     def stage_name(self, new_name):
         self._stage_name = new_name
-        self.tensorboard = pl.loggers.TensorBoardLogger(
-            self.log_dir,
-            name=self.name + f" ({self.stage_name})"
-        )
 
 
     def training_step(self, batch, batch_idx):
@@ -196,12 +200,13 @@ class QuantnnLightning(pl.LightningModule):
         #    y = y.detach().cpu().numpy()
 
         if np.isnan(avg_loss.detach().cpu().numpy()):
-            with open("x_prev.pckl", "wb") as output:
-                pickle.dump(self.x_prev, output)
+            if hasattr(self, "x_prev"):
+                with open("x_prev.pckl", "wb") as output:
+                    pickle.dump(self.x_prev, output)
+                with open("y_prev.pckl", "wb") as output:
+                    pickle.dump(self.y_prev, output)
             with open("x.pckl", "wb") as output:
                 pickle.dump(x, output)
-            with open("y_prev.pckl", "wb") as output:
-                pickle.dump(self.y_prev, output)
             with open("y.pckl", "wb") as output:
                 pickle.dump(y, output)
             sys.exit()
@@ -365,6 +370,7 @@ class QuantnnLightning(pl.LightningModule):
         return conf
 
     def on_train_end(self):
+        self._tensorboard = None
         self.stage += 1
 
     def on_save_checkpoint(self, checkpoint) -> None:
