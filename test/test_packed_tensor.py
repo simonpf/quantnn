@@ -143,6 +143,87 @@ def test_intersection():
             assert (r.tensor[i] == index).all()
 
 
+def test_splitting():
+    """
+    Test splitting of packed tensors into parts.
+    """
+    indices = [0, 2]
+    u = fill_tensor(torch.ones((2, 2)), indices)
+    u_p = PackedTensor(u, 4, indices)
+
+    indices = [2, 3]
+    v = 2.0 * fill_tensor(torch.ones((2, 2)), indices)
+    v_p = PackedTensor(v, 4, indices)
+    u_only, v_only, u_both, v_both = u_p.split_parts(v_p)
+    assert u_only.batch_indices == [0]
+    assert v_only.batch_indices == [3]
+    assert u_both.batch_indices == [2]
+    assert v_both.batch_indices == [2]
+
+    for i in range(100):
+        l = make_random_packed_tensor(100, 50)
+        r = make_random_packed_tensor(100, 50)
+        indices = sorted(list(set(l.batch_indices) & set(r.batch_indices)))
+        l_only, r_only, l_both, r_both = l.split_parts(r)
+
+        for l_val, r_val in zip(l_both.batch_indices, r_both.batch_indices):
+            assert l_val == r_val
+
+        for i, index in enumerate(indices):
+            assert (l_both.tensor[i] == index).all()
+            assert (r_both.tensor[i] == index).all()
+
+        indices = sorted(list(set(l.batch_indices) - set(r.batch_indices)))
+        for i, index in enumerate(indices):
+            assert l_only.tensor[i] == index
+
+        indices = sorted(list(set(r.batch_indices) - set(l.batch_indices)))
+        for i, index in enumerate(indices):
+            assert r_only.tensor[i] == index
+
+        lr = l_only.union(r_only.union(l_both.union(r_both)))
+        for i, index in enumerate(lr.batch_indices):
+            assert np.isclose(lr.tensor[i], index)
+
+
+def test_intersection():
+    """
+    Test intersection of packed tensors.
+    """
+    indices = [0, 2]
+    u = fill_tensor(torch.ones((2, 2)), indices)
+    u_p = PackedTensor(u, 4, indices)
+
+    indices = [2, 3]
+    v = 2.0 * fill_tensor(torch.ones((2, 2)), indices)
+    v_p = PackedTensor(v, 4, indices)
+    u_i_p, v_i_p = u_p.intersection(v_p)
+    assert u_i_p.batch_indices == [2]
+    assert u_i_p.batch_size == 4
+
+    u_i_e = u_i_p.expand()
+    assert (u_i_e[2] == 2.0).all()
+
+    v_i_e = v_i_p.expand()
+    assert (v_i_e[2] == 2 * 2.0).all()
+
+    u = torch.ones((2, 2))
+    u_p = PackedTensor(u, 4, [0, 1])
+    v = 2.0 * torch.ones((2, 2))
+    v_p = PackedTensor(v, 4, [2, 3])
+    u_i_p, v_i_p = u_p.intersection(v_p)
+    assert u_i_p is None
+    assert v_i_p is None
+
+    for i in range(100):
+        l = make_random_packed_tensor(100, 50)
+        r = make_random_packed_tensor(100, 50)
+        indices = sorted(list(set(l.batch_indices) & set(r.batch_indices)))
+        l, r = l.intersection(r)
+        for i, index in enumerate(indices):
+            assert (l.tensor[i] == index).all()
+            assert (r.tensor[i] == index).all()
+
 def test_difference():
     """
     Test difference of packed tensors.
@@ -172,16 +253,16 @@ def test_difference():
             assert (d.tensor[i] == index).all()
 
 
-def test_sum():
+def test_union():
     """
-    Test sum of packed tensors.
+    Test union of packed tensors.
     """
     u = torch.ones((2, 2))
     u_p = PackedTensor(u, 4, [3])
     v = 2.0 * torch.ones((2, 2))
     v_p = PackedTensor(v, 4, [1, 2])
 
-    s_p = u_p.sum(v_p)
+    s_p = u_p.union(v_p)
     assert s_p.batch_indices == [1, 2, 3]
     assert s_p.batch_size == 4
 
@@ -191,7 +272,7 @@ def test_sum():
     assert (s_e[2] == 2.0).all()
     assert (s_e[3] == 1.0).all()
 
-    s_p = v_p.sum(u_p)
+    s_p = v_p.union(u_p)
     assert s_p.batch_indices == [1, 2, 3]
     assert s_p.batch_size == 4
 
@@ -205,7 +286,7 @@ def test_sum():
         l = make_random_packed_tensor(100, 50)
         r = make_random_packed_tensor(100, 50)
         indices = sorted(list(set(l.batch_indices) | set(r.batch_indices)))
-        s = l.sum(r)
+        s = l.union(r)
 
         for i, index in enumerate(indices):
             assert (s.tensor[i] == index).all()

@@ -6,41 +6,58 @@ This module provides 'torch.nn.module's that merge two or more input tensors
 to produce a single output tensor. They can be used to merge separate
  branches (data streams) in neural networks.
 """
+from typing import Callable, Tuple, Union
+
 import torch
 from torch import nn
-from quantnn.packed_tensor import PackedTensor
+from quantnn.packed_tensor import PackedTensor, forward
 
 
 class SparseAggregator(nn.Module):
     """
-    Aggregator for packed tensors.
+    Aggregator with support for packed tensors.
 
-    This aggregator combines inputs with missing samples represented
-    using PackedTensors. Samples that are present in only one of the
-    inputs are directly forwarded to the output while samples that
-    are present in both inputs are merged using the provided aggregator
-    block.
-
-    The aggregator combines to inputs with the same number of channels
-    into a single output with the same number of channels.
+    This aggregator combines inputs with missing samples that are
+    represented using PackedTensors. Samples that are present in only
+    one of the inputs are directly forwarded to the output while
+    samples that are present in both inputs are merged using the
+    provided aggregator block.
     """
-
-    def __init__(self, channels_in, aggregator_factory):
+    def __init__(
+            self,
+            channels_in: Tuple[int],
+            channels_out: int,
+            aggregator_factory: Callable[[int, int], nn.Module]
+    ) -> None:
         """
         Args:
-            channels_in: The number of channels in each data stream and
-                the number of channels in the output of the aggregator.
+            channels_in: A tupple
             aggregator_factory: Aggregator factory to create the module
                 that is used to merge the samples that are present in
                 both streams.
         """
         super().__init__()
-        self.channels_in = channels_in
-        self.aggregator = aggregator_factory(channels_in, 2, channels_in)
+        if not len(channels_in) == 2:
+            raise ValueError(
+                "Sparse aggregators only support aggregation of two input"
+                "streams."
+            )
+        if hasattr(aggregator_factory, "block_factory"):
+            block_factory = aggregator_factory.block_factory
+            self.proj_1 = block_factory(channels_in[0], channels_out)
+            self.proj_2 = block_factory(channels_in[1], channels_out)
+        else:
+            self.proj_1 = nn.Identity()
+            self.proj_2 = nn.Identity()
+        self.agg = aggregator_factory(channels_in, channels_out)
 
-    def forward(self, x_1, x_2):
+    def forward(
+            self,
+            x_1: Union[torch.Tensor, PackedTensor],
+            x_2: Union[torch.Tensor, PackedTensor]
+    ) -> Union[torch.Tensor, PackedTensor]:
         """
-        Combined inputs 'x_1' and 'x_2' into a single output with the
+        Combines inputs 'x_1' and 'x_2' into a single output with the
         same number of channels.
 
         Args:
@@ -59,7 +76,7 @@ class SparseAggregator(nn.Module):
         """
         # No missing samples in batch.
         if (not isinstance(x_1, PackedTensor)) and (not isinstance(x_2, PackedTensor)):
-            return self.aggregator(x_1, x_2)
+            return self.agg(x_1, x_2)
 
         return_full = False
 
@@ -73,37 +90,39 @@ class SparseAggregator(nn.Module):
             x_2 = PackedTensor(x_2, batch_size, range(batch_size))
             return_full = True
 
-        try:
-            no_merge = x_2.difference(x_1)
-        except IndexError:
+        if x_1.empty and x_2.empty:
             # Both streams are empty, do nothing.
             if return_full:
                 x_1 = x_1.tensor
             return x_1
 
-        x_2_comb, x_1_comb = x_2.intersection(x_1)
+        x_1_only, x_2_only, x_1_both, x_2_both = x_1.split_parts(x_2)
 
-        # No merge required, if there are no streams with complementary
-        # information.
-        if x_2_comb is None:
-            if return_full:
-                no_merge = no_merge.tensor
-            return no_merge
+        tmpl = x_1.tensor if not x_1.empty else x_2.tensor
 
-        merged = PackedTensor(
-            self.aggregator(x_1_comb.tensor, x_2_comb.tensor),
-            x_1_comb.batch_size,
-            x_1_comb.batch_indices
-        )
-        if no_merge is None:
-            if return_full:
-                merged = merged.tensor
-            return merged
+        batch_size = x_1.batch_size
 
-        merged = merged.sum(no_merge)
+        res = None
+        if x_1_only is not None:
+            res = forward(self.proj_1, x_1_only)
+
+        if x_2_only is not None:
+            proj_2 = forward(self.proj_2, x_2_only)
+            if res is None:
+                res = proj_2
+            else:
+                res = res.union(proj_2)
+        if x_1_both is not None:
+            agg = self.agg(x_1_both.tensor, x_2_both.tensor)
+            agg = PackedTensor(agg, batch_size, x_1_both.batch_indices)
+            if res is None:
+                res = agg
+            else:
+                res = res.union(agg)
+
         if return_full:
-            return merged.tensor
-        return merged
+            return res.tensor
+        return res
 
 
 class SparseAggregatorFactory:
@@ -122,30 +141,24 @@ class SparseAggregatorFactory:
 
     def __call__(
             self,
-            input_channels,
-            n_inputs,
-            output_channels
+            channels_in: Tuple[int],
+            channels_out: int
     ):
         """
         Create an aggregation block for a given number of input channels.
 
         Args:
-            input_channels: The number of channels in the inputs to merge.
-            n_inputs: The number of inputs. Must be 2.
+            input_channels: A tuple specifying the number of channels in all
+                inputs that should be merged.
             output_channels: The number of output channels. Must be the same
                 as the number of input channels.
         """
-        if not n_inputs == 2:
+        if not len(channels_in) == 2:
             raise ValueError(
                 "The SparseAggregator only support aggregation of two input"
                 " streams."
             )
-        if not input_channels == output_channels:
-            raise ValueError(
-                "The 'input_channels' and 'output_channels' must be the same "
-                "for SparseAggregator."
-            )
-        return SparseAggregator(input_channels, self.block_factory)
+        return SparseAggregator(channels_in, channels_out, self.block_factory)
 
 
 class AverageBlock(nn.Module):
@@ -155,6 +168,10 @@ class AverageBlock(nn.Module):
     def forward(self, *args):
         """Average input 'x_1' and 'x_2'."""
         n = len(args)
+        if n == 0:
+            return None
+        if n == 1:
+            return args[0]
         x_1 = args[0]
         x_2 = args[1]
         result = torch.add(x_1, x_2)
@@ -197,7 +214,7 @@ class ConcatenateBlock(nn.Module):
     inputs.
     """
 
-    def __init__(self, block, residual=True):
+    def __init__(self, block, residual=False):
         """
         Args:
             block: A 'nn.Module' to apply to the concatenated inputs.
@@ -220,7 +237,9 @@ class ConcatenateBlock(nn.Module):
         """
         y = self.block(torch.cat(args, dim=1))
         if self.residual is not None:
-            return y + args[self.residual]
+            res = args[self.residual]
+            n = min(y.shape[1], res.shape[1])
+            y[:, :n] += res[:, :n]
         return y
 
 
@@ -241,7 +260,6 @@ class BlockAggregatorFactory:
     def __call__(
             self,
             channels_in,
-            n_inputs,
             channels_out=None,
             residual=True
     ):
@@ -256,8 +274,8 @@ class BlockAggregatorFactory:
                 produced aggregator block.
         """
         if channels_out is None:
-            channels_out = channels_in
-        block = self.block_factory(n_inputs * channels_in, channels_out)
+            channels_out = channels_in[0]
+        block = self.block_factory(sum(channels_in), channels_out)
         return ConcatenateBlock(block, residual=residual)
 
 
@@ -276,24 +294,27 @@ class LinearAggregatorFactory:
         """
         self.norm_factory = norm_factory
 
+        def block_factory(channels_in, channels_out):
+            blocks = [nn.Conv2d(channels_in, channels_out, kernel_size=1)]
+            if self.norm_factory is not None:
+                blocks.append(norm_factory(channels_out))
+            return nn.Sequential(*blocks)
+        self.block_factory = block_factory
+
     def __call__(
             self,
             channels_in,
-            n_inputs,
             channels_out=None,
             residual=True
     ):
         if channels_out is None:
             channels_out = channels_in
         if self.norm_factory is not None:
-            blocks = nn.Conv2d(n_inputs * channels_in, channels_out, kernel_size=1)
-            if self.norm_factory is not None:
-                blocks.append(self.norm_factory(channels_out))
             return ConcatenateBlock(
-                nn.Sequential(blocks),
+                self.block_factory(sum(channels_in), channels_out),
                 residual=residual
             )
         return ConcatenateBlock(
-            nn.Conv2d(n_inputs * channels_in, channels_out, kernel_size=1),
+            self.block_factory(sum(channels_in), channels_out),
             residual=residual
         )

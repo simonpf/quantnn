@@ -422,7 +422,7 @@ class MultiInputSpatialEncoder(SpatialEncoder):
                 stage_channels
             )
             self.aggregators[input_name] = aggregator_factory(
-                stage_channels, 2, stage_channels
+                (stage_channels,) * 2, stage_channels
             )
             self.stage_inputs[stage_ind].append(input_name)
 
@@ -590,7 +590,7 @@ class ParallelEncoderLevel(nn.Module):
 
                 # Combine inputs
                 aggregators.append(
-                    aggregator_factory(ch_in_2, 2, ch_in_2)
+                    aggregator_factory((ch_in_2,) * 2, ch_in_2)
                 )
 
                 blocks.append(block_factory(ch_in_2, ch_in_2))
@@ -603,8 +603,7 @@ class ParallelEncoderLevel(nn.Module):
 
         if input_aggregator_factory is not None:
             self.agg_in = input_aggregator_factory(
-                channels[level_index],
-                2,
+                (channels[level_index],) * 2,
                 channels[level_index],
             )
 
@@ -695,8 +694,7 @@ class ParallelEncoder(nn.Module):
             self.stems[f"stem_{stage}"] = block_factory(ch_in, channels[stage])
             if len(self.stems) > 1:
                 self.aggregators[f"aggregator_{stage}"] = input_aggregator_factory(
-                    channels[stage],
-                    2,
+                    (channels[stage],) * 2,
                     channels[stage]
                 )
 

@@ -44,7 +44,10 @@ class AggregationTreeNode(nn.Module):
             )
             self.right = None
         elif level == 1:
-            self.aggregator = aggregator_factory(channels_agg, channels_out)
+            self.aggregator = aggregator_factory(
+                channels_agg,
+                channels_out
+            )
             self.left = block_factory(
                 channels_in,
                 channels_out,

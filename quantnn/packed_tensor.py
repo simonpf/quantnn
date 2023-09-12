@@ -5,6 +5,8 @@ quantnn.packed_tensor
 Provides an implementation of a packed tensor class that can be used
 to represent sparse batches.
 """
+from typing import Union
+
 import torch
 
 
@@ -250,8 +252,8 @@ class PackedTensor:
             other: The other tensor.
 
         Return:
-            A tuple ``(parts_self, parts_other)`` containing
-            a packed tensors each containing the samples corresponding
+            A tuple ``(parts_self, parts_other)`` containing a pair
+            of packed tensors each containing the samples corresponding
             to batch indices that are present in both ``self`` and
             ``other``.
             If the intersection is empty, ``None, None`` is returned.
@@ -340,7 +342,84 @@ class PackedTensor:
 
         return PackedTensor(torch.stack(parts), self.batch_size, indices)
 
-    def sum(self, other):
+    def split_parts(self, other):
+        """
+        Split tensors up into sample that are present only in 'self', samples
+        only present in 'other' and samples present in both tensors.
+
+        Args:
+            other: The other tensor.
+
+        Return:
+            A tuple ``(x_1_only, x_2_only, x_1_both, x_2_both)`` containing
+            packed tensors that contain:
+                - x_1_only: The samples that are present only in x_1.
+                - x_2_only: The samples that are present only in x_2.
+                - x_1_both: The samples of x_1 that are present in both.
+                - x_2_both: The samples of x_2 that are present in both.
+
+        """
+        if not isinstance(other, PackedTensor):
+            batch_size = other.shape[0]
+            other = PackedTensor(other, batch_size, range(batch_size))
+
+        inds_both = sorted(list(
+            set(self.batch_indices) & set(other.batch_indices)
+        ))
+        inds_x1 = self.batch_indices
+        inds_x2 = other.batch_indices
+
+        x1_only = []
+        x2_only = []
+        x1_both = []
+        x2_both = []
+
+        running_ind_self = 0
+        running_ind_other = 0
+        for i in range(self.batch_size):
+            if i in inds_both:
+                x1_both.append(running_ind_self)
+                running_ind_self += 1
+                x2_both.append(running_ind_other)
+                running_ind_other += 1
+            elif i in inds_x1:
+                x1_only.append(running_ind_self)
+                running_ind_self += 1
+            elif i in inds_x2:
+                x2_only.append(running_ind_other)
+                running_ind_other += 1
+
+        if len(x1_only) == 0:
+            x1_only = None
+        else:
+            binds = [self.batch_indices[ind] for ind in x1_only]
+            x1_only = PackedTensor(self._t[x1_only], self.batch_size, binds)
+
+        if len(x2_only) == 0:
+            x2_only = None
+        else:
+            binds = [other.batch_indices[ind] for ind in x2_only]
+            x2_only = PackedTensor(other._t[x2_only], other.batch_size, binds)
+
+        if len(inds_both) == 0:
+            x1_both = None
+            x2_both = None
+        else:
+            x1_both = PackedTensor(self._t[x1_both], self.batch_size, inds_both)
+            x2_both = PackedTensor(other._t[x2_both], other.batch_size, inds_both)
+
+        return(
+            x1_only,
+            x2_only,
+            x1_both,
+            x2_both
+        )
+
+
+    def union(
+            self,
+            other: Union[torch.Tensor, "PackedTensor"]
+    ) -> "PackedTensor":
         """
         Combine two packed sensors.
 
@@ -398,7 +477,24 @@ class PackedTensor:
             self._t.to(*args, **kwargs), self.batch_size, self.batch_indices
         )
 
+
 def forward(module, x, **kwargs):
+    """
+    Propagates a potentially input tensor through a module.
+
+    Ensures that a PackedTensor is returned when a PackedTensor is provided
+    as input so that the available samples are kept track of.
+
+    Args:
+        module: The torch.nn.Module through which to propagate the tensor.
+        x: The tensor to propagate through the module,
+        kwargs: Kwargs passed on to the forward function of the module.
+
+    Return:
+        A PackedTensor (if the input is a PackedTensor or a list of packed
+        tensors) or a standard tensor (if the input is a standard tensor)
+        containing the module applied to the given input tensor.
+    """
     if isinstance(x, PackedTensor):
         if x.empty:
             return x

@@ -46,7 +46,8 @@ def test_sparse_aggregator():
     combined.
     """
     aggregator_factory = AverageAggregatorFactory()
-    aggregator = SparseAggregator(8, aggregator_factory)
+    aggregator = SparseAggregator((8, 8), 8, aggregator_factory)
+    aggregator_factory = LinearAggregatorFactory()
 
     # Ensure full tensor is returned if only one of the provided
     # tensors is sparse.
@@ -76,7 +77,7 @@ def test_sparse_aggregator():
 
     # Test aggregation with linear layer.
     aggregator_factory = LinearAggregatorFactory()
-    aggregator = SparseAggregator(8, aggregator_factory)
+    aggregator = SparseAggregator((8, 8), 8, aggregator_factory)
 
     # Ensure full tensor is returned if only one of the provided
     # tensors is sparse.
@@ -113,11 +114,11 @@ AGGREGATORS = [
 def test_aggregators(aggregator):
     a = torch.ones(1, 10, 16, 16)
     b = torch.ones(1, 10, 16, 16)
-    agg = aggregator(10, 2, 10)
+    agg = aggregator((10, 10), 10)
     c = agg(a, b)
     assert c.shape == (1, 10, 16, 16)
 
     c = torch.ones(1, 10, 16, 16)
-    agg = aggregator(10, 3, 10)
+    agg = aggregator((10, 10, 10), 10)
     c = agg(a, b, c)
     assert c.shape == (1, 10, 16, 16)
