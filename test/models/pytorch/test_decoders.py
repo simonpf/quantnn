@@ -182,7 +182,7 @@ def test_dla_decoder():
         aggregator_factory,
         upsampler_factory
     )
-    y = decoder(x)
+    y = decoder(x[::-1])
     # Output should be a single tensor
     assert isinstance(y, torch.Tensor)
     assert y.shape == (2, 2, 64, 64)
@@ -216,7 +216,7 @@ def test_dla_decoder():
             batch_indices=[]
         )
     ]
-    y = decoder(x)
+    y = decoder(x[::-1])
 
     # Output is, again, a full tensor.
     assert isinstance(y, torch.Tensor)

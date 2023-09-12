@@ -531,4 +531,4 @@ class DLADecoder(nn.Sequential):
         super().__init__(*blocks)
 
     def forward(self, x):
-        return super().forward(x)[0]
+        return super().forward(x[::-1])[0]

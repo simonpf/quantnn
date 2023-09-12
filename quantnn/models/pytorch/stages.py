@@ -136,8 +136,6 @@ class AggregationTreeRoot(AggregationTreeNode):
         if self.downsampler is not None:
             x = self.downsampler(x)
 
-        print(x.shape, self.downsampler)
-
         pass_through = []
 
         y_1 = self.left(x)
