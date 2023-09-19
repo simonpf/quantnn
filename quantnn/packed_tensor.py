@@ -504,6 +504,12 @@ def forward(module, x, **kwargs):
                 PackedTensor(y_i, x.batch_size, x.batch_indices)
                 for y_i in y
             ]
+        elif isinstance(y, dict):
+            return {
+                key: PackedTensor(y_k, x.batch_size, x.batch_indices)
+                for key, y_k in y.items()
+            }
+
         return PackedTensor(
             y,
             x.batch_size,

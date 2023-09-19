@@ -87,6 +87,23 @@ def test_spatial_decoder():
     # Number of channels should be maximum.
     assert y.shape == (1, 1, 128, 128)
 
+    # Test decoder with different channel config.
+    decoder = SpatialDecoder(
+        channels=[8, 2, 2, 2],
+        stages=[4] * 3,
+        channel_scaling=2,
+        max_channels=8,
+        block_factory=block_factory,
+        skip_connections=False,
+        upsampling_factors=[4, 2, 2],
+    )
+    # Test forward without skip connections.
+    x = torch.ones((1, 1, 128, 128))
+    y = decoder(encoder(x))
+    # Width and height should be reduced by 16.
+    # Number of channels should be maximum.
+    assert y.shape == (1, 2, 128, 128)
+
 
 def test_encoder_decoder_multi_scale_output():
     """
@@ -110,9 +127,10 @@ def test_encoder_decoder_multi_scale_output():
         max_channels=16,
         aggregator_factory=aggregator_factory
     )
+
     decoder = SparseSpatialDecoder(
         channels=4,
-        stages=[4] * 4,
+        stages=[4] * 3,
         channel_scaling=2,
         max_channels=16,
         block_factory=block_factory,
@@ -138,6 +156,34 @@ def test_encoder_decoder_multi_scale_output():
     for y_i in y:
         assert y_i.shape[1] == 16
 
+    #
+    # Ensure using different channels than encoder works.
+    #
+
+    decoder = SparseSpatialDecoder(
+        channels=[16, 8, 8, 8],
+        stages=[4] * 3,
+        channel_scaling=2,
+        max_channels=16,
+        block_factory=block_factory,
+        skip_connections=encoder.skip_connections,
+    )
+    x = {
+        "input_1": PackedTensor(
+            torch.ones((0, 16, 16, 16)),
+            batch_size=4,
+            batch_indices=[]
+        ),
+        "input_2": PackedTensor(
+            torch.ones((1, 32, 8, 8)),
+            batch_size=4,
+            batch_indices=[0]
+        )
+    }
+    y = encoder(x, return_skips=True)
+    y = decoder(y)
+    assert y.shape[1] == 8
+
 
 def test_dla_decoder():
     """
@@ -160,6 +206,7 @@ def test_dla_decoder():
     #
 
     decoder = DLADecoderStage(
+        [16, 8, 4, 2],
         [16, 8, 4, 2],
         [16, 4, 2, 1],
         aggregator_factory,

@@ -4,7 +4,7 @@ quantnn.models.pytorch.decoders
 
 Provides generic decoder modules.
 """
-from typing import Optional, Callable, Union, Optional, List
+from typing import Optional, Callable, Union, Optional, List, Dict
 
 import torch
 from torch import nn
@@ -23,6 +23,48 @@ from quantnn.models.pytorch.upsampling import BilinearFactory
 ###############################################################################
 # Upsampling module.
 ###############################################################################
+
+def _determine_skip_connections(
+        skip_connections: Union[bool, int, Dict[int, int]],
+        channels: List[int]
+) -> Dict[int, int]:
+    """
+    Calculates a dict of skip connections from either a bool, an in
+
+    Args:
+        skip_connections: A bool, int, or dictionary specifying whether
+            or not the decoder has skip connections.
+        channels: The list of channels in the stages of the decoder.
+
+    Return:
+            A dicitonary that map stage indices to the number of incoming
+            channels.
+
+    Raises:
+        Value error is skip connections is not of any of the supported types.
+    """
+    n_stages = len(channels) - 1
+
+    if isinstance(skip_connections, dict):
+        return skip_connections
+
+    if isinstance(skip_connections, bool):
+        if skip_connections:
+            return {
+                n_stages - 1 - ind: ch for ind, ch in enumerate(channels[1:])
+            }
+        else:
+            return {}
+    elif isinstance(skip_connections, int):
+        skip_chans = channels[1: skip_connections + 1]
+        return {
+            n_stages - 1 - ind: ch for ind, ch in enumerate(skip_chans)
+        }
+
+    raise ValueError(
+        "Skip connections should be a bool, int or a dictionary."
+    )
+
 
 class SpatialDecoder(nn.Module):
     """
@@ -43,7 +85,7 @@ class SpatialDecoder(nn.Module):
             block_factory: Optional[Callable[[int, int], nn.Module]],
             channel_scaling: int = 2,
             max_channels: int = None,
-            skip_connections: Union[bool, int] = False,
+            skip_connections: Union[bool, int, Dict[int, int]] = False,
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
             upsampler_factory: Callable[[int], nn.Module] = BilinearFactory(),
             upsampling_factors: List[int] = None,
@@ -67,8 +109,9 @@ class SpatialDecoder(nn.Module):
                 should make use of skip connections. If an ``int`` it should
                 specify up to which stage of the decoder skip connections will
                 be provided. This can be used to implement a decoder with
-                skip connects that yields a higher resolution than the input
-                encoder.
+                skip connections that yields a higher resolution than the input
+                encoder. If a 'dict' it should map stage indices to the
+                number of channels in the skip connections.
             stage_factory: Factory functional to use to create the stages in
                 the decoder.
             upsampler_factory: Factory functional to use to create the
@@ -81,7 +124,7 @@ class SpatialDecoder(nn.Module):
         self.n_stages = n_stages
         self.upsamplers = nn.ModuleList()
         self.stages = nn.ModuleList()
-        self.skip_connections = skip_connections
+
 
         if isinstance(channels, int):
            channels = [
@@ -95,6 +138,12 @@ class SpatialDecoder(nn.Module):
                 "The list of given channel numbers must exceed the number "
                 "of stages in the decoder by one."
             )
+
+        self.skip_connections = _determine_skip_connections(
+            skip_connections,
+            channels
+        )
+        self.has_skips = len(self.skip_connections) > 0
 
         if stage_factory is None:
             stage_factory = SequentialStageFactory()
@@ -120,17 +169,17 @@ class SpatialDecoder(nn.Module):
         channels_in = channels[0]
         for index, (config, channels_out) in enumerate(zip(stages, channels[1:])):
 
+            stage_ind = n_stages - index - 1
+
+
             self.upsamplers.append(
                 upsampler_factory(upsampling_factors[index])
             )
 
             channels_combined = channels_in
-            channels_skip = channels_out
+            if stage_ind in self.skip_connections:
+                channels_combined += self.skip_connections[stage_ind]
 
-            if type(self.skip_connections) == bool and self.skip_connections:
-                channels_combined += channels_skip
-            if type(self.skip_connections) == int and index < self.skip_connections:
-                channels_combined += channels_skip
             self.stages.append(
                 stage_factory(
                     channels_combined,
@@ -160,40 +209,37 @@ class SpatialDecoder(nn.Module):
             A list of tensors containing the activations after every stage
             in the decoder.
         """
-        if self.skip_connections:
-            if not isinstance(x, list):
+        if self.has_skips:
+            if not isinstance(x, dict):
                 raise ValueError(
                     f"For a decoder with skip connections the input must "
-                    f"be a list of tensors."
+                    f"be a dictionary mapping stage indices to inputs."
                 )
         else:
-            if isinstance(x, list):
-                x = x[-1]
+            if isinstance(x, dict):
+                x = x[self.n_stages]
 
         activations = []
 
-        if isinstance(x, list):
-            if len(x) < self.n_stages + 1:
-                x = [None] * (self.n_stages + 1 - len(x)) + x
-
-            y = x[-1]
+        if isinstance(x, dict):
+            y = x[self.n_stages]
             stages = self.stages
 
-            for x_skip, up, stage in zip(x[-2::-1], self.upsamplers, stages):
-                if x_skip is None:
-                    y = stage(up(y))
+            for ind, (up, stage) in enumerate(zip(self.upsamplers, stages)):
+                stage_ind = self.n_stages - ind - 1
+                if stage_ind in self.skip_connections:
+                    y = stage(torch.cat([x[stage_ind], up(y)], dim=1))
                 else:
-                    y = stage(torch.cat([x_skip, up(y)], dim=1))
+                    y = stage(up(y))
+
                 activations.append(y)
         else:
-
             y = x
             stages = self.stages
             for up, stage in zip(self.upsamplers, stages):
                 y = stage(up(y))
                 activations.append(y)
         return activations
-
 
     def forward(
             self,
@@ -209,29 +255,27 @@ class SpatialDecoder(nn.Module):
         Return:
             The output tensor from the last decoder stage.
         """
-        if self.skip_connections:
-            if not isinstance(x, list):
+        if self.has_skips:
+            if not isinstance(x, dict):
                 raise ValueError(
                     f"For a decoder with skip connections the input must "
-                    f"be a list of tensors."
+                    f"be a dictionary mapping stage indices to inputs."
                 )
         else:
-            if isinstance(x, list):
-                x = x[-1]
+            if isinstance(x, dict):
+                x = x[self.n_stages]
 
 
-        if isinstance(x, list):
-            if len(x) < self.n_stages + 1:
-                x = [None] * (self.n_stages + 1 - len(x)) + x
-
-            y = x[-1]
+        if isinstance(x, dict):
+            y = x[self.n_stages ]
             stages = self.stages
 
-            for x_skip, up, stage in zip(x[-2::-1], self.upsamplers, stages):
-                if x_skip is None:
-                    y = stage(up(y))
+            for ind, (up, stage) in enumerate(zip(self.upsamplers, stages)):
+                stage_ind = self.n_stages - ind - 1
+                if stage_ind in self.skip_connections:
+                    y = stage(torch.cat([x[stage_ind], up(y)], dim=1))
                 else:
-                    y = stage(torch.cat([x_skip, up(y)], dim=1))
+                    y = stage(up(y))
         else:
             y = x
             stages = self.stages
@@ -257,7 +301,7 @@ class SparseSpatialDecoder(nn.Module):
             block_factory: Optional[Callable[[int, int], nn.Module]],
             channel_scaling: int = 2,
             max_channels: int = None,
-            skip_connections: int = -1,
+            skip_connections: int = False,
             multi_scale_output: int = None,
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
             upsampler_factory: Callable[[int], nn.Module] = BilinearFactory(),
@@ -282,8 +326,9 @@ class SparseSpatialDecoder(nn.Module):
                 should make use of skip connections. If an ``int`` it should
                 specify up to which stage of the decoder skip connections will
                 be provided. This can be used to implement a decoder with
-                skip connects that yields a higher resolution than the input
-                encoder.
+                skip connections that yields a higher resolution than the input
+                encoder. If a 'dict' it should map stage indices to the
+                number of channels in the skip connections.
             stage_factory: Factory functional to use to create the stages in
                 the decoder.
             upsampler_factory: Factory functional to use to create the
@@ -298,10 +343,7 @@ class SparseSpatialDecoder(nn.Module):
         self.n_stages = n_stages
         self.upsamplers = nn.ModuleList()
         self.stages = nn.ModuleList()
-        self.aggregators = nn.ModuleList()
-        if isinstance(skip_connections, bool) or skip_connections < 0:
-            skip_connections = n_stages
-        self.skip_connections = skip_connections
+        self.aggregators = nn.ModuleDict()
 
         if isinstance(channels, int):
            channels = [
@@ -316,6 +358,12 @@ class SparseSpatialDecoder(nn.Module):
                 "The list of given channel numbers must match the number "
                 "of stages plus 1."
             )
+
+        self.skip_connections = _determine_skip_connections(
+            skip_connections,
+            channels
+        )
+        self.has_skips = len(self.skip_connections) > 0
 
         if upsampling_factors is None:
             upsampling_factors = [2] * n_stages
@@ -348,6 +396,19 @@ class SparseSpatialDecoder(nn.Module):
             )
 
         channels_in = channels[0]
+
+        if self.projections is not None:
+            if channels_in != multi_scale_output:
+                self.projections.append(
+                    nn.Sequential(
+                        nn.Conv2d(channels_in, multi_scale_output, kernel_size=1),
+                    )
+                )
+            else:
+                self.projections.append(
+                    nn.Identity()
+                )
+
         for index, (config, channels_out) in enumerate(zip(stages, channels[1:])):
             self.upsamplers.append(
                 upsampler_factory(
@@ -356,14 +417,11 @@ class SparseSpatialDecoder(nn.Module):
                     channels_out
                 )
             )
-            if index < self.skip_connections:
-                self.aggregators.append(
-                    aggregator_factory(
-                        (channels_out,) * 2, channels_out
-                    )
+            stage_ind = self.n_stages - index - 1
+            if stage_ind in self.skip_connections:
+                self.aggregators[str(stage_ind)] = aggregator_factory(
+                    (channels_out, self.skip_connections[stage_ind]), channels_out
                 )
-            else:
-                self.aggregators.append(None)
 
             self.stages.append(
                 stage_factory(
@@ -389,6 +447,7 @@ class SparseSpatialDecoder(nn.Module):
                     )
             channels_in = channels_out
 
+
     def forward(
             self,
             x: List[torch.Tensor]
@@ -401,35 +460,41 @@ class SparseSpatialDecoder(nn.Module):
         Return:
             The output tensor from the last decoder stage.
         """
-        if not isinstance(x, list):
-            raise ValueError(
-                f"For a decoder with skip connections the input must "
-                f"be a list of tensors."
-            )
-
-        # Pad input with None
-        if len(x) < self.n_stages + 1:
-            x = [None] * (self.n_stages + 1 - len(x)) + x
-
-        y = x[-1]
-        stages = self.stages
+        if self.has_skips:
+            if not isinstance(x, dict):
+                raise ValueError(
+                    f"For a decoder with skip connections the input must "
+                    f"be a dictionary mapping stage indices to inputs."
+                )
+        else:
+            if isinstance(x, dict):
+                x = x[self.n_stages]
 
         results = []
 
-        for ind, (x_skip, up, agg, stage) in enumerate(zip(
-                x[-2::-1],
-                self.upsamplers,
-                self.aggregators,
-                stages
-        )):
-            y_up = forward(up, y)
-            if x_skip is None:
-                y = forward(stage, y_up)
-            else:
-                y_agg = agg(y_up, x_skip)
-                y = forward(stage, y_agg)
+        if isinstance(x, dict):
+
+            y = x[self.n_stages]
+            stages = self.stages
             if self.projections is not None:
-                results.append(self.projections[ind](y))
+                results.append(self.projections[0](y))
+
+            for ind, (up, stage) in enumerate(zip(self.upsamplers, stages)):
+                stage_ind = self.n_stages - ind - 1
+                y_up = forward(up, y)
+                if stage_ind in x:
+                    agg = self.aggregators[str(stage_ind)]
+                    y = forward(stage, agg(y_up, x[stage_ind]))
+                else:
+                    y = forward(stage, y_up)
+                if self.projections is not None:
+                    results.append(self.projections[ind + 1](y))
+        else:
+            y = x
+            stages = self.stages
+            for up, stage in zip(self.upsamplers, stages):
+                y = stage(up(y))
+
         if self.projections is not None:
             return results
         return y
@@ -445,6 +510,7 @@ class DLADecoderStage(nn.Module):
     """
     def __init__(
             self,
+            inputs: List[int],
             channels: List[int],
             scales: List[int],
             aggregator_factory: Callable[[int, int,int], nn.Module],
@@ -452,7 +518,7 @@ class DLADecoderStage(nn.Module):
     ):
         """
         Args:
-            channels: List the input channels at each scale.
+            inputs: Dictionary mapping sc
             scales: The scales of each input with the largest scale
                 as the first element.
             aggregator_factory: A factory functional to use to create
@@ -466,7 +532,7 @@ class DLADecoderStage(nn.Module):
         aggregators = []
         for scale_index in range(n_scales - 1):
             f_up = scales[scale_index] / scales[scale_index + 1]
-            ch_in_1 = channels[scale_index]
+            ch_in_1 = inputs[scale_index]
             ch_in_2 = channels[scale_index + 1]
 
             upsamplers.append(
@@ -513,22 +579,44 @@ class DLADecoder(nn.Sequential):
     """
     def __init__(
             self,
-            channels: List[int],
+            inputs: List[int],
             scales: List[int],
             aggregator_factory: Callable[[int, int,int], nn.Module],
-            upsampler_factory: Callable[[int, int, int], nn.Module]
+            upsampler_factory: Callable[[int, int, int], nn.Module],
+            channels: Optional[List[int]] = None
     ):
+        """
+        Create a DLA decoder.
+
+        Args:
+            inputs: List specifying the number of input channels to the
+                decoder.
+            scales: The scales of the inputs.
+            aggregator_factory: The factory to use to create the aggregator
+                modules that consecutively fuses features from larger scales
+                with thos from the next-lower one.
+            upsampler_factory: The factory to use to create the upsample
+                blocks.
+        """
         blocks = []
+        if channels is None:
+            channels = inputs
+        ch_in = inputs
+        ch_out = channels
         for scale_index in range(len(scales) - 1):
             blocks.append(
                 DLADecoderStage(
-                    channels[scale_index:],
+                    ch_in[scale_index:],
+                    ch_out[scale_index:],
                     scales[scale_index:],
                     aggregator_factory,
                     upsampler_factory
                 )
             )
+            ch_in = ch_out
         super().__init__(*blocks)
 
     def forward(self, x):
-        return super().forward(x[::-1])[0]
+        """Propagate input through decoder."""
+        x = [x[ind - 1] for ind in range(len(x), 0, -1)]
+        return super().forward(x)[0]

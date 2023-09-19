@@ -149,6 +149,7 @@ class SpatialEncoder(nn.Module):
             ]
             if max_channels is not None:
                 channels = [min(ch, max_channels) for ch in channels]
+        self.channels = channels
 
         if not len(channels) == len(stages):
             raise ValueError(
@@ -231,7 +232,15 @@ class SpatialEncoder(nn.Module):
         self.__dict__ = dct
         self.stem = dct.pop("stem", None)
 
-    def forward_with_skips(self, x: torch.Tensor) -> List[torch.Tensor]:
+    @property
+    def skip_connections(self) -> Dict[int, int]:
+        """
+        Dictionary specifying the number of channels in the skip tensors
+        produced by this encoder.
+        """
+        return {ind: chans for ind, chans in enumerate(self.channels)}
+
+    def forward_with_skips(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         """
         Legacy implementation of the forward_with_skips function of the
         SpatialEncoder.
@@ -245,12 +254,12 @@ class SpatialEncoder(nn.Module):
             last encoder stage.
         """
         y = x
-        skips = []
-        for down, stage in zip(self.downsamplers, self.stages):
+        skips = {}
+        for ind, (down, stage) in enumerate(zip(self.downsamplers, self.stages)):
             if down is not None:
                 y = down(y)
             y = stage(y)
-            skips.append(y)
+            skips[ind] = y
         return skips
 
     def forward(
@@ -431,8 +440,19 @@ class MultiInputSpatialEncoder(SpatialEncoder):
         first_input = self.stage_inputs[self.first_stage][0]
         del self.aggregators[first_input]
 
+    @property
+    def skip_connections(self) -> Dict[int, int]:
+        """
+        Dictionary specifying the number of channels in the skip tensors
+        produced by this encoder.
+        """
+        return {
+            self.first_stage + ind: chans
+            for ind, chans in enumerate(self.channels[self.first_stage:])
+        }
 
-    def forward_with_skips(self, x: torch.Tensor) -> List[torch.Tensor]:
+
+    def forward_with_skips(self, x: torch.Tensor) -> Dict[set, torch.Tensor]:
         """
         Args:
             x: A ``torch.Tensor`` to feed into the encoder.
@@ -443,7 +463,7 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             last encoder stage.
         """
         stage_ind = self.first_stage
-        skips = []
+        skips = {}
         y = None
 
         for down, stage in zip(self.downsamplers, self.stages):
@@ -465,7 +485,7 @@ class MultiInputSpatialEncoder(SpatialEncoder):
                     y = x_in
 
             y = forward(stage, y)
-            skips.append(y)
+            skips[stage_ind] = y
             stage_ind += 1
 
         return skips

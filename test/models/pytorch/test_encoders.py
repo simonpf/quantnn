@@ -43,7 +43,7 @@ def test_spatial_encoder():
     # First element is just the input.
     assert y[0].shape == (1, 1, 32, 32)
     # Last element is output from last layer.
-    assert y[-1].shape == (1, 4, 4, 4)
+    assert y[3].shape == (1, 4, 4, 4)
 
     # Repeat tests with explicitly specified channel numbers.
     encoder = SpatialEncoder(
@@ -147,7 +147,7 @@ def test_multi_input_spatial_encoder():
     # First element is not downsampled.
     assert y[0].shape == (1, 1, 32, 32)
     # First element is output from last layer.
-    assert y[-1].shape == (1, 8, 4, 4)
+    assert y[3].shape == (1, 8, 4, 4)
 
 
 def test_zero_depth_stage():
@@ -189,7 +189,7 @@ def test_zero_depth_stage():
     # First element is not downsampled.
     assert y[0].shape == (1, 1, 32, 32)
     # First element is output from last layer.
-    assert y[-1].shape == (1, 8, 4, 4)
+    assert y[3].shape == (1, 8, 4, 4)
 
 
 def test_multi_input_spatial_encoder_downsampler_factory():
@@ -257,7 +257,7 @@ def test_spatial_encoder_w_stem():
     # First element is output from first layer.
     assert y[0].shape == (1, 1, 32, 32)
     # First element is output from last layer.
-    assert y[-1].shape == (1, 8, 4, 4)
+    assert y[3].shape == (1, 8, 4, 4)
 
     # Repeat tests with explicitly specified channel numbers.
     encoder = SpatialEncoder(
