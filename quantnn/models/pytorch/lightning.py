@@ -258,6 +258,11 @@ class QuantnnLightning(pl.LightningModule):
             rank_zero_only=True
         )
 
+        self.log(
+            "Learning rate",
+            self.current_optimizer.param_groups[0]["lr"],
+        )
+
     def on_validation_epoch_start(self):
         for metric in self.metrics:
             metric.reset()
@@ -315,13 +320,6 @@ class QuantnnLightning(pl.LightningModule):
         log_image = writer.add_figure
         for key, value in figures.items():
             log_image(key, value, i_epoch)
-
-        self.log(
-            "Learning rate",
-            self.current_optimizer.param_groups[0]["lr"],
-            on_epoch=True,
-            rank_zero_only=True
-        )
 
 
     def configure_optimizers(self):

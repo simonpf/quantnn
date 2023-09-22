@@ -46,22 +46,25 @@ def test_spatial_decoder():
     # Test forward without skip connections.
     x = torch.ones((1, 1, 32, 32))
     y = decoder(encoder(x))
-    # Width and height should be reduced by 16.
-    # Number of channels should be maximum.
+
+    # Shape of y should be same as before.
     assert y.shape == (1, 1, 32, 32)
 
+    #
+    # Test asymmetric decoder
+    #
     decoder = SpatialDecoder(
-        channels=1,
-        stages=[4] * 3,
+        channels=[8, 1, 1],
+        stages=[4] * 2,
         channel_scaling=2,
         max_channels=8,
         block_factory=block_factory,
-        skip_connections=True,
+        skip_connections=encoder.skip_connections,
     )
     # Test forward width skips returned.
     y = decoder(encoder(x, return_skips=True))
-    # Number of outputs is number of stages + 1.
-    assert y.shape == (1, 1, 32, 32)
+    # Size should be less than input.
+    assert y.shape == (1, 1, 16, 16)
 
     encoder = SpatialEncoder(
         channels=1,
@@ -155,6 +158,7 @@ def test_encoder_decoder_multi_scale_output():
     assert len(y) == 4
     for y_i in y:
         assert y_i.shape[1] == 16
+    assert y[-1].shape[2] == 32
 
     #
     # Ensure using different channels than encoder works.
@@ -167,6 +171,7 @@ def test_encoder_decoder_multi_scale_output():
         max_channels=16,
         block_factory=block_factory,
         skip_connections=encoder.skip_connections,
+        multi_scale_output=16
     )
     x = {
         "input_1": PackedTensor(
@@ -182,7 +187,38 @@ def test_encoder_decoder_multi_scale_output():
     }
     y = encoder(x, return_skips=True)
     y = decoder(y)
-    assert y.shape[1] == 8
+    assert y[0].shape[1] == 16
+    assert y[-1].shape[1] == 16
+
+    #
+    # Test decoer with more stages than encoder.
+    #
+
+    decoder = SparseSpatialDecoder(
+        channels=[16, 8, 8, 8, 2],
+        stages=[4] * 4,
+        channel_scaling=2,
+        max_channels=16,
+        block_factory=block_factory,
+        skip_connections=encoder.skip_connections,
+        base_scale=3
+    )
+    x = {
+        "input_1": PackedTensor(
+            torch.ones((0, 16, 16, 16)),
+            batch_size=4,
+            batch_indices=[]
+        ),
+        "input_2": PackedTensor(
+            torch.ones((1, 32, 8, 8)),
+            batch_size=4,
+            batch_indices=[0]
+        )
+    }
+    y = encoder(x, return_skips=True)
+    y = decoder(y)
+    assert y.shape[1] == 2
+    assert y.shape[2] == 64
 
 
 def test_dla_decoder():

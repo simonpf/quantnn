@@ -448,7 +448,7 @@ class MultiInputSpatialEncoder(SpatialEncoder):
         """
         return {
             self.first_stage + ind: chans
-            for ind, chans in enumerate(self.channels[self.first_stage:])
+            for ind, chans in enumerate(self.channels)
         }
 
 
