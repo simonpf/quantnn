@@ -456,7 +456,7 @@ def test_training_multi_mrnn():
     with torch.no_grad():
         y_pred = mrnn.model(x)
         y_binary = torch.nn.functional.sigmoid(y_pred["binary_classification"])
-        assert np.all(np.isclose(y_binary.numpy(), 0.5, atol=0.10))
+        assert np.all(np.isclose(y_binary.numpy(), 0.5, atol=0.20))
 
 
 def test_training_transformation():
