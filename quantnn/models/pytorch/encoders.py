@@ -321,7 +321,7 @@ class MultiInputSpatialEncoder(SpatialEncoder):
             channel_scaling: int = 2,
             max_channels: int = None,
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
-            downsampler_factory: Callable[[int, int], nn.Module] = None,
+            downsampler_factory: Callable[[int, int, int], nn.Module] = None,
             downsampling_factors: List[int] = None,
     ):
         """

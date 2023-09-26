@@ -24,8 +24,8 @@ class LayerNormFirst(nn.Module):
             eps: Epsilon added to variance to avoid numerical issues.
         """
         super().__init__()
-        self.scaling = nn.Parameter(torch.ones(n_channels))
-        self.bias = nn.Parameter(torch.zeros(n_channels))
+        self.scaling = nn.Parameter(torch.ones(n_channels), requires_grad=True)
+        self.bias = nn.Parameter(torch.zeros(n_channels), requires_grad=True)
         self.eps = eps
 
     def forward(self, x):
@@ -49,8 +49,8 @@ class GRN(nn.Module):
         eps: Epsilon added to mean to avoid numerical issues.
         """
         super().__init__()
-        self.scaling = nn.Parameter(torch.zeros(1, n_channels, 1, 1))
-        self.bias = nn.Parameter(torch.zeros(1, n_channels, 1, 1))
+        self.scaling = nn.Parameter(torch.zeros(1, n_channels, 1, 1), requires_grad=True)
+        self.bias = nn.Parameter(torch.zeros(1, n_channels, 1, 1), requires_grad=True)
 
     def forward(self, x):
         """
