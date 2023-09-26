@@ -11,7 +11,7 @@ class BilinearFactory:
     """
     A factory for producing bilinear upsampling layers.
     """
-    def __call__(self, factor, channels_in=None, channels_out=None):
+    def __call__(self, channels_in, channels_out, factor):
         if channels_in is not None and channels_out is not None:
             if channels_in != channels_out:
                 return nn.Sequential(
@@ -28,7 +28,7 @@ class UpsampleFactory:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
 
-    def __call__(self, factor, channels_in=None, channels_out=None):
+    def __call__(self, channels_in, channels_out, factor):
         if channels_in is not None and channels_out is not None:
             if channels_in != channels_out:
                 return nn.Sequential(

@@ -87,7 +87,7 @@ class SpatialDecoder(nn.Module):
             max_channels: int = None,
             skip_connections: Union[bool, int, Dict[int, int]] = False,
             stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
-            upsampler_factory: Callable[[int], nn.Module] = BilinearFactory(),
+            upsampler_factory: Callable[[int, int, int], nn.Module] = BilinearFactory(),
             upsampling_factors: List[int] = None,
             base_scale : Optional[int] = None
     ):
@@ -185,7 +185,10 @@ class SpatialDecoder(nn.Module):
             stage_ind = base_scale - index - 1
 
             self.upsamplers.append(
-                upsampler_factory(upsampling_factors[index])
+                upsampler_factory(
+                    channels_in=channels_in,
+                    channels_out=channels_in,
+                    factor=upsampling_factors[index])
             )
 
             channels_combined = (
@@ -436,9 +439,9 @@ class SparseSpatialDecoder(nn.Module):
         for index, (config, channels_out) in enumerate(zip(stages, channels[1:])):
             self.upsamplers.append(
                 upsampler_factory(
-                    upsampling_factors[index],
-                    channels_in,
-                    channels_out
+                    channels_in=channels_in,
+                    channels_out=channels_out,
+                    factor=upsampling_factors[index],
                 )
             )
             stage_ind = base_scale - index - 1
@@ -561,9 +564,9 @@ class DLADecoderStage(nn.Module):
 
             upsamplers.append(
                 upsampler_factory(
-                    f_up,
                     channels_in=ch_in_1,
-                    channels_out=ch_in_1
+                    channels_out=ch_in_1,
+                    factor=f_up,
                 )
             )
 
