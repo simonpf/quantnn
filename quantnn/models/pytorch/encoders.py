@@ -50,7 +50,7 @@ class SequentialStageFactory(nn.Sequential):
             channels_out,
             n_blocks,
             block_factory,
-            downsample=1,
+            downsample=None,
     ):
         """
         Args:
@@ -202,7 +202,8 @@ class SpatialEncoder(nn.Module):
                 )
             # Explicit downsampling layer.
             else:
-                if f_dwn > 1:
+                down = f_dwn if isinstance(f_dwn, int) else max(f_dwn)
+                if down > 1:
                     self.downsamplers.append(
                         downsampler_factory(
                             channels_in,
@@ -218,7 +219,7 @@ class SpatialEncoder(nn.Module):
                         channels_out,
                         stage.n_blocks,
                         block_factory,
-                        downsample=False
+                        downsample=None
                     )
                 )
             channels_in = channels_out

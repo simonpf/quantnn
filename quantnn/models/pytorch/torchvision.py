@@ -8,7 +8,7 @@ Using this module obviously requires torchvision to be installed.
 """
 from copy import copy
 from functools import partial
-from typing import Optional, Callable
+from typing import Optional, Callable, Tuple, Union
 
 from torch import nn
 from torchvision import models
@@ -32,7 +32,7 @@ class ResNetBlockFactory:
         self.norm_factory = norm_factory
 
     def __call__(
-        self, channels_in: int, channels_out: int, downsample: int = 1
+        self, channels_in: int, channels_out: int, downsample: Optional[Union[int, Tuple[int]]] = None
     ) -> nn.Module:
         """
         Create ResNet block.
@@ -42,16 +42,20 @@ class ResNetBlockFactory:
             channels_out: The number of channels used in the remaining
                 layers in the block.
             downsample: Degree of downsampling to be performed by the block.
-                No downsampling is performed if <= 1.
+                No downsampling is performed if None.
 
         Return:
             The ResNet block.
         """
-        stride = 1
+        stride = (1, 1)
         projection = None
-        if downsample > 1:
+
+        if isinstance(downsample, int):
+            downsample = (downsample,) * 2
+
+        if downsample is not None and max(downsample) > 1:
             stride = downsample
-        if downsample > 1 or channels_in != channels_out:
+        if max(stride) > 1 or channels_in != channels_out:
             projection = nn.Sequential(
                 nn.Conv2d(channels_in, channels_out, stride=stride, kernel_size=1),
                 self.norm_factory(channels_out),
@@ -93,7 +97,7 @@ class ResNeXtBlockFactory:
         self.resnext_class.expansion = 2
 
     def __call__(
-        self, channels_in: int, channels_out: int, downsample: int = 1
+        self, channels_in: int, channels_out: int, downsample: Optional[Union[Tuple[int], int]] = 1
     ) -> nn.Module:
         """
         Create ResNeXt block.
@@ -108,11 +112,16 @@ class ResNeXtBlockFactory:
         Return:
             The ResNeXt block.
         """
-        stride = 1
+        stride = (1, 1)
         projection = None
-        if downsample > 1:
+
+        if isinstance(downsample, int):
+            downsample = (downsample,) * 2
+
+        if downsample is not None and max(downsample) > 1:
             stride = downsample
-        if downsample > 1 or channels_in != channels_out:
+
+        if max(stride) > 1 or channels_in != channels_out:
             if stride > 1:
                 projection = nn.Sequential(
                     nn.AvgPool2d(kernel_size=stride, stride=stride),
@@ -182,7 +191,7 @@ class ConvNeXtBlockFactory:
         self.stochastic_depth_prob = stochastic_depth_prob
 
     def __call__(
-        self, channels_in: int, channels_out: int, downsample: int = 1
+        self, channels_in: int, channels_out: int, downsample: Optional[Union[Tuple[int], int]] = None
     ) -> nn.Module:
         """
         Create ConvNeXt block.
@@ -198,7 +207,7 @@ class ConvNeXtBlockFactory:
             The ConvNeXt block.
         """
         blocks = []
-        if downsample:
+        if downsample is not None:
             blocks += [
                 self.layer_norm_with_permute(channels_in),
                 nn.Conv2d(

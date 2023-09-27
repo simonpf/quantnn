@@ -201,7 +201,6 @@ class SpatialDecoder(nn.Module):
                     channels_out,
                     config.n_blocks,
                     block_factory,
-                    downsample=False
                 )
             )
             channels_in = channels_out

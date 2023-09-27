@@ -42,9 +42,9 @@ class ConvBlockFactory:
 
     def __call__(
             self,
-            channels_in,
-            channels_out=None,
-            downsample=1,
+            channels_in: int,
+            channels_out: Optional[int] = None,
+            downsample: Optional[int] = None,
     ):
         """
         Args:
@@ -61,7 +61,7 @@ class ConvBlockFactory:
         if self.kernel_size > 1:
             padding = (self.kernel_size - 1) // 2
 
-        if not downsample:
+        if downsample is None:
             downsample = 1
 
         blocks = [
@@ -113,9 +113,9 @@ class ConvTransposedBlockFactory:
 
     def __call__(
             self,
-            channels_in,
-            channels_out=None,
-            downsample=1,
+            channels_in: int,
+            channels_out: Optional[int] = None,
+            downsample: Optional[int] = None,
     ):
         """
         Args:
@@ -132,7 +132,7 @@ class ConvTransposedBlockFactory:
         if self.kernel_size > 1:
             padding = (self.kernel_size - 1) // 2
 
-        if not downsample:
+        if downsample is None:
             downsample = 1
 
         blocks = [
@@ -252,7 +252,7 @@ class ResNeXtBlockFactory:
         self.norm_factory = norm_factory
 
     def __call__(
-        self, channels_in: int, channels_out: int, downsample: int = 1
+        self, channels_in: int, channels_out: int, downsample: Optional[int] = None
     ) -> nn.Module:
         """
         Create ResNeXt block.
@@ -267,12 +267,16 @@ class ResNeXtBlockFactory:
         Return:
             The ResNeXt block.
         """
-        stride = 1
+        stride = (1, 1)
         projection = None
-        if downsample > 1:
+
+        if isinstance(downsample, int):
+            downsample = (downsample,) * 2
+
+        if downsample is not None and max(downsample) > 1:
             stride = downsample
-        if downsample > 1 or channels_in != channels_out:
-            if stride > 1:
+        if max(stride) > 1 or channels_in != channels_out:
+            if max(stride) > 1:
                 projection = nn.Sequential(
                     nn.AvgPool2d(kernel_size=stride, stride=stride),
                     nn.Conv2d(channels_in, channels_out, kernel_size=1),
@@ -294,7 +298,7 @@ class ResNeXtBlockFactory:
         )
 
 
-class ConvNextBlock(nn.Sequential):
+class ConvNextBlock(nn.Module):
     def __init__(
             self,
             channels_in: int,
@@ -330,6 +334,7 @@ class ConvNextBlock(nn.Sequential):
                 bottleneck. Defaults to 4, which is the value used in the
                 original implementation.
         """
+        super().__init__()
 
         if channels_out is None:
             channels_out = channels_in
@@ -338,6 +343,9 @@ class ConvNextBlock(nn.Sequential):
         modules = []
         if channels_out != channels_in:
             modules.append(nn.Conv2d(channels_in, channels_out, kernel_size=1))
+            self.proj = nn.Conv2d(channels_in, channels_out, kernel_size=1)
+        else:
+            self.proj = nn.Identity()
         modules += [
              nn.Conv2d(
                 channels_out,
@@ -359,7 +367,7 @@ class ConvNextBlock(nn.Sequential):
                 kernel_size=1
             )
         ]
-        super().__init__(*modules)
+        self.body = nn.Sequential(*modules)
 
         self.layer_scale = None
         if layer_scale > 0:
@@ -372,13 +380,13 @@ class ConvNextBlock(nn.Sequential):
         """
         Propagate x through block.
         """
-        y = super().forward(x)
+        y = self.body(x)
         if self.layer_scale is not None:
             y = self.layer_scale * y
-        return x + y
+        return self.proj(x) + y
 
 
-class ConvNextBlockV2(nn.Sequential):
+class ConvNextBlockV2(nn.Module):
     def __init__(
             self,
             channels_in: int,
@@ -407,6 +415,7 @@ class ConvNextBlockV2(nn.Sequential):
                 bottleneck. Defaults to 4, which is the value used in the
                 original implementation.
         """
+        super().__init__()
 
         if channels_out is None:
             channels_out = channels_in
@@ -416,6 +425,9 @@ class ConvNextBlockV2(nn.Sequential):
 
         if channels_out != channels_in:
             modules.append(nn.Conv2d(channels_in, channels_out, kernel_size=1))
+            self.proj = nn.Conv2d(channels_in, channels_out, kernel_size=1)
+        else:
+            self.proj = nn.Identity()
 
         padding = (kernel_size - 1) // 2
 
@@ -441,14 +453,14 @@ class ConvNextBlockV2(nn.Sequential):
                 kernel_size=1
             )
         ]
-        super().__init__(*modules)
+        self.body = nn.Sequential(*modules)
 
     def forward(self, x):
         """
         Propagate x through block.
         """
-        y = super().forward(x)
-        return x + y
+        y = self.body.forward(x)
+        return self.proj(x) + y
 
 
 class ConvNextBlockFactory:
@@ -490,11 +502,9 @@ class ConvNextBlockFactory:
             channels_out: Optional[int] = None,
             downsample: Optional[int] = None
     ):
-
         block_in = channels_in
         if downsample is not None:
             block_in = channels_out
-
 
         if self.version == 1:
             block = ConvNextBlock(
@@ -515,7 +525,7 @@ class ConvNextBlockFactory:
                 channel_scaling=self.channel_scaling,
             )
 
-        if downsample is None:
+        if downsample is None or not downsample:
             return block
 
         fac = downsampling.ConvNextDownsamplerFactory()

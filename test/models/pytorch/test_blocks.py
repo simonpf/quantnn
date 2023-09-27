@@ -25,10 +25,16 @@ def test_conv_block_factory():
         norm_factory=nn.BatchNorm2d,
         activation_factory=nn.GELU
     )
+
     block = block_factory(8, 16)
     input = torch.ones(8, 8, 8, 8)
     output = block(input)
     assert output.shape == (8, 16, 8, 8)
+
+    block = block_factory(8, 16, downsample=(1, 2))
+    input = torch.ones(8, 8, 8, 8)
+    output = block(input)
+    assert output.shape == (8, 16, 8, 4)
 
 
 def test_conv_transposed_block_factory():
@@ -52,6 +58,10 @@ def test_conv_transposed_block_factory():
     output = block(input)
     assert output.shape == (8, 16, 8, 8)
 
+    block = block_factory(8, 16, downsample=(1, 2))
+    input = torch.ones(8, 8, 8, 8)
+    output = block(input)
+    assert output.shape == (8, 16, 8, 15)
 
 def test_resnext_block():
     """
@@ -69,6 +79,11 @@ def test_resnext_block():
     y = block(x)
     assert y.shape == (1, 64, 4, 4)
 
+    block = factory(8, 64, downsample=(1, 2))
+    input = torch.ones(8, 8, 8, 8)
+    output = block(input)
+    assert output.shape == (8, 64, 8, 4)
+
 
 def test_convnext_block():
     """
@@ -77,6 +92,7 @@ def test_convnext_block():
     """
     x = torch.ones((1, 1, 8, 8))
 
+    # ConvNext V1
     factory = ConvNextBlockFactory(version=1)
     block = factory(1, 64)
     y = block(x)
@@ -85,6 +101,7 @@ def test_convnext_block():
     y = block(x)
     assert y.shape == (1, 64, 4, 4)
 
+    # ConvNext V2
     factory = ConvNextBlockFactory(version=2)
     block = factory(1, 64)
     y = block(x)
