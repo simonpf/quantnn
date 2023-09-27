@@ -5,6 +5,8 @@ quantnn.models.pytorch.fully_connected
 This module provides an implementation of fully-connected feed forward
 neural networks in pytorch.
 """
+from typing import Optional, Callable, Tuple
+
 from torch import nn
 import torch
 from quantnn.models.pytorch.common import PytorchModel, activations
@@ -203,14 +205,15 @@ class MLP(nn.Module):
 
     def __init__(
         self,
-        features_in,
-        n_features,
-        features_out,
-        n_layers,
-        residuals=None,
-        activation_factory=nn.ReLU,
-        norm_factory=nn.BatchNorm1d,
-        internal=False,
+        features_in: int,
+        n_features: int,
+        features_out: int,
+        n_layers: int,
+        residuals: Optional[str] = None,
+        activation_factory: Callable[[], nn.Module] = nn.ReLU,
+        norm_factory: Callable[[], nn.Module] = nn.BatchNorm1d,
+        internal: bool = False,
+        output_shape: Tuple[int] = None,
     ):
         """
         Create MLP module.
@@ -229,6 +232,8 @@ class MLP(nn.Module):
             internal: If the module is not an 'internal' module no
                  normalization or activation function are applied to the
                  output.
+            output_shape: If provided, the channel dimension of the output will
+                 be reshaped to the given shape.
         """
         super().__init__()
         self.n_layers = n_layers
@@ -260,6 +265,7 @@ class MLP(nn.Module):
                 )
             else:
                 self.output_layer = nn.Linear(features_in, features_out)
+        self.output_shape = output_shape
 
     def forward(self, x):
         """
@@ -273,6 +279,7 @@ class MLP(nn.Module):
             The output tensor.
         """
         needs_reshape = False
+        input_shape = x.shape
         if x.ndim == 4:
             needs_reshape = True
             x = torch.permute(x, (0, 2, 3, 1))
@@ -292,4 +299,13 @@ class MLP(nn.Module):
         if needs_reshape:
             y = y.view(old_shape[:-1] + (-1,))
             y = torch.permute(y, (0, 3, 1, 2))
+
+        # If required, reshape channel dimension
+        if self.output_shape is not None:
+            if needs_reshape:
+                shape = input_shape[:1] + self.output_shape + input_shape[2:]
+            else:
+                shape = input_shape[:1] + self.output_shape
+            y = y.view(shape)
+
         return y
