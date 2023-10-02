@@ -21,12 +21,8 @@ class ConvBlockFactory:
     This basic convolution block combines a convolution with an optional
     normalization layer and activation function.
     """
-    def __init__(
-            self,
-            kernel_size=1,
-            norm_factory=None,
-            activation_factory=None
-    ):
+
+    def __init__(self, kernel_size=1, norm_factory=None, activation_factory=None):
         """
         Args:
             kernel_size: The size of the convolution kernel.
@@ -41,10 +37,11 @@ class ConvBlockFactory:
         self.activation_factory = activation_factory
 
     def __call__(
-            self,
-            channels_in: int,
-            channels_out: Optional[int] = None,
-            downsample: Optional[int] = None,
+        self,
+        channels_in: int,
+        channels_out: Optional[int] = None,
+        downsample: Optional[int] = None,
+        block_index: int = 0,
     ):
         """
         Args:
@@ -53,6 +50,7 @@ class ConvBlockFactory:
                 given, will be the same as number of input channels.
             downsample: Optional downsampling factor that will be used as the
                 the stride of the convolution operation.
+            block_index: Not used by this factory.
         """
         if channels_out is None:
             channels_out = channels_in
@@ -70,7 +68,7 @@ class ConvBlockFactory:
                 channels_out,
                 kernel_size=self.kernel_size,
                 padding=padding,
-                stride=downsample
+                stride=downsample,
             )
         ]
 
@@ -92,12 +90,8 @@ class ConvTransposedBlockFactory:
     Combines transposed convolution with an optional normalization
     layer and activation function.
     """
-    def __init__(
-            self,
-            kernel_size=1,
-            norm_factory=None,
-            activation_factory=None
-    ):
+
+    def __init__(self, kernel_size=1, norm_factory=None, activation_factory=None):
         """
         Args:
             kernel_size: The size of the convolution kernel.
@@ -112,10 +106,11 @@ class ConvTransposedBlockFactory:
         self.activation_factory = activation_factory
 
     def __call__(
-            self,
-            channels_in: int,
-            channels_out: Optional[int] = None,
-            downsample: Optional[int] = None,
+        self,
+        channels_in: int,
+        channels_out: Optional[int] = None,
+        downsample: Optional[int] = None,
+        block_index: int = 0,
     ):
         """
         Args:
@@ -124,6 +119,7 @@ class ConvTransposedBlockFactory:
                 given, will be the same as number of input channels.
             downsample: Optional downsampling factor that will be used as the
                 the stride of the convolution operation.
+            block_index: Not used by this factory.
         """
         if channels_out is None:
             channels_out = channels_in
@@ -141,7 +137,7 @@ class ConvTransposedBlockFactory:
                 channels_out,
                 kernel_size=self.kernel_size,
                 padding=padding,
-                stride=downsample
+                stride=downsample,
             )
         ]
 
@@ -160,16 +156,17 @@ class ResNeXtBlock(nn.Module):
     """
     A convolutional block modeled after the ResNeXt architecture.
     """
+
     def __init__(
         self,
         channels_in: int,
         channels_out: int,
-        bottleneck: int=2,
-        cardinality: int=32,
+        bottleneck: int = 2,
+        cardinality: int = 32,
         projection: Optional[nn.Module] = None,
         stride: int = 1,
         norm_layer: Optional[Callable[..., nn.Module]] = None,
-        activation: Optional[Callable[..., nn.Module]] = nn.ReLU
+        activation: Optional[Callable[..., nn.Module]] = nn.ReLU,
     ):
         """
         Args:
@@ -187,11 +184,7 @@ class ResNeXtBlock(nn.Module):
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
 
-        self.conv_1 = nn.Conv2d(
-            channels_in,
-            channels_out // bottleneck,
-            kernel_size=1
-        )
+        self.conv_1 = nn.Conv2d(channels_in, channels_out // bottleneck, kernel_size=1)
         self.norm_1 = norm_layer(channels_out // bottleneck)
         self.conv_2 = nn.Conv2d(
             channels_out // bottleneck,
@@ -199,7 +192,7 @@ class ResNeXtBlock(nn.Module):
             kernel_size=3,
             groups=cardinality,
             stride=stride,
-            padding=1
+            padding=1,
         )
         self.norm_2 = norm_layer(channels_out // bottleneck)
         self.conv_3 = nn.Conv2d(
@@ -210,7 +203,6 @@ class ResNeXtBlock(nn.Module):
         self.norm_3 = norm_layer(channels_out)
         self.act = activation(inplace=True)
         self.projection = projection
-
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward input tensor through block."""
@@ -228,15 +220,14 @@ class ResNeXtBlock(nn.Module):
 
         return self.act(y)
 
+
 class ResNeXtBlockFactory:
     """
     Factory wrapper for ``torchvision`` ResNeXt blocks.
     """
 
     def __init__(
-            self,
-            cardinality=32,
-            norm_factory: Optional[Callable[[int], nn.Module]] = None
+        self, cardinality=32, norm_factory: Optional[Callable[[int], nn.Module]] = None
     ):
         """
         Args:
@@ -252,7 +243,11 @@ class ResNeXtBlockFactory:
         self.norm_factory = norm_factory
 
     def __call__(
-        self, channels_in: int, channels_out: int, downsample: Optional[int] = None
+        self,
+        channels_in: int,
+        channels_out: int,
+        downsample: Optional[int] = None,
+        block_index: int = 0,
     ) -> nn.Module:
         """
         Create ResNeXt block.
@@ -263,6 +258,7 @@ class ResNeXtBlockFactory:
                 layers in the block.
             downsample: Degree of downsampling to be performed by the block.
                 No downsampling is performed if <= 1.
+            block_index: Not used by this factory.
 
         Return:
             The ResNeXt block.
@@ -280,13 +276,9 @@ class ResNeXtBlockFactory:
                 projection = nn.Sequential(
                     nn.AvgPool2d(kernel_size=stride, stride=stride),
                     nn.Conv2d(channels_in, channels_out, kernel_size=1),
-                    self.norm_factory(channels_out),
                 )
             else:
-                projection = nn.Sequential(
-                    nn.Conv2d(channels_in, channels_out, kernel_size=1),
-                    self.norm_factory(channels_out),
-                )
+                projection = nn.Conv2d(channels_in, channels_out, kernel_size=1)
 
         return ResNeXtBlock(
             channels_in,
@@ -294,20 +286,20 @@ class ResNeXtBlockFactory:
             stride=stride,
             projection=projection,
             cardinality=self.cardinality,
-            norm_layer=self.norm_factory
+            norm_layer=self.norm_factory,
         )
 
 
 class ConvNextBlock(nn.Module):
     def __init__(
-            self,
-            channels_in: int,
-            channels_out: Optional[int] = None,
-            kernel_size: int = 7,
-            layer_scale: float = 1e-6,
-            activation_factory: Callable[[], nn.Module] = nn.GELU,
-            norm_factory: Callable[[int], nn.Module] = normalization.LayerNormFirst,
-            channel_scaling: int = 4
+        self,
+        channels_in: int,
+        channels_out: Optional[int] = None,
+        kernel_size: int = 7,
+        layer_scale: float = 1e-6,
+        activation_factory: Callable[[], nn.Module] = nn.GELU,
+        norm_factory: Callable[[int], nn.Module] = normalization.LayerNormFirst,
+        channel_scaling: int = 4,
     ):
         """
         A ConvNext block as defined in 'A ConvNet for the 2020s'.
@@ -347,12 +339,12 @@ class ConvNextBlock(nn.Module):
         else:
             self.proj = nn.Identity()
         modules += [
-             nn.Conv2d(
+            nn.Conv2d(
                 channels_out,
                 channels_out,
                 kernel_size=kernel_size,
                 padding=padding,
-                groups=channels_out
+                groups=channels_out,
             ),
             norm_factory(channels_out),
             nn.Conv2d(
@@ -361,19 +353,14 @@ class ConvNextBlock(nn.Module):
                 kernel_size=1,
             ),
             activation_factory(),
-            nn.Conv2d(
-                channel_scaling * channels_out,
-                channels_out,
-                kernel_size=1
-            )
+            nn.Conv2d(channel_scaling * channels_out, channels_out, kernel_size=1),
         ]
         self.body = nn.Sequential(*modules)
 
         self.layer_scale = None
         if layer_scale > 0:
             self.layer_scale = nn.Parameter(
-                layer_scale * torch.ones((channels_out, 1, 1)),
-                requires_grad=True
+                layer_scale * torch.ones((channels_out, 1, 1)), requires_grad=True
             )
 
     def forward(self, x):
@@ -388,13 +375,13 @@ class ConvNextBlock(nn.Module):
 
 class ConvNextBlockV2(nn.Module):
     def __init__(
-            self,
-            channels_in: int,
-            channels_out: Optional[int] = None,
-            kernel_size: int = 7,
-            activation_factory: Callable[[], nn.Module] = nn.GELU,
-            norm_factory: Callable[[int], nn.Module] = normalization.LayerNormFirst,
-            channel_scaling: int = 4
+        self,
+        channels_in: int,
+        channels_out: Optional[int] = None,
+        kernel_size: int = 7,
+        activation_factory: Callable[[], nn.Module] = nn.GELU,
+        norm_factory: Callable[[int], nn.Module] = normalization.LayerNormFirst,
+        channel_scaling: int = 4,
     ):
         """
         Updated ConvNext block as defined in
@@ -420,7 +407,6 @@ class ConvNextBlockV2(nn.Module):
         if channels_out is None:
             channels_out = channels_in
 
-
         modules = []
 
         if channels_out != channels_in:
@@ -432,12 +418,12 @@ class ConvNextBlockV2(nn.Module):
         padding = (kernel_size - 1) // 2
 
         modules += [
-             nn.Conv2d(
+            nn.Conv2d(
                 channels_out,
                 channels_out,
                 kernel_size=kernel_size,
                 padding=padding,
-                groups=channels_out
+                groups=channels_out,
             ),
             norm_factory(channels_out),
             nn.Conv2d(
@@ -447,11 +433,7 @@ class ConvNextBlockV2(nn.Module):
             ),
             normalization.GRN(channel_scaling * channels_out),
             activation_factory(),
-            nn.Conv2d(
-                channel_scaling * channels_out,
-                channels_out,
-                kernel_size=1
-            )
+            nn.Conv2d(channel_scaling * channels_out, channels_out, kernel_size=1),
         ]
         self.body = nn.Sequential(*modules)
 
@@ -467,28 +449,29 @@ class ConvNextBlockFactory:
     """
     Factory class to generate ConvNext blocks.
     """
+
     def __init__(
-            self,
-            version: int = 1,
-            kernel_size: int = 7,
-            activation_factory: Callable[[], nn.Module] = nn.GELU,
-            norm_factory: Callable[[int], nn.Module] = normalization.LayerNormFirst,
-            channel_scaling: int = 4
+        self,
+        version: int = 1,
+        kernel_size: int = 7,
+        activation_factory: Callable[[], nn.Module] = nn.GELU,
+        norm_factory: Callable[[int], nn.Module] = normalization.LayerNormFirst,
+        channel_scaling: int = 4,
     ):
         """
-            version: Which version of ConvNext blocks should be created. Should be
-                '1' or '2'.
-            kernel_size: The kernel size used for the first convolution of
-                the block.
-            activation_factory: Factory functional to create the activation
-                function used in the block. Defaults to GELU, which is proposed
-                in the original implementation.
-            norm_factory: Normalization functional to create the normalization
-                module used in the block. Defaults to layer norm, which is
-                proposed in the original implementation.
-            channel_scaling: The channel scaling applied in the inverted
-                bottleneck. Defaults to 4, which is the value used in the
-                original implementation.
+        version: Which version of ConvNext blocks should be created. Should be
+            '1' or '2'.
+        kernel_size: The kernel size used for the first convolution of
+            the block.
+        activation_factory: Factory functional to create the activation
+            function used in the block. Defaults to GELU, which is proposed
+            in the original implementation.
+        norm_factory: Normalization functional to create the normalization
+            module used in the block. Defaults to layer norm, which is
+            proposed in the original implementation.
+        channel_scaling: The channel scaling applied in the inverted
+            bottleneck. Defaults to 4, which is the value used in the
+            original implementation.
         """
         self.version = version
         self.kernel_size = kernel_size
@@ -497,11 +480,27 @@ class ConvNextBlockFactory:
         self.channel_scaling = channel_scaling
 
     def __call__(
-            self,
-            channels_in: int,
-            channels_out: Optional[int] = None,
-            downsample: Optional[int] = None
+        self,
+        channels_in: int,
+        channels_out: Optional[int] = None,
+        downsample: Optional[int] = None,
+        block_index: int = 0,
     ):
+        """
+        Create ConvNext block.
+
+        Args:
+            channels_in: The number of channels in the input.
+            channels_out: The number of channels used in the remaining
+                layers in the block.
+            downsample: Degree of downsampling to be performed by the block.
+                No downsampling is performed if <= 1.
+            block_index: Not used by this factory.
+
+        Return:
+            The ConvNext block.
+        """
+
         block_in = channels_in
         if downsample is not None:
             block_in = channels_out
@@ -529,7 +528,4 @@ class ConvNextBlockFactory:
             return block
 
         fac = downsampling.ConvNextDownsamplerFactory()
-        return nn.Sequential(
-            fac(channels_in, channels_out, downsample),
-            block
-        )
+        return nn.Sequential(fac(channels_in, channels_out, downsample), block)
