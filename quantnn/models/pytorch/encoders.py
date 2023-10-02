@@ -32,8 +32,8 @@ class StageConfig:
     """
 
     n_blocks: int
-    block_args: Optional[List] = lambda: []
-    block_kwargs: Optional[List] = lambda: []
+    block_args: Optional[List] = None
+    block_kwargs: Optional[List] = None
 
 
 class SequentialStageFactory(nn.Sequential):
@@ -48,6 +48,8 @@ class SequentialStageFactory(nn.Sequential):
         n_blocks,
         block_factory,
         downsample=None,
+        block_args=None,
+        block_kwargs=None,
     ):
         """
         Args:
@@ -61,10 +63,22 @@ class SequentialStageFactory(nn.Sequential):
             downsample: Whether to include a downsampling layer
                 at the beginning of the stage.
         """
+        if block_args is None:
+            block_args = []
+        if block_kwargs is None:
+            block_kwargs = {}
+
         blocks = []
         for block_ind in range(n_blocks):
             blocks.append(
-                block_factory(channels_in, channels_out, downsample=downsample)
+                block_factory(
+                    channels_in,
+                    channels_out,
+                    *block_args,
+                    downsample=downsample,
+                    block_index=block_ind,
+                    **block_kwargs,
+                )
             )
             channels_in = channels_out
             downsample = 1
@@ -182,6 +196,8 @@ class SpatialEncoder(nn.Module, ParamCount):
                         stage.n_blocks,
                         block_factory,
                         downsample=f_dwn,
+                        block_args=stage.block_args,
+                        block_kwargs=stage.block_kwargs,
                     )
                 )
             # Explicit downsampling layer.
@@ -201,6 +217,8 @@ class SpatialEncoder(nn.Module, ParamCount):
                         stage.n_blocks,
                         block_factory,
                         downsample=None,
+                        block_args=stage.block_args,
+                        block_kwargs=stage.block_kwargs,
                     )
                 )
             channels_in = channels_out
