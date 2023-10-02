@@ -19,17 +19,25 @@ class AggregationTreeNode(nn.Module):
     aggregation is in principle only performed in the nodes at
     the lowest level.
     """
+
     def __init__(
-            self,
-            channels_in,
-            channels_out,
-            level,
-            block_factory,
-            aggregator_factory,
-            channels_agg=0,
-            downsample=1
+        self,
+        channels_in,
+        channels_out,
+        level,
+        block_factory,
+        aggregator_factory,
+        channels_agg=0,
+        downsample=1,
+        block_args=None,
+        block_kwargs=None,
     ):
         super().__init__()
+
+        if block_args is None:
+            block_args = []
+        if block_kwargs is None:
+            block_kwargs = {}
 
         if channels_agg == 0:
             channels_agg = 2 * channels_out
@@ -40,23 +48,26 @@ class AggregationTreeNode(nn.Module):
             self.left = block_factory(
                 channels_in,
                 channels_out,
-                downsample=downsample
+                *block_args,
+                downsample=downsample,
+                **block_kwargs,
             )
             self.right = None
         elif level == 1:
-            self.aggregator = aggregator_factory(
-                channels_agg,
-                channels_out
-            )
+            self.aggregator = aggregator_factory(channels_agg, channels_out)
             self.left = block_factory(
                 channels_in,
                 channels_out,
-                downsample=downsample
+                *block_args,
+                downsample=downsample,
+                **block_kwargs,
             )
             self.right = block_factory(
                 channels_out,
                 channels_out,
-                downsample=1
+                *block_args,
+                downsample=1,
+                **block_kwargs,
             )
         else:
             self.aggregator = None
@@ -66,7 +77,9 @@ class AggregationTreeNode(nn.Module):
                 level - 1,
                 block_factory,
                 aggregator_factory,
-                downsample=downsample
+                downsample=downsample,
+                block_args=block_args,
+                block_kwargs=block_kwargs,
             )
             self.right = AggregationTreeNode(
                 channels_out,
@@ -74,8 +87,10 @@ class AggregationTreeNode(nn.Module):
                 level - 1,
                 block_factory,
                 aggregator_factory,
-                channels_agg = channels_agg + channels_out,
-                downsample=1
+                channels_agg=channels_agg + channels_out,
+                downsample=1,
+                block_args=block_args,
+                block_kwargs=block_kwargs,
             )
 
     def forward(self, x, pass_through=None):
@@ -86,7 +101,7 @@ class AggregationTreeNode(nn.Module):
             return self.left(x)
 
         if pass_through is None:
-                pass_through = []
+            pass_through = []
 
         y_1 = self.left(x)
         if self.aggregator is not None:
@@ -101,15 +116,17 @@ class AggregationTreeRoot(AggregationTreeNode):
     """
     Root of an aggregation tree.
     """
-    def __init__(
-            self,
-            channels_in,
-            channels_out,
-            tree_height,
-            block_factory,
-            aggregator_factory,
-            downsample=1
 
+    def __init__(
+        self,
+        channels_in,
+        channels_out,
+        tree_height,
+        block_factory,
+        aggregator_factory,
+        downsample=1,
+        block_args=None,
+        block_kwargs=None,
     ):
         channels_agg = 2 * channels_out + channels_in
         super().__init__(
@@ -119,7 +136,7 @@ class AggregationTreeRoot(AggregationTreeNode):
             block_factory,
             aggregator_factory,
             channels_agg=channels_agg,
-            downsample=1
+            downsample=1,
         )
 
         self.downsampler = None
@@ -151,24 +168,23 @@ class AggregationTreeFactory:
     """
     An aggregation tree implementing hierarchical aggregation of blocks in a stage.
     """
-    def __init__(
-            self,
-            aggregator_factory=None
-    ):
+
+    def __init__(self, aggregator_factory=None):
         if aggregator_factory is None:
             aggregator_factory = blocks.ConvBlockFactory(
-                norm_factory=nn.BatchNorm2d,
-                activation_factory=nn.ReLU
+                norm_factory=nn.BatchNorm2d, activation_factory=nn.ReLU
             )
         self.aggregator_factory = aggregator_factory
 
     def __call__(
-            self,
-            channels_in,
-            channels_out,
-            n_blocks,
-            block_factory,
-            downsample=1
+        self,
+        channels_in,
+        channels_out,
+        n_blocks,
+        block_factory,
+        downsample=1,
+        block_args=None,
+        block_kwargs=None,
     ):
         n_levels = np.log2(n_blocks)
         return AggregationTreeRoot(
@@ -177,7 +193,7 @@ class AggregationTreeFactory:
             n_levels,
             block_factory,
             self.aggregator_factory,
-            downsample=downsample
+            downsample=downsample,
+            block_args=None,
+            block_kwargs=None,
         )
-
-
