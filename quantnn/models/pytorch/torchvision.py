@@ -363,7 +363,9 @@ class SwinBlockFactory:
         Return:
             A pytorch module implementing a swin transformer block.
         """
-        shift_size = (0, 0) if block_index % 2 == 0 else (window_index // 2,) * 2
+        shift_size = [0, 0]
+        if block_index % 2 != 0:
+            shift_size = [sze // 2 for sze in self.window_size]
 
         if downsample is None:
             return SwinBlock(
