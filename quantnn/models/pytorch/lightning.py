@@ -367,7 +367,7 @@ class QuantnnLightning(pl.LightningModule):
         conf["lr_scheduler"] = scheduler_config
         return conf
 
-    def on_train_end(self):
+    def on_fit_end(self):
         self._tensorboard = None
         self.stage += 1
 
