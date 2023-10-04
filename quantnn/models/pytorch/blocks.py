@@ -10,6 +10,7 @@ import torch
 from torch import nn
 
 
+from quantnn.models.pytorch.base import ParamCount
 from . import normalization
 from . import downsampling
 
@@ -152,7 +153,7 @@ class ConvTransposedBlockFactory:
         return nn.Sequential(*blocks)
 
 
-class ResNeXtBlock(nn.Module):
+class ResNeXtBlock(nn.Module, ParamCount):
     """
     A convolutional block modeled after the ResNeXt architecture.
     """
