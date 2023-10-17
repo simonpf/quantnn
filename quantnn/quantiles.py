@@ -560,6 +560,7 @@ def probability_less_than(y_pred, quantiles, y, quantile_axis=1):
     output_shape = list(x_cdf.shape)
     del output_shape[quantile_axis]
     probabilities = zeros(xp, output_shape, like=y_pred)
+    counts = zeros(xp, probabilities.shape, like=y_pred)
 
     y_l = y_cdf[0]
     x_index = [slice(0, None)] * n_dims
@@ -572,12 +573,15 @@ def probability_less_than(y_pred, quantiles, y, quantile_axis=1):
         x_r = x_cdf[tuple(x_index)]
 
         mask = as_type(xp, (x_l < y) * (x_r >= y), x_l)
-        probabilities += y_l * (x_r - y) * mask
-        probabilities += y_r * (y - x_l) * mask
-        probabilities /= mask * (x_r - x_l) + (1.0 - mask)
+        w_l = ((x_r - y) / (x_r - x_l))
+        w_r = 1.0 - w_l
+        probabilities += ((y_l * w_l) + (y_r * w_r)) * mask
+        counts += mask
 
         y_l = y_r
         x_l = x_r
+
+    probabilities /= counts
 
     mask = as_type(xp, x_r < y, x_r)
     probabilities += mask
