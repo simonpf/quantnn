@@ -581,6 +581,7 @@ def probability_less_than(y_pred, quantiles, y, quantile_axis=1):
         y_l = y_r
         x_l = x_r
 
+    counts += 1.0 - as_type(xp, (counts > 0.0), counts)
     probabilities /= counts
 
     mask = as_type(xp, x_r < y, x_r)
