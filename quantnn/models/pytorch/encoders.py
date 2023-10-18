@@ -6,7 +6,7 @@ Generic encoder modules.
 """
 from dataclasses import dataclass
 from math import log
-from typing import Optional, Callable, Union, Optional, List, Dict
+from typing import Optional, Callable, Union, Optional, List, Dict, Tuple
 
 import torch
 from torch import nn
@@ -30,10 +30,31 @@ class StageConfig:
     """
     Configuration of a single stage in an encoder.
     """
-
     n_blocks: int
     block_args: Optional[List] = None
     block_kwargs: Optional[List] = None
+
+    def __init__(
+            self,
+            n_blocks: int,
+            block_args: Optional[List] = None,
+            block_kwargs: Optional[Dict] = None
+    ):
+        """
+        Args:
+            n_blocks: The number of blocks in the stage.
+            block_args: List of positional arguments that will be passed to
+                the block factory.
+            block_kwargs: Dict of keyword arguments that will be passed to
+                the stage factory.
+        """
+        self.n_blocks = n_blocks
+        if block_args is None:
+            block_args = []
+        self.block_args = block_args
+        if block_kwargs is None:
+            block_kwargs = {}
+        self.block_kwargs = block_kwargs
 
 
 class SequentialStageFactory(nn.Sequential):
@@ -43,13 +64,13 @@ class SequentialStageFactory(nn.Sequential):
 
     def __call__(
         self,
-        channels_in,
-        channels_out,
-        n_blocks,
-        block_factory,
-        downsample=None,
-        block_args=None,
-        block_kwargs=None,
+        channels_in: int,
+        channels_out: int,
+        n_blocks: int,
+        block_factory: Callable[[int], nn.Module],
+        downsample: Optional[Union[Tuple[int], int]] = None,
+        block_args: Optional[List] = None,
+        block_kwargs: Optional[Dict] = None,
     ):
         """
         Args:
@@ -62,6 +83,11 @@ class SequentialStageFactory(nn.Sequential):
                 in the stage.
             downsample: Whether to include a downsampling layer
                 at the beginning of the stage.
+            block_args: Optional list of object that will be passed as
+                positional arguments to the block factory.
+            block_kwargs: Optional dict mapping parameter names to objects
+                that will be passed as additional keyword arguments to
+                the block factory.
         """
         if block_args is None:
             block_args = []
@@ -81,7 +107,7 @@ class SequentialStageFactory(nn.Sequential):
                 )
             )
             channels_in = channels_out
-            downsample = 1
+            downsample = None
 
         if len(blocks) == 1:
             return blocks[0]
@@ -531,6 +557,101 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
         return y
 
 
+class DenseEncoder(nn.Module, ParamCount):
+    """
+    Implements a vertical slice of a dense encoder.
+    """
+    def __init__(
+        self,
+        channels: List[int],
+        scales: List[int],
+        level_index: int,
+        depth: int,
+        block_factory: Callable[[int, int], nn.Module],
+        downsampler_factory: Callable[[int, int, int], nn.Module],
+        upsampler_factory: Callable[[int, int, int], nn.Module],
+        aggregator_factory: Callable[[int, int, int], nn.Module],
+        input_aggregator_factory: Callable[[int, int, int], nn.Module] = None,
+    ):
+        """
+        Args:
+            channels: A list containing the number of channels at each scale.
+            scales: A list defining the scales of the encoder.
+            level_index: Index specifying the level of the encoder.
+
+        """
+        super().__init__()
+        blocks = []
+        aggregators = []
+        projections = []
+        downsamplers = []
+        upsamplers = []
+
+        if level_index >= depth + len(scales):
+            raise ValueError(
+                "The level index of the parallel encoder level must be "
+                " strictly  less than the sum of the encoder's depth "
+                "and number of scales."
+            )
+
+        scales_start = max(0, level_index - depth + 1)
+        scales_end = min(level_index + 1, len(channels))
+        self.scales_start = scales_start
+        self.level_index = level_index
+        self.depth = depth
+
+        for scale_index in range(scales_start, scales_end):
+
+            ch_in_all = []
+
+            if scale_index > 0:
+                ch_in_lower = channels[scale_index - 1]
+                ch_in_all.append(ch_in_lower)
+                f_down = scales[scale_index] // scales[scale_index - 1]
+                downsamplers.append(downsampler_factory(ch_in_lower, ch_in_lower, f_down))
+            else:
+                downsamplers.append(None)
+
+            ch_in_all.append(channels[scale_index])
+
+            if scale_index < scales_end - 1:
+                ch_in_higher = channels[scale_index + 1]
+                ch_in_all.append(ch_in_lower)
+                f_up = scales[scale_index + 1] // scales[scale_index]
+                upsamplers.append(downsampler_factory(ch_in_higher, ch_in_higher, f_up))
+
+            aggregators.append(aggregator_factory(ch_in_all, ch_out))
+            blocks.append(block_factory(ch_out, ch_out))
+
+        self.downsamplers = nn.ModuleList(downsamplers)
+        self.upsamplers = nn.ModuleList(upsamplers)
+        self.blocks = nn.ModuleList(blocks)
+
+
+    def forward(self, x, x_in=None):
+        results = x[: max(self.level_index - self.depth + 1, 0)]
+        for offset, block in enumerate(self.blocks):
+
+            scale_index = self.scales_start + offset
+            up = self.upsamplers[offset]
+            down = self.upsamplers[offset]
+
+            inputs = []
+            if up is not None:
+                x_up = forward(up, x[scale_index - 1])
+                inputs.append(x_up)
+            inputs.append(x[scale_index])
+            if down is not None:
+                x_down = forward(down, x_scale_index + 1)
+                inputs.append(x_down)
+
+            agg = self.aggregators[offset]
+            y = forward(block, agg(*inputs))
+            results.append(y)
+
+        return results
+
+
 class ParallelEncoderLevel(nn.Module, ParamCount):
     """
     Implements a single level of a parallel encoder. Each level
@@ -709,3 +830,439 @@ class ParallelEncoder(nn.Module):
                 input_index += 1
             y = self.stages[stage_index](y, x_in=x_in)
         return y
+
+
+class CascadingEncoder(nn.Module):
+    def __init__(
+            self,
+            channels: Union[int, List[int]],
+            stages: List[Union[int, StageConfig]],
+            block_factory: Optional[Callable[[int, int], nn.Module]] = None,
+            channel_scaling: int = 2,
+            max_channels: int = None,
+            downsampler_factory: Callable[[int, int], nn.Module] = None,
+            upsampler_factory: Callable[[int, int], nn.Module] = None,
+            downsampling_factors: List[int] = None,
+            stem_factory: Callable[[int], nn.Module] = None,
+            **kwargs
+    ):
+        """
+        A cascading encoder processes stages in an overlapping fashion. Each
+        stage begins processing as soon as the output from the first
+        convolutional block of the previous stage is available. The cascading
+        encoder also includes densely connects block across different stages.
+
+        Args:
+            channels: A list specifying the number of features (or channels)
+                at the end of each stage of the encoder.
+            stages: A list containing the stage specifications for each
+                stage in the encoder.
+            block_factory: Factory to create the blocks in each stage.
+            channel_scaling: Scaling factor specifying the increase of the
+                number of channels after every downsampling layer. Only used
+                if channels is an integer.
+            max_channels: Cutoff value to limit the number of channels. Only
+                used if channels is an integer.
+            downsampler_factory: The downsampler factory is currently ignored.
+            downsampling_factors: The downsampling factors applied to the outputs
+                of all but the last stage. For a constant downsampling factor
+                between all layers this can be set to a single 'int'. Otherwise
+                a list of length ``len(channels) - 1`` should be provided.
+            stem_factory: A factory that takes a number of output channels and
+                produces a stem module that is applied to the inputs prior
+                to feeding them into the first stage of the encoder.
+        """
+        super().__init__()
+
+        if block_factory is None:
+            block_factory = DEFAULT_BLOCK_FACTORY
+
+        self.channel_scaling = channel_scaling
+        self.downsamplers = nn.ModuleList()
+        self.upsamplers = nn.ModuleList()
+
+        n_stages = len(stages)
+        if isinstance(channels, int):
+            channels = [channels * channel_scaling**i for i in range(n_stages)]
+            if max_channels is not None:
+                channels = [min(ch, max_channels) for ch in channels]
+        self.channels = channels
+
+        if not len(channels) == len(stages):
+            raise ValueError(
+                "The list of given channel numbers must match the number " "of stages."
+            )
+
+        if downsampling_factors is None:
+            downsampling_factors = [2] * (n_stages - 1)
+        if len(stages) != len(downsampling_factors) + 1:
+            raise ValueError(
+                "The list of downsampling factors numbers must have one "
+                "element less than the number of stages."
+            )
+
+        # No downsampling applied in first layer.
+        downsampling_factors = [1] + downsampling_factors
+        scale = 1
+        self.scales = []
+        for f_d in downsampling_factors:
+            self.scales.append(scale)
+            scale *= f_d
+
+        try:
+            stages = [
+                stage if isinstance(stage, StageConfig) else StageConfig(stage)
+                for stage in stages
+            ]
+        except ValueError:
+            raise ValueError(
+                "'stages' must be a list of 'StageConfig' or 'int'  objects."
+            )
+
+        channels_in = channels[0]
+        modules = []
+        module_map = {}
+
+        if downsampler_factory is None:
+            def downsampler_factory(channels_in, channels_out, f_down):
+                return nn.AvgPool2d(kernel_size=f_down, stride=f_down)
+
+        def upsampler_factory(f_up):
+            return nn.Upsample(scale_factor=f_up)
+
+
+        stage_ind = 0
+        for stage, channels_out, f_dwn in zip(stages, channels, downsampling_factors):
+            # Downsampling layer is included in stage.
+
+
+            down = f_dwn if isinstance(f_dwn, int) else max(f_dwn)
+            if down > 1:
+                self.downsamplers.append(
+                    downsampler_factory(channels_in, channels_out, f_dwn)
+                )
+                self.upsamplers.append(
+                    upsampler_factory(f_dwn)
+                )
+            else:
+                self.downsamplers.append(None)
+                self.upsamplers.append(None)
+
+
+            for block_ind in range(stage.n_blocks):
+
+                chans_combined = channels_in
+                if (block_ind > 1) and (stage_ind < n_stages - 1):
+                    chans_combined += channels[stage_ind + 1]
+                if (
+                        (stage_ind > 0) and
+                        (block_ind > 0) and
+                        (stages[stage_ind - 1].n_blocks > block_ind)
+                ):
+                    chans_combined += channels[stage_ind - 1]
+
+                mod = block_factory(
+                    chans_combined,
+                    channels_out,
+                    downsample=None,
+                    *stage.block_args,
+                    **stage.block_kwargs
+                )
+                modules.append(mod)
+                depth_map = module_map.setdefault(block_ind + stage_ind, [])
+                depth_map.append((stage_ind, mod))
+                channels_in = channels_out
+            stage_ind += 1
+
+        self.modules = nn.ModuleList(modules)
+        self.module_map = module_map
+
+
+        if stem_factory is not None:
+            self.stem = stem_factory(channels[0])
+        else:
+            self.stem = None
+
+        self.depth = max(list(self.module_map.keys())) + 1
+
+
+    def forward(self, x: torch.Tensor, **kwargs) -> Dict[int, torch.Tensor]:
+        """
+        Forward input through encoder.
+
+        Args:
+            x: The input tensor.
+
+        Return:
+            A dict mapping stage indices to corresponding tensors.
+        """
+        if self.stem is None:
+            x_in = {0: x}
+        else:
+            x_in = {0: self.stem(x)}
+
+        results = {}
+
+        for d_i in range(self.depth):
+
+            y = {}
+            for stage_ind, mod in self.module_map[d_i]:
+
+                inputs = []
+
+                if stage_ind - 1 in x_in:
+                    down = self.downsamplers[stage_ind]
+                    inputs.append(down(x_in[stage_ind - 1]))
+
+                if stage_ind in x_in:
+                    inputs.append(x_in[stage_ind])
+
+                if stage_ind + 1 in x_in:
+                    up = self.upsamplers[stage_ind + 1]
+                    inputs.append(up(x_in[stage_ind + 1]))
+
+                y[stage_ind] = mod(torch.cat(inputs, 1))
+
+            x_in = y
+            results.update(y)
+
+        return results
+
+
+class DenseCascadingEncoder(nn.Module):
+    def __init__(
+            self,
+            channels: Union[int, List[int]],
+            stages: List[Union[int, StageConfig]],
+            block_factory: Optional[Callable[[int, int], nn.Module]] = None,
+            channel_scaling: int = 2,
+            max_channels: int = None,
+            downsampler_factory: Callable[[int, int], nn.Module] = None,
+            upsampler_factory: Callable[[int, int], nn.Module] = None,
+            downsampling_factors: List[int] = None,
+            stem_factory: Callable[[int], nn.Module] = None,
+            **kwargs
+    ):
+        """
+        A dense cascading encoder adds dense connections between convolution
+        blocks along each stage to the cascading encoder.
+
+        Args:
+            channels: A list specifying the number of features (or channels)
+                at the end of each stage of the encoder.
+            stages: A list containing the stage specifications for each
+                stage in the encoder.
+            block_factory: Factory to create the blocks in each stage.
+            channel_scaling: Scaling factor specifying the increase of the
+                number of channels after every downsampling layer. Only used
+                if channels is an integer.
+            max_channels: Cutoff value to limit the number of channels. Only
+                used if channels is an integer.
+            downsampler_factory: The downsampler factory is currently ignored.
+            downsampling_factors: The downsampling factors applied to the outputs
+                of all but the last stage. For a constant downsampling factor
+                between all layers this can be set to a single 'int'. Otherwise
+                a list of length ``len(channels) - 1`` should be provided.
+            stem_factory: A factory that takes a number of output channels and
+                produces a stem module that is applied to the inputs prior
+                to feeding them into the first stage of the encoder.
+        """
+        super().__init__()
+
+        if block_factory is None:
+            block_factory = DEFAULT_BLOCK_FACTORY
+
+        self.channel_scaling = channel_scaling
+        self.downsamplers = nn.ModuleList()
+        self.upsamplers = nn.ModuleList()
+        self.projections = nn.ModuleList()
+
+        n_stages = len(stages)
+        if isinstance(channels, int):
+            channels = [channels * channel_scaling**i for i in range(n_stages)]
+            if max_channels is not None:
+                channels = [min(ch, max_channels) for ch in channels]
+        self.channels = channels
+
+        if not len(channels) == len(stages):
+            raise ValueError(
+                "The list of given channel numbers must match the number " "of stages."
+            )
+
+        if downsampling_factors is None:
+            downsampling_factors = [2] * (n_stages - 1)
+        if len(stages) != len(downsampling_factors) + 1:
+            raise ValueError(
+                "The list of downsampling factors numbers must have one "
+                "element less than the number of stages."
+            )
+
+        # No downsampling applied in first layer.
+        downsampling_factors = [1] + downsampling_factors
+        scale = 1
+        self.scales = []
+        for f_d in downsampling_factors:
+            self.scales.append(scale)
+            scale *= f_d
+
+        try:
+            stages = [
+                stage if isinstance(stage, StageConfig) else StageConfig(stage)
+                for stage in stages
+            ]
+        except ValueError:
+            raise ValueError(
+                "'stages' must be a list of 'StageConfig' or 'int'  objects."
+            )
+
+        modules = []
+        module_map = {}
+
+        if downsampler_factory is None:
+            def downsampler_factory(channels_in, channels_out, f_down):
+                return nn.AvgPool2d(kernel_size=f_down, stride=f_down)
+
+        def upsampler_factory(f_up):
+            return nn.Upsample(scale_factor=f_up)
+
+
+        stage_ind = 0
+        for stage, channels_out, f_dwn in zip(stages, channels, downsampling_factors):
+            # Downsampling layer is included in stage.
+
+            if channels_out % stage.n_blocks > 0:
+                raise ValueError(
+                    "The number of each stage's channels must be divisible by "
+                    " the number of blocks."
+                )
+            growth_rate = channels_out // stage.n_blocks
+
+            if stage_ind == 0:
+                channels_in = growth_rate
+            else:
+                n_blocks = stages[stage_ind - 1].n_blocks
+                if n_blocks == 1:
+                    channels_in = channels[stage_ind - 1]
+                else:
+                    channels_in = channels[stage_ind - 1] // n_blocks
+
+
+            down = f_dwn if isinstance(f_dwn, int) else max(f_dwn)
+            if down > 1:
+                self.downsamplers.append(
+                    downsampler_factory(channels_in, channels_out, f_dwn)
+                )
+                self.upsamplers.append(
+                    upsampler_factory(f_dwn)
+                )
+            else:
+                self.downsamplers.append(None)
+                self.upsamplers.append(None)
+
+
+            for block_ind in range(stage.n_blocks):
+
+                chans_combined = channels_in + block_ind * growth_rate
+
+                if (
+                        (stage_ind < n_stages - 1) and
+                        (block_ind > 1) and
+                        (block_ind < stages[stage_ind + 1].n_blocks + 1)
+                ):
+                    n_blocks = stages[stage_ind + 1].n_blocks
+                    if block_ind > n_blocks:
+                        chans_combined += channels[stage_ind + 1]
+                    else:
+                        chans_combined += channels[stage_ind + 1] // n_blocks
+
+                if (
+                        (stage_ind > 0) and
+                        (block_ind > 0) and
+                        (stages[stage_ind - 1].n_blocks > block_ind)
+                ):
+                    n_blocks = stages[stage_ind - 1].n_blocks
+                    if block_ind > n_blocks - 2:
+                        chans_combined += channels[stage_ind - 1]
+                    else:
+                        chans_combined += channels[stage_ind - 1] // n_blocks
+
+                if block_ind < stage.n_blocks - 1:
+                    mod = block_factory(
+                        chans_combined,
+                        growth_rate,
+                        downsample=None,
+                        *stage.block_args,
+                        **stage.block_kwargs
+                    )
+                else:
+                    mod = block_factory(
+                        chans_combined,
+                        channels_out,
+                        downsample=None,
+                        *stage.block_args,
+                        **stage.block_kwargs
+                    )
+
+                modules.append(mod)
+                depth_map = module_map.setdefault(block_ind + stage_ind, [])
+                depth_map.append((stage_ind, mod))
+
+            stage_ind += 1
+
+        self.modules = nn.ModuleList(modules)
+        self.module_map = module_map
+
+
+        if stem_factory is not None:
+            self.stem = stem_factory(channels[0])
+        else:
+            self.stem = None
+
+        self.depth = max(list(self.module_map.keys())) + 1
+
+
+    def forward(self, x: torch.Tensor, **kwargs) -> Dict[int, torch.Tensor]:
+        """
+        Forward input through encoder.
+
+        Args:
+            x: The input tensor.
+
+        Return:
+            A dict mapping stage indices to corresponding tensors.
+        """
+        if self.stem is None:
+            x_in = {0: [x]}
+        else:
+            x_in = {0: [self.stem(x)]}
+
+        results = {}
+
+        for d_i in range(self.depth):
+
+            y = {}
+            for stage_ind, mod in self.module_map[d_i]:
+
+                inputs = []
+                propagate = []
+
+                if stage_ind - 1 in x_in:
+                    down = self.downsamplers[stage_ind]
+                    x_d = down(x_in[stage_ind - 1][-1])
+                    inputs.append(x_d)
+                    propagate.append(x_d)
+
+                if stage_ind in x_in:
+                    inputs += x_in[stage_ind]
+                    propagate = x_in[stage_ind]
+
+                if stage_ind + 1 in x_in:
+                    up = self.upsamplers[stage_ind + 1]
+                    inputs.append(up(x_in[stage_ind + 1][-1]))
+
+                y[stage_ind] = propagate + [mod(torch.cat(inputs, 1))]
+
+            results.update(y)
+            x_in = y
+
+        return {key: tensors[-1] for key, tensors in results.items()}

@@ -12,6 +12,8 @@ from quantnn.models.pytorch.encoders import (
     MultiInputSpatialEncoder,
     ParallelEncoderLevel,
     ParallelEncoder,
+    CascadingEncoder,
+    DenseCascadingEncoder
 )
 
 
@@ -368,3 +370,44 @@ def test_parallel_encoder():
     assert y[0].shape == (2, 2, 128, 128)
     assert y[1].shape == (2, 4, 32, 32)
     assert y[2].shape == (2, 8, 16, 16)
+
+
+def test_cascading_encoder():
+    """
+    Ensure that propagating input through a cascading encoder produces the
+    expected outcomes.
+    """
+
+    encoder = CascadingEncoder(
+        [32, 64, 128],
+        [3, 3, 3],
+    )
+
+    x = torch.rand(1, 32, 64, 64)
+    y = encoder(x)
+
+    for ind, (chans, size) in enumerate(zip([32, 64, 128], [64, 32, 16])):
+        y_i = y[ind]
+        assert y_i.shape[1] == chans
+        assert y_i.shape[2] == size
+        assert y_i.shape[3] == size
+
+
+def test_dense_cascading_encoder():
+    """
+    Ensure that propagating input through a dense cascading encoder produces the
+    expected outcomes.
+    """
+    encoder = DenseCascadingEncoder(
+        [32, 64, 128],
+        [4, 4, 4],
+    )
+
+    x = torch.rand(1, 8, 64, 64)
+    y = encoder(x)
+
+    for ind, (chans, size) in enumerate(zip([32, 64, 128], [64, 32, 16])):
+        y_i = y[ind]
+        assert y_i.shape[1] == chans
+        assert y_i.shape[2] == size
+        assert y_i.shape[3] == size
