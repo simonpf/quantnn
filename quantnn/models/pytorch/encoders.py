@@ -1214,9 +1214,11 @@ class DenseCascadingEncoder(nn.Module):
 
 
         if stem_factory is not None:
-            self.stem = stem_factory(channels[0])
+            self.stem = stem_factory(channels[0] // self.stages[0].n_blocks)
+            self.input_channels = channels[0]
         else:
             self.stem = None
+            self.input_channels = channels[0] // self.stages[0].n_blocks
 
         self.depth = max(list(self.module_map.keys())) + 1
 
