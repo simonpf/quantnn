@@ -393,6 +393,21 @@ def test_cascading_encoder():
         assert y_i.shape[3] == size
 
 
+    encoder = CascadingEncoder(
+        [64, 128, 256, 512, 512, 512],
+        [1, 2, 3, 4, 4, 4],
+    )
+
+    x = torch.rand(1, 64, 256, 256)
+    y = encoder(x)
+
+    for ind, (chans, size) in enumerate(zip([64, 128, 256], [256, 128, 64])):
+        y_i = y[ind]
+        assert y_i.shape[1] == chans
+        assert y_i.shape[2] == size
+        assert y_i.shape[3] == size
+
+
 def test_dense_cascading_encoder():
     """
     Ensure that propagating input through a dense cascading encoder produces the
@@ -407,6 +422,21 @@ def test_dense_cascading_encoder():
     y = encoder(x)
 
     for ind, (chans, size) in enumerate(zip([32, 64, 128], [64, 32, 16])):
+        y_i = y[ind]
+        assert y_i.shape[1] == chans
+        assert y_i.shape[2] == size
+        assert y_i.shape[3] == size
+
+
+    encoder = DenseCascadingEncoder(
+        [128, 128, 256, 512, 512, 512],
+        [2, 2, 4, 4, 4, 4],
+    )
+
+    x = torch.rand(1, 64, 256, 256)
+    y = encoder(x)
+
+    for ind, (chans, size) in enumerate(zip([128, 128, 256], [256, 128, 64])):
         y_i = y[ind]
         assert y_i.shape[1] == chans
         assert y_i.shape[2] == size

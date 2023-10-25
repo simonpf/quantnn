@@ -449,14 +449,20 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
                 stage_ind = stage_ind + 1
 
             self.stems[input_name] = stage_conf.stem_factory(stage_channels)
-            self.aggregators[input_name] = aggregator_factory(
-                (stage_channels,) * 2, stage_channels
-            )
             self.stage_inputs[stage_ind].append(input_name)
+
+        for ind, names in self.stage_inputs.items():
+            if ind > 0:
+                self.aggregators[str(ind)] = aggregator_factory(
+                    (channels[ind],) * (len(names) + 1), channels[ind]
+                )
+            elif len(names) > 1:
+                self.aggregators[str(ind)] = aggregator_factory(
+                    (channels[ind],) * len(names), channels[ind]
+                )
 
         self.first_stage = first_stage
         first_input = self.stage_inputs[self.first_stage][0]
-        del self.aggregators[first_input]
 
     @property
     def skip_connections(self) -> Dict[int, int]:
@@ -489,16 +495,19 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
             if y is not None and down is not None:
                 y = forward(down, y)
 
+            agg_inputs = [y] if y is not None else []
+
             for inpt in inputs:
-
                 if not inpt in x:
+                    agg_inputs.append(None)
                     continue
-
                 x_in = forward(self.stems[inpt], x[inpt])
-                if y is not None:
-                    y = self.aggregators[inpt](y, x_in)
-                else:
-                    y = x_in
+                agg_inputs.append(x_in)
+
+            if len(agg_inputs) > 1:
+                y = self.aggregators[str(stage_ind)](*agg_inputs)
+            elif len(agg_inputs) == 1:
+                y = agg_inputs[0]
 
             y = forward(stage, y)
             skips[stage_ind] = y
@@ -540,16 +549,20 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
             if y is not None and down is not None:
                 y = forward(down, y)
 
-            for inpt in self.stage_inputs[stage_ind]:
+            agg_inputs = [y] if y is not None else []
 
+            for inpt in self.stage_inputs[stage_ind]:
                 if not inpt in x:
+                    agg_inputs.append(None)
                     continue
 
                 x_in = forward(self.stems[inpt], x[inpt])
-                if y is not None:
-                    y = self.aggregators[inpt](x_in, y)
-                else:
-                    y = x_in
+                agg_inputs.append(x_in)
+
+            if len(agg_inputs) > 1 is not None:
+                y = self.aggregators[str(stage_ind)](*agg_inputs)
+            elif len(agg_inputs) == 1:
+                y = agg_inputs[0]
 
             y = forward(stage, y)
             stage_ind = stage_ind + 1

@@ -8,6 +8,7 @@ from quantnn.models.pytorch.aggregators import (
     SparseAggregator,
     SumAggregatorFactory,
     LinearAggregatorFactory,
+    AttentionFusion
 )
 from quantnn.models.pytorch.torchvision import ResNetBlockFactory
 
@@ -46,15 +47,16 @@ def test_sparse_aggregator():
     combined.
     """
     aggregator_factory = AverageAggregatorFactory()
-    aggregator = SparseAggregator((8, 8), 8, aggregator_factory)
-    aggregator_factory = LinearAggregatorFactory()
+    aggregator = SparseAggregator((8, 8, 8), 8, aggregator_factory)
 
     # Ensure full tensor is returned if only one of the provided
     # tensors is sparse.
     x_1 = torch.ones((100, 8, 32, 32), dtype=torch.float32)
     fill_tensor(x_1, range(100))
-    x_2 = make_random_packed_tensor(100, 50, (8, 32, 32))
-    y = aggregator(x_1, x_2)
+    x_2 = torch.ones((100, 8, 32, 32), dtype=torch.float32)
+    fill_tensor(x_2, range(100))
+    x_3 = make_random_packed_tensor(100, 50, (8, 32, 32))
+    y = aggregator(x_1, x_2, x_3)
     assert not isinstance(y, PackedTensor)
     assert torch.isclose(y, x_1).all()
 
@@ -101,6 +103,9 @@ def test_sparse_aggregator():
     batch_indices_union = sorted(list(set(x_1.batch_indices + x_2.batch_indices)))
     assert y.batch_indices == batch_indices_union
 
+    y = aggregator(x_1, None)
+    assert isinstance(y, PackedTensor)
+
 
 AGGREGATORS = [
     SumAggregatorFactory(),
@@ -122,3 +127,15 @@ def test_aggregators(aggregator):
     agg = aggregator((10, 10, 10), 10)
     c = agg(a, b, c)
     assert c.shape == (1, 10, 16, 16)
+
+
+def test_attention_fusion():
+
+    x = torch.ones(1, 10, 32, 32)
+    y = torch.ones(1, 20, 32, 32)
+    z = torch.ones(1, 5, 32, 32)
+
+    mha = AttentionFusion((10, 20, 5), 16, 8)
+    merged = mha(x, y, z)
+
+    assert merged.shape == (1, 16, 32, 32)

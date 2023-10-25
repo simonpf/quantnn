@@ -17,6 +17,7 @@ from torchvision.ops import Permute
 from torchvision.models import swin_transformer
 
 
+from quantnn.models.pytorch.base import ParamCount
 from quantnn.models.pytorch.downsampling import PatchMergingBlock
 from quantnn.models.pytorch.normalization import LayerNormFirst
 
@@ -242,7 +243,7 @@ class ConvNeXtBlockFactory:
         return nn.Sequential(*blocks)
 
 
-class SwinBlock(nn.Module):
+class SwinBlock(nn.Module, ParamCount):
     """
     Generic wrapper around a swin transfromer block. This wrapper adapts
     the torchvision implementation of the swin transformer block so that
@@ -260,7 +261,7 @@ class SwinBlock(nn.Module):
         mlp_ratio: float = 4.0,
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
-        stochastic_depth_prob: float = 0.0,
+        stochastic_depth_prob: float = 0.2,
         version=1,
     ):
         """
