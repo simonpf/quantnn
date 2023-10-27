@@ -691,3 +691,94 @@ def test_qrnn_training_metrics_conv():
                metrics=metrics,
                batch_size=1,
                mask=-1)
+
+
+def test_training_deep_supervision():
+    """
+    Ensure that passing auxiliary predictions works as expected.
+    """
+    set_default_backend("pytorch")
+
+    class MultipleOutputModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.hidden = nn.Linear(16, 128)
+            self.head_1 = nn.Linear(128, 10)
+            self.head_1_1 = nn.Linear(128, 10)
+            self.head_2 = nn.Linear(128, 20)
+            self.head_3 = nn.Linear(128, 1)
+            self.head_4 = nn.Linear(128, 1)
+            self.head_5 = nn.Linear(128, 10)
+
+        def forward(self, x):
+            x = torch.relu(self.hidden(x))
+            y_1 = self.head_1(x)
+            y_1_1 = self.head_1_1(x)
+            y_2 = self.head_2(x)
+            y_3 = self.head_3(x)
+            y_4 = self.head_4(x)
+            y_5 = self.head_5(x)
+            return {
+                "quantiles": y_1,
+                "deep/quantiles": y_1_1,
+                "density": y_2,
+                "mean": y_3,
+                "binary_classification": y_4,
+                "classification": y_5,
+            }
+
+    x = np.random.rand(2024, 16) + 1.0
+    y = np.sum(x, axis=-1)
+    y += np.random.normal(size=y.size)
+
+    batched_data = []
+    for i in range(512):
+        x = torch.as_tensor(np.random.normal(size=(128, 16)))
+        r = torch.as_tensor(np.random.normal(size=128), dtype=torch.float)
+        y = {
+            "quantiles": r,
+            "density": r,
+            "mean": r,
+            "binary_classification": torch.as_tensor(r > 0, dtype=torch.long),
+            "classification": torch.as_tensor(
+                np.digitize(r, np.linspace(-1, 1, 11)) - 2,
+                dtype=torch.long
+            ),
+        }
+        batched_data.append((x, y))
+
+    model = MultipleOutputModel()
+
+    bins = np.linspace(0, 1, 12)
+    bins = {"y_1": bins, "y_2": bins}
+
+    losses = {
+        "quantiles": Quantiles(np.linspace(0.05, 0.95, 10)),
+        "density": Density(np.linspace(-2, 2, 21)),
+        "mean": Mean(),
+        "binary_classification": Classification(2),
+        "classification": Classification(10)
+    }
+
+    metrics = [
+        "Bias",
+        "CRPS",
+        "MeanSquaredError",
+        "ScatterPlot",
+        "CalibrationPlot",
+        "Correlation"
+    ]
+
+    mrnn = MRNN(losses=losses, model=model)
+    mrnn.train(
+        batched_data,
+        validation_data=batched_data[:10],
+        n_epochs=4,
+        metrics=metrics
+    )
+
+    x = batched_data[0][0].to(torch.float)
+    with torch.no_grad():
+        y_pred = mrnn.model(x)
+        y_binary = torch.nn.functional.sigmoid(y_pred["binary_classification"])
+        assert np.all(np.isclose(y_binary.numpy(), 0.5, atol=0.20))

@@ -16,9 +16,7 @@ import numpy as np
 from torch import nn
 from torch import optim
 
-from quantnn.common import (ModelNotSupported,
-                            DatasetError,
-                            ModelLoadError)
+from quantnn.common import ModelNotSupported, DatasetError, ModelLoadError
 from quantnn.logging import TrainingLogger
 import quantnn.data
 from quantnn.backends.pytorch import PyTorch
@@ -154,16 +152,12 @@ def to_device(x, device, to_float=True):
     """
     if not isinstance(x, torch.Tensor):
         if isinstance(x, dict):
-            return {
-                k: to_device(v, device, to_float=to_float)
-                for k, v in x.items()
-            }
+            return {k: to_device(v, device, to_float=to_float) for k, v in x.items()}
         elif isinstance(x, Iterable):
             return [to_device(x_i, device, to_float=False) for x_i in x]
         else:
             raise ValueError(
-                "Batch input 'x' should be a torch.Tensor or"
-                " an Iterable of tensors."
+                "Batch input 'x' should be a torch.Tensor or" " an Iterable of tensors."
             )
     else:
         if to_float:
@@ -209,6 +203,7 @@ class CrossEntropyLoss(nn.Module):
     over the given inputs but applies an optional masking allowing
     the handling of missing values.
     """
+
     def __init__(self, bins_or_classes, mask=None, sparse=False):
         """
         Args:
@@ -239,21 +234,14 @@ class CrossEntropyLoss(nn.Module):
                     "1 class."
                 )
             elif bins_or_classes == 2:
-                self.loss = nn.BCEWithLogitsLoss(
-                    reduction=reduction
-                )
+                self.loss = nn.BCEWithLogitsLoss(reduction=reduction)
             else:
-                self.loss = nn.CrossEntropyLoss(
-                    reduction=reduction
-                )
+                self.loss = nn.CrossEntropyLoss(reduction=reduction)
         else:
             self.bins = apply(
-                lambda x: torch.Tensor(x).to(torch.float),
-                bins_or_classes
+                lambda x: torch.Tensor(x).to(torch.float), bins_or_classes
             )
-            self.loss = nn.CrossEntropyLoss(
-                reduction=reduction
-            )
+            self.loss = nn.CrossEntropyLoss(reduction=reduction)
 
         self.sparse = sparse
 
@@ -324,13 +312,7 @@ class QuantileLoss(nn.Module):
     computed by taking the mean over all samples in the batch.
     """
 
-    def __init__(
-            self,
-            quantiles,
-            mask=None,
-            quantile_axis=1,
-            sparse=False
-    ):
+    def __init__(self, quantiles, mask=None, quantile_axis=1, sparse=False):
         """
         Create an instance of the quantile loss function with the given quantiles.
 
@@ -405,6 +387,7 @@ class MSELoss(nn.Module):
     r"""
     Mean-squared error loss with masking.
     """
+
     def __init__(self, mask=None):
         """
         Args:
@@ -503,7 +486,6 @@ def _get_x_y(batch_data, keys):
         ``y``.
     """
     if isinstance(batch_data, Mapping):
-
         if keys is not None:
             try:
                 x_key, y_key = keys
@@ -601,7 +583,6 @@ class PytorchModel:
 
         self.apply(reset_function)
 
-
     def _train_step(
         self, y_pred, y, loss, adversarial_training, metrics=None, transformation=None
     ):
@@ -636,7 +617,7 @@ class PytorchModel:
                     loss,
                     adversarial_training,
                     metrics=metrics,
-                    transformation=transformation
+                    transformation=transformation,
                 )
                 avg_loss += res[0] * res[3]
                 tot_loss += res[1]
@@ -651,7 +632,6 @@ class PytorchModel:
                         losses = res[2]
             return avg_loss / n_samples, tot_loss, losses, n_samples
 
-
         # Make sure both outputs are dicts.
         if not isinstance(y_pred, dict):
             y_pred = {"__loss__": y_pred}
@@ -665,28 +645,29 @@ class PytorchModel:
         losses = {}
 
         # Loop over keys in prediction.
-        for k in y_pred:
+        for name in y_pred:
 
-            loss_k = loss[k]
-            y_pred_k = y_pred[k]
+            key = name.split("/")[-1]
+
+            loss_k = loss[key]
+            y_pred_k = y_pred[key]
 
             if loss_k.mask is not None:
                 mask = torch.tensor(loss_k.mask).to(
-                    dtype=y_pred_k.dtype,
-                    device=y_pred_k.device
+                    dtype=y_pred_k.dtype, device=y_pred_k.device
                 )
             else:
                 mask = None
 
             if isinstance(transformation, dict):
-                transform_k = transformation.get(k, None)
+                transform_k = transformation.get(key, None)
             else:
                 transform_k = transformation
 
             try:
-                y_k = y[k]
+                y_k = y[key]
             except KeyError:
-                raise DatasetError(f"No targets provided for ouput '{k}'.")
+                raise DatasetError(f"No targets provided for ouput '{key}'.")
 
             if y_k.ndim < y_pred_k.ndim:
                 y_k = torch.unsqueeze(y_k, 1)
@@ -698,24 +679,23 @@ class PytorchModel:
                 if mask is not None:
                     y_k_t = torch.where(y_k > mask, y_k_t, mask)
 
-            if k == "__loss__":
+            if key == "__loss__":
                 l = loss_k(y_pred_k, y_k_t)
             else:
-                l = loss_k(y_pred_k, y_k_t, k)
+                l = loss_k(y_pred_k, y_k_t, key)
 
             cache = {}
             with torch.no_grad():
                 if metrics is not None:
-
                     if transform_k is None:
                         y_pred_k_t = y_pred_k
                     else:
                         y_pred_k_t = transform_k.invert(y_pred_k)
 
                     for m in metrics:
-                        m.process_batch(k, y_pred_k_t, y_k, cache=cache)
+                        m.process_batch(name, y_pred_k_t, y_k, cache=cache)
 
-            losses[k] = l.item()
+            losses[name] = l.item()
             if not avg_loss:
                 avg_loss = 0.0
                 tot_loss = 0.0
@@ -825,7 +805,6 @@ class PytorchModel:
         # Training loop
         with logger:
             for i in range(n_epochs):
-
                 for m in metrics:
                     m.reset()
 
@@ -835,17 +814,14 @@ class PytorchModel:
                 logger.epoch_begin(self)
 
                 for j, data in enumerate(training_data):
-
                     self.optimizer.zero_grad(**_ZERO_GRAD_ARGS)
 
                     x, y = _get_x_y(data, keys)
                     x = to_device(x, device)
                     y = to_device(y, device, to_float=False)
 
-
                     if adversarial_training is not None:
                         x.requires_grad = True
-
 
                     # Keep track of x gradients if adversarial training
                     # is to be performed.
@@ -854,8 +830,11 @@ class PytorchModel:
                     y_pred = self(x)
 
                     avg_loss, tot_loss, losses, n_samples = self._train_step(
-                        y_pred, y, loss, adversarial_training,
-                        transformation=transformation
+                        y_pred,
+                        y,
+                        loss,
+                        adversarial_training,
+                        transformation=transformation,
                     )
                     avg_loss.backward()
                     optimizer.step()
@@ -867,9 +846,7 @@ class PytorchModel:
                         of = None
                     if n_samples > 0:
                         tot_loss /= n_samples
-                    logger.training_step(
-                        tot_loss, n_samples, of=of, losses=losses
-                    )
+                    logger.training_step(tot_loss, n_samples, of=of, losses=losses)
 
                     # Track epoch error.
                     n += get_batch_size(x)
@@ -904,7 +881,6 @@ class PytorchModel:
                     self.train(False)
                     with torch.no_grad():
                         for j, data in enumerate(validation_data):
-
                             self.optimizer.zero_grad(**_ZERO_GRAD_ARGS)
 
                             x, y = _get_x_y(data, keys)

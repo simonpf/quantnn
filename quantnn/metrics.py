@@ -87,14 +87,14 @@ class Metric(ABC):
         """
 
     @abstractmethod
-    def process_batch(self, key, y_pred, y, cache=None):
+    def process_batch(self, name, y_pred, y, cache=None):
         """
         Calculate metrics for a batch of  model predictions and
         corresponding reference values for a specific model
         output.
 
         Args:
-            key: Key identifying the model output.
+            name: Name of the model output.
             y_pred: The model prediction for the current batch.
             y: The reference values for the current batch.
             cache: Key-specific cache that can be used to share
@@ -181,8 +181,9 @@ class Bias(ScalarMetric):
     def model(self, model):
         self._model = model
 
-    def process_batch(self, key, y_pred, y, cache=None):
+    def process_batch(self, name, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
+        key = name.split("/")[-1]
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
@@ -190,7 +191,7 @@ class Bias(ScalarMetric):
         if y_mean is None:
             return None
 
-        self.keys.add(key)
+        self.keys.add(name)
 
         if self.tensor_backend is None:
             self.tensor_backend = get_tensor_backend(y_pred)
@@ -208,25 +209,25 @@ class Bias(ScalarMetric):
         # Calculate the error.
         if self.mask is not None:
             mask = xp.as_type(y > self.mask, y)
-            e = self.error.get(key, 0.0)
-            self.error[key] = e + (mask * dy).sum()
-            n = self.n_samples.get(key, 0.0)
-            self.n_samples[key] = n + mask.sum()
+            e = self.error.get(name, 0.0)
+            self.error[name] = e + (mask * dy).sum()
+            n = self.n_samples.get(name, 0.0)
+            self.n_samples[name] = n + mask.sum()
         else:
-            e = self.error.get(key, 0.0)
-            self.error[key] = e + dy.sum()
-            n = self.n_samples.get(key, 0.0)
-            self.n_samples[key] = n + xp.size(y)
+            e = self.error.get(name, 0.0)
+            self.error[name] = e + dy.sum()
+            n = self.n_samples.get(name, 0.0)
+            self.n_samples[name] = n + xp.size(y)
 
     def reset(self):
         self.error = {}
         self.n_samples = {}
 
-    def get_value(self, key):
+    def get_value(self, name):
         xp = self.tensor_backend
         if xp is None:
             return 0.0
-        return xp.to_numpy(self.error[key] / self.n_samples[key])
+        return xp.to_numpy(self.error[name] / self.n_samples[name])
 
 
 class MeanSquaredError(ScalarMetric):
@@ -244,12 +245,13 @@ class MeanSquaredError(ScalarMetric):
     def name(self):
         return "MSE"
 
-    def process_batch(self, key, y_pred, y, cache=None):
+    def process_batch(self, name, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
+        key = name.split("/")[-1]
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
-        self.keys.add(key)
+        self.keys.add(name)
 
         if self.tensor_backend is None:
             self.tensor_backend = get_tensor_backend(y_pred)
@@ -271,26 +273,26 @@ class MeanSquaredError(ScalarMetric):
         # Calculate the squared error.
         if self.mask is not None:
             mask = xp.as_type(y > self.mask, y)
-            se = self.squared_error.get(key, 0.0)
-            self.squared_error[key] = se + ((mask * dy) ** 2).sum()
-            n = self.n_samples.get(key, 0.0)
-            self.n_samples[key] = n + mask.sum()
+            se = self.squared_error.get(name, 0.0)
+            self.squared_error[name] = se + ((mask * dy) ** 2).sum()
+            n = self.n_samples.get(name, 0.0)
+            self.n_samples[name] = n + mask.sum()
         else:
-            se = self.squared_error.get(key, 0.0)
-            self.squared_error[key] = se + (dy ** 2).sum()
-            n = self.n_samples.get(key, 0.0)
-            self.n_samples[key] = n + xp.size(y)
+            se = self.squared_error.get(name, 0.0)
+            self.squared_error[name] = se + (dy ** 2).sum()
+            n = self.n_samples.get(name, 0.0)
+            self.n_samples[name] = n + xp.size(y)
 
     def reset(self):
         self.squared_error = {}
         self.n_samples = {}
 
-    def get_value(self, key):
+    def get_value(self, name):
         xp = self.tensor_backend
         if xp is None:
             return 0.0
 
-        return xp.to_numpy(self.squared_error[key] / self.n_samples[key])
+        return xp.to_numpy(self.squared_error[name] / self.n_samples[name])
 
 
 class Correlation(ScalarMetric):
@@ -313,12 +315,13 @@ class Correlation(ScalarMetric):
     def name(self):
         return "Correlation"
 
-    def process_batch(self, key, y_pred, y, cache=None):
+    def process_batch(self, name, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
+        key = name.split("/")[-1]
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
-        self.keys.add(key)
+        self.keys.add(name)
 
         if self.tensor_backend is None:
             self.tensor_backend = get_tensor_backend(y_pred)
@@ -339,26 +342,26 @@ class Correlation(ScalarMetric):
             mask = xp.as_type(y > self.mask, y)
             y_pred_m = mask * y_mean
             y_m = mask * y
-            n = self.n_samples.get(key, 0.0)
-            self.n_samples[key] = n + xp.to_numpy(mask.sum())
+            n = self.n_samples.get(name, 0.0)
+            self.n_samples[name] = n + xp.to_numpy(mask.sum())
         else:
             y_pred_m = y_mean
             y_m = y
-            n = self.n_samples.get(key, 0.0)
-            self.n_samples[key] = n + xp.size(y_m)
+            n = self.n_samples.get(name, 0.0)
+            self.n_samples[name] = n + xp.size(y_m)
 
-        x = self.x.get(key, 0.0)
-        self.x[key] = x + xp.to_numpy((y_pred_m).sum())
-        xx = self.xx.get(key, 0.0)
-        self.xx[key] = xx + xp.to_numpy((y_pred_m ** 2).sum())
+        x = self.x.get(name, 0.0)
+        self.x[name] = x + xp.to_numpy((y_pred_m).sum())
+        xx = self.xx.get(name, 0.0)
+        self.xx[name] = xx + xp.to_numpy((y_pred_m ** 2).sum())
 
-        y = self.y.get(key, 0.0)
-        self.y[key] = y + xp.to_numpy((y_m).sum())
-        yy = self.yy.get(key, 0.0)
-        self.yy[key] = yy + xp.to_numpy((y_m ** 2).sum())
+        y = self.y.get(name, 0.0)
+        self.y[name] = y + xp.to_numpy((y_m).sum())
+        yy = self.yy.get(name, 0.0)
+        self.yy[name] = yy + xp.to_numpy((y_m ** 2).sum())
 
-        xy = self.xy.get(key, 0.0)
-        self.xy[key] = xy + xp.to_numpy((y_pred_m * y_m).sum())
+        xy = self.xy.get(name, 0.0)
+        self.xy[name] = xy + xp.to_numpy((y_pred_m * y_m).sum())
 
     def reset(self):
         self.x = {}
@@ -368,18 +371,18 @@ class Correlation(ScalarMetric):
         self.xy = {}
         self.n_samples = {}
 
-    def get_value(self, key):
+    def get_value(self, name):
 
         xp = self.tensor_backend
         if xp is None:
             return 0.0
 
-        xy = self.xy[key]
-        x = self.x[key]
-        xx = self.xx[key]
-        y = self.y[key]
-        yy = self.yy[key]
-        n = self.n_samples[key]
+        xy = self.xy[name]
+        x = self.x[name]
+        xx = self.xx[name]
+        y = self.y[name]
+        yy = self.yy[name]
+        n = self.n_samples[name]
 
         sigma_x = np.sqrt(xx / n - (x / n) ** 2)
         sigma_y = np.sqrt(yy / n - (y / n) ** 2)
@@ -402,12 +405,13 @@ class CRPS(ScalarMetric):
     def name(self):
         return "CRPS"
 
-    def process_batch(self, key, y_pred, y, cache=None):
+    def process_batch(self, name, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
+        key = name.split("/")[-1]
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
-        self.keys.add(key)
+        self.keys.add(name)
 
         if self.tensor_backend is None:
             self.tensor_backend = get_tensor_backend(y_pred)
@@ -417,7 +421,7 @@ class CRPS(ScalarMetric):
         if crps is None:
             return None
 
-        crps_batches = self.crps.setdefault(key, [])
+        crps_batches = self.crps.setdefault(name, [])
         crps = xp.to_numpy(crps)
         y = xp.to_numpy(y)
 
@@ -436,12 +440,12 @@ class CRPS(ScalarMetric):
     def reset(self):
         self.crps = {}
 
-    def get_value(self, key):
+    def get_value(self, name):
         xp = self.tensor_backend
         if xp is None:
             return 0.0
 
-        crps = np.concatenate(self.crps[key])
+        crps = np.concatenate(self.crps[name])
         return crps.mean()
 
 
@@ -476,8 +480,9 @@ class CalibrationPlot(Metric):
     def model(self, model):
         self._model = model
 
-    def process_batch(self, key, y_pred, y, cache=None):
+    def process_batch(self, name, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
+        key = name.split('/')[-1]
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
@@ -511,29 +516,29 @@ class CalibrationPlot(Metric):
             valid_pixels = xp.as_type(y > self.mask, y)
             valid_predictions = valid_pixels * xp.as_type(y <= y_pred, y_pred)
 
-            c = self.calibration.get(key, xp.zeros(len(quantiles), y))
-            self.calibration[key] = c + valid_predictions.sum(axes)
-            n = self.n_samples.get(key, xp.zeros(len(quantiles), y))
-            self.n_samples[key] = n + valid_pixels.sum()
+            c = self.calibration.get(name, xp.zeros(len(quantiles), y))
+            self.calibration[name] = c + valid_predictions.sum(axes)
+            n = self.n_samples.get(name, xp.zeros(len(quantiles), y))
+            self.n_samples[name] = n + valid_pixels.sum()
         else:
             valid_predictions = xp.as_type(y <= y_pred, y_pred)
 
-            c = self.calibration.get(key, xp.zeros(len(quantiles), y))
-            self.calibration[key] = c + valid_predictions.sum(axes)
-            n = self.n_samples.get(key, xp.zeros(len(quantiles), y))
-            self.n_samples[key] = n + xp.size(y)
+            c = self.calibration.get(name, xp.zeros(len(quantiles), y))
+            self.calibration[name] = c + valid_predictions.sum(axes)
+            n = self.n_samples.get(name, xp.zeros(len(quantiles), y))
+            self.n_samples[name] = n + xp.size(y)
 
     def reset(self):
         self.calibration = {}
         self.n_samples = {}
 
-    def make_calibration_plot(self, key):
+    def make_calibration_plot(self, name):
         """
-        Plots the calibration for a given target key using
+        Plots the calibration for a given target name using
         matplotlib.
 
         Args:
-            key: Name of the target for which to plot the
+            name: Name of the target for which to plot the
                  calibration.
 
         Return:
@@ -547,8 +552,8 @@ class CalibrationPlot(Metric):
                 quantiles = np.linspace(0.05, 0.95, 10)
 
         xp = self.tensor_backend
-        n_right = self.calibration[key]
-        n_total = self.n_samples[key]
+        n_right = self.calibration[name]
+        n_total = self.n_samples[name]
 
         cal = xp.to_numpy(n_right / n_total)
 
@@ -614,8 +619,9 @@ class ScatterPlot(Metric):
 
         self._model = model
 
-    def process_batch(self, key, y_pred, y, cache=None):
+    def process_batch(self, name, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
+        key = name.split("/")[-1]
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
@@ -640,20 +646,20 @@ class ScatterPlot(Metric):
             y_mean = y_mean[y > self.mask]
             y = y[y > self.mask]
 
-        self.y_pred.setdefault(key, []).append(y_mean.ravel())
-        self.y.setdefault(key, []).append(y.ravel())
+        self.y_pred.setdefault(name, []).append(y_mean.ravel())
+        self.y.setdefault(name, []).append(y.ravel())
 
     def reset(self):
         self.y_pred = {}
         self.y = {}
 
-    def make_scatter_plot(self, key, add_title=False):
+    def make_scatter_plot(self, name, add_title=False):
         """
         Plots a 2D histogram of the predictions against the
         target values.
 
         Args:
-            key: Name of the target for which to plot the
+            name: Name of the target for which to plot the
                  results.
 
         Return:
@@ -661,11 +667,11 @@ class ScatterPlot(Metric):
         """
         xp = self.tensor_backend
 
-        y_pred = np.concatenate(self.y_pred[key])
-        y = np.concatenate(self.y[key])
+        y_pred = np.concatenate(self.y_pred[name])
+        y = np.concatenate(self.y[name])
 
         if isinstance(self.bins, dict):
-            bins = dict[key]
+            bins = dict[name]
         else:
             bins = self.bins
         if bins is None:
@@ -692,7 +698,7 @@ class ScatterPlot(Metric):
         ax.plot(x_edges, y_edges, ls="--", c="grey")
         plt.colorbar(m, label="Counts")
         if add_title:
-            ax.set_title(key)
+            ax.set_title(name)
 
         ax.set_xlim([x_edges[0], x_edges[-1]])
         ax.set_ylim([y_edges[0], y_edges[-1]])
@@ -745,8 +751,9 @@ class QuantileFunction(Metric):
     def model(self, model):
         self._model = model
 
-    def process_batch(self, key, y_pred, y, cache=None):
+    def process_batch(self, name, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
+        key = name.split("/")[-1]
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
@@ -765,28 +772,28 @@ class QuantileFunction(Metric):
                 dist_axis = self.model.bin_axis
             if len(y.shape) > len(qf.shape):
                 y = y.squeeze(dist_axis)
-            self.qfs.setdefault(key, []).append(qf[y > self.mask])
+            self.qfs.setdefault(name, []).append(qf[y > self.mask])
         else:
-            self.qfs.setdefault(key, []).append(qf.ravel())
+            self.qfs.setdefault(name, []).append(qf.ravel())
 
     def reset(self):
         self.qfs = {}
 
-    def make_quantile_function_plot(self, key):
+    def make_quantile_function_plot(self, name):
         """
-        Plots the calibration for a given target key using
+        Plots the calibration for a given target name using
         matplotlib.
 
         Args:
-            key: Name of the target for which to plot the
+            name: Name of the target for which to plot the
                  calibration.
 
         Return:
             matplotlib Figure object containing the calibration plot.
         """
         bins = np.linspace(0, 1, 41)
-        qfs = np.concatenate(self.qfs[key])
-        y, _ = np.histogram(self.qfs[key], bins=bins, density=True)
+        qfs = np.concatenate(self.qfs[name])
+        y, _ = np.histogram(self.qfs[name], bins=bins, density=True)
 
         plt.ioff()
         f, ax = plt.subplots(1, 1, dpi=100)
