@@ -93,7 +93,7 @@ def get_array_module(x):
     if module_name == "numpy.ma":
         return _get_backend_module("numpy.ma")
     base_module = module_name.split(".")[0]
-    if base_module == "torch":
+    if base_module == "torch" or base_module == "quantnn":
         return _get_backend_module("torch")
     if base_module == "jax":
         return _get_backend_module("jax")

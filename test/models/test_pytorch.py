@@ -109,9 +109,6 @@ def test_cross_entropy_loss():
     assert np.all(np.isclose(loss(y_pred, y).detach().numpy(),
                              ref.mean().detach().numpy()))
 
-
-
-
 def test_mse_loss():
     """
     Test masking for cross entropy loss.

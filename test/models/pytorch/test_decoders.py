@@ -72,7 +72,7 @@ def test_spatial_decoder():
         channels=1,
         stages=[4] * 4,
         channel_scaling=2,
-        max_channels=8,
+        max_channels=32,
         block_factory=block_factory,
         downsampling_factors=[2, 2, 4]
     )
@@ -80,14 +80,14 @@ def test_spatial_decoder():
         channels=1,
         stages=[4] * 3,
         channel_scaling=2,
-        max_channels=8,
+        max_channels=32,
         block_factory=block_factory,
-        skip_connections=False,
+        skip_connections=encoder.skip_connections,
         upsampling_factors=[4, 2, 2],
     )
     # Test forward without skip connections.
     x = torch.ones((1, 1, 128, 128))
-    y = decoder(encoder(x))
+    y = decoder(encoder(x, return_skips=True))
     # Width and height should be reduced by 16.
     # Number of channels should be maximum.
     assert y.shape == (1, 1, 128, 128)
@@ -99,12 +99,12 @@ def test_spatial_decoder():
         channel_scaling=2,
         max_channels=8,
         block_factory=block_factory,
-        skip_connections=False,
+        skip_connections=encoder.skip_connections,
         upsampling_factors=[4, 2, 2],
     )
     # Test forward without skip connections.
     x = torch.ones((1, 1, 128, 128))
-    y = decoder(encoder(x))
+    y = decoder(encoder(x, return_skips=True))
     # Width and height should be reduced by 16.
     # Number of channels should be maximum.
     assert y.shape == (1, 2, 128, 128)
@@ -139,7 +139,7 @@ def test_encoder_decoder_multi_scale_output():
         channel_scaling=2,
         max_channels=16,
         block_factory=block_factory,
-        skip_connections=3,
+        skip_connections=encoder.skip_connections,
         multi_scale_output=16
     )
     # Test forward without skip connections.
@@ -203,7 +203,6 @@ def test_encoder_decoder_multi_scale_output():
         max_channels=16,
         block_factory=block_factory,
         skip_connections=encoder.skip_connections,
-        base_scale=3
     )
     x = {
         "input_1": PackedTensor(

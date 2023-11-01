@@ -6,6 +6,7 @@ Provides generic decoder modules.
 """
 from typing import Optional, Callable, Union, Optional, List, Dict
 
+import numpy as np
 import torch
 from torch import nn
 
@@ -24,7 +25,10 @@ from quantnn.models.pytorch.upsampling import BilinearFactory
 
 
 def _determine_skip_connections(
-    skip_connections: Union[bool, int, Dict[int, int]], channels: List[int], base_scale
+    skip_connections: Union[bool, int, Dict[int, int]],
+    channels: List[int],
+    upsampling_factors: List[int],
+    base_scale: int
 ) -> Dict[int, int]:
     """
     Calculates a dict of skip connections from either a bool, an in
@@ -33,9 +37,11 @@ def _determine_skip_connections(
         skip_connections: A bool, int, or dictionary specifying whether
             or not the decoder has skip connections.
         channels: The list of channels in the stages of the decoder.
+        upsampling_factors: The corresponding list of upsampling factors.
+        base_scale: The base scale of the decoder.
 
     Return:
-            A dicitonary that map stage indices to the number of incoming
+            A dicitonary that maps scales to the number of incoming
             channels.
 
     Raises:
@@ -45,13 +51,21 @@ def _determine_skip_connections(
         return skip_connections
 
     if isinstance(skip_connections, bool):
+        skips = {}
         if skip_connections:
-            return {base_scale - ind - 1: ch for ind, ch in enumerate(channels[1:])}
-        else:
-            return {}
+            scale = base_scale
+            for f_u, chans in zip(upsampling_factors, channels):
+                skips[scale] = chans
+                scale /= f_u
+        return skips
     elif isinstance(skip_connections, int):
-        skip_chans = channels[1 : skip_connections + 1]
-        return {base_scale - ind - 1: ch for ind, ch in enumerate(skip_chans)}
+        skips = {}
+        if skip_connections:
+            scale = base_scale
+            for f_u, chans in zip(upsampling_factors[:skip_connections], channels):
+                skips[scale] = chans
+                scale /= f_u
+        return skips
 
     raise ValueError("Skip connections should be a bool, int or a dictionary.")
 
@@ -135,16 +149,6 @@ class SpatialDecoder(nn.Module, ParamCount):
                 "of stages in the decoder by one."
             )
 
-        if base_scale is None:
-            if isinstance(skip_connections, dict):
-                base_scale = max(skip_connections.keys())
-            else:
-                base_scale = len(stages)
-        self.base_scale = base_scale
-        self.skip_connections = _determine_skip_connections(
-            skip_connections, channels, base_scale
-        )
-        self.has_skips = len(self.skip_connections) > 0
 
         if stage_factory is None:
             stage_factory = SequentialStageFactory()
@@ -166,11 +170,24 @@ class SpatialDecoder(nn.Module, ParamCount):
                 "The number of upsampling factors  must equal to the "
                 "number of stages."
             )
+        self.upsampling_factors = upsampling_factors
+
+        if base_scale is None:
+            if isinstance(skip_connections, dict):
+                base_scale = max(skip_connections.keys())
+            else:
+                base_scale = np.prod(upsampling_factors)
+        self.base_scale = base_scale
+        self.skip_connections = _determine_skip_connections(
+            skip_connections, channels, upsampling_factors, base_scale
+        )
+        self.has_skips = len(self.skip_connections) > 0
 
         channels_in = channels[0]
+        scale = self.base_scale
         for index, (config, channels_out) in enumerate(zip(stages, channels[1:])):
 
-            stage_ind = base_scale - index - 1
+            scale /= upsampling_factors[index]
 
             self.upsamplers.append(
                 upsampler_factory(
@@ -180,7 +197,7 @@ class SpatialDecoder(nn.Module, ParamCount):
                 )
             )
 
-            channels_combined = channels_in + self.skip_connections.get(stage_ind, 0)
+            channels_combined = channels_in + self.skip_connections.get(scale, 0)
 
             self.stages.append(
                 stage_factory(
@@ -260,13 +277,14 @@ class SpatialDecoder(nn.Module, ParamCount):
                 x = x[self.base_scale]
 
         if isinstance(x, dict):
-            y = x[self.base_scale]
+            scale = self.base_scale
+            y = x[scale]
             stages = self.stages
 
             for ind, (up, stage) in enumerate(zip(self.upsamplers, stages)):
-                stage_ind = self.base_scale - ind - 1
-                if stage_ind in self.skip_connections:
-                    y = stage(torch.cat([x[stage_ind], up(y)], dim=1))
+                scale /= self.upsampling_factors[ind]
+                if scale in self.skip_connections:
+                    y = stage(torch.cat([x[scale], up(y)], dim=1))
                 else:
                     y = stage(up(y))
         else:
@@ -359,16 +377,6 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
                 "of stages plus 1."
             )
 
-        if base_scale is None:
-            if isinstance(skip_connections, dict):
-                base_scale = max(skip_connections.keys())
-            else:
-                base_scale = len(stages)
-        self.base_scale = base_scale
-        self.skip_connections = _determine_skip_connections(
-            skip_connections, channels, base_scale
-        )
-        self.has_skips = len(self.skip_connections) > 0
 
         if upsampling_factors is None:
             upsampling_factors = [2] * n_stages
@@ -377,6 +385,19 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
                 "The list of upsampling factors  numbers must match the number "
                 "of stages."
             )
+        self.upsampling_factors = upsampling_factors
+
+        # Determine scales of skip connections
+        if base_scale is None:
+            if isinstance(skip_connections, dict):
+                base_scale = max(skip_connections.keys())
+            else:
+                base_scale = np.prod(upsampling_factors)
+        self.base_scale = base_scale
+        self.skip_connections = _determine_skip_connections(
+            skip_connections, channels, upsampling_factors, base_scale
+        )
+        self.has_skips = len(self.skip_connections) > 0
 
         if multi_scale_output is not None:
             self.projections = nn.ModuleList()
@@ -410,6 +431,7 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
             else:
                 self.projections.append(nn.Identity())
 
+        scale = base_scale
         for index, (config, channels_out) in enumerate(zip(stages, channels[1:])):
             self.upsamplers.append(
                 upsampler_factory(
@@ -418,10 +440,10 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
                     factor=upsampling_factors[index],
                 )
             )
-            stage_ind = base_scale - index - 1
-            if stage_ind in self.skip_connections:
-                self.aggregators[str(stage_ind)] = aggregator_factory(
-                    (channels_out, self.skip_connections[stage_ind]), channels_out
+            scale *= upsampling_factors[index]
+            if scale in self.skip_connections:
+                self.aggregators[str(scale)] = aggregator_factory(
+                    (channels_out, self.skip_connections[scale]), channels_out
                 )
 
             self.stages.append(
@@ -468,19 +490,21 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
 
         results = []
 
+        scale = self.base_scale
+
         if isinstance(x, dict):
 
-            y = x[self.base_scale]
+            y = x[scale]
             stages = self.stages
             if self.projections is not None:
                 results.append(self.projections[0](y))
 
             for ind, (up, stage) in enumerate(zip(self.upsamplers, stages)):
-                stage_ind = self.base_scale - ind - 1
+                scale *= self.upsampling_factors[ind]
                 y_up = forward(up, y)
-                if stage_ind in x:
-                    agg = self.aggregators[str(stage_ind)]
-                    y = forward(stage, agg(y_up, x[stage_ind]))
+                if scale in x:
+                    agg = self.aggregators[str(scale)]
+                    y = forward(stage, agg(y_up, x[scale]))
                 else:
                     y = forward(stage, y_up)
                 if self.projections is not None:

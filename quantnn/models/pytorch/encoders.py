@@ -114,6 +114,17 @@ class SequentialStageFactory(nn.Sequential):
 
         return nn.Sequential(*blocks)
 
+def _calculate_output_scales(base_scale, downsampling_factors):
+    """
+    Calculate output scales for skip connections.
+    """
+    scl = base_scale
+    scales = []
+    for f_d in downsampling_factors:
+        scl = f_d * scl
+        scales.append(scl)
+    return scales
+
 
 class SpatialEncoder(nn.Module, ParamCount):
     """
@@ -135,6 +146,7 @@ class SpatialEncoder(nn.Module, ParamCount):
         downsampler_factory: Callable[[int, int], nn.Module] = None,
         downsampling_factors: List[int] = None,
         stem_factory: Callable[[int], nn.Module] = None,
+        base_scale: int = 1
     ):
         """
         Args:
@@ -167,6 +179,7 @@ class SpatialEncoder(nn.Module, ParamCount):
         """
         super().__init__()
 
+
         if block_factory is None:
             block_factory = DEFAULT_BLOCK_FACTORY
 
@@ -196,6 +209,7 @@ class SpatialEncoder(nn.Module, ParamCount):
 
         # No downsampling applied in first layer.
         downsampling_factors = [1] + downsampling_factors
+        self.scales = _calculate_output_scales(base_scale, downsampling_factors)
 
         if stage_factory is None:
             stage_factory = SequentialStageFactory()
@@ -264,7 +278,7 @@ class SpatialEncoder(nn.Module, ParamCount):
         Dictionary specifying the number of channels in the skip tensors
         produced by this encoder.
         """
-        return {ind: chans for ind, chans in enumerate(self.channels)}
+        return {scl: chans for scl, chans in zip(self.scales, self.channels)}
 
     def forward_with_skips(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         """
@@ -281,11 +295,11 @@ class SpatialEncoder(nn.Module, ParamCount):
         """
         y = x
         skips = {}
-        for ind, (down, stage) in enumerate(zip(self.downsamplers, self.stages)):
+        for scl, down, stage in zip(self.scales, self.downsamplers, self.stages):
             if down is not None:
                 y = down(y)
             y = stage(y)
-            skips[ind] = y
+            skips[scl] = y
         return skips
 
     def forward(
@@ -348,6 +362,7 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
         stage_factory: Optional[Callable[[int, int], nn.Module]] = None,
         downsampler_factory: Callable[[int, int, int], nn.Module] = None,
         downsampling_factors: List[int] = None,
+        base_scale: int = 1
     ):
         """
         inputs: A dictionary mapping input names to either InputConfig
@@ -378,6 +393,7 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
         downsampler_factory: Optional factory to create downsampling
             layers. If not provided, the block factory must provide
             downsampling functionality.
+        base_scale: The scale of the input with the highest resolution.
         """
         n_stages = len(stages)
 
@@ -464,16 +480,6 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
         self.first_stage = first_stage
         first_input = self.stage_inputs[self.first_stage][0]
 
-    @property
-    def skip_connections(self) -> Dict[int, int]:
-        """
-        Dictionary specifying the number of channels in the skip tensors
-        produced by this encoder.
-        """
-        return {
-            self.first_stage + ind: chans for ind, chans in enumerate(self.channels)
-        }
-
     def forward_with_skips(self, x: torch.Tensor) -> Dict[set, torch.Tensor]:
         """
         Args:
@@ -488,7 +494,7 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
         skips = {}
         y = None
 
-        for down, stage in zip(self.downsamplers, self.stages):
+        for scl, down, stage in zip(self.scales, self.downsamplers, self.stages):
 
             inputs = self.stage_inputs[stage_ind]
 
@@ -510,7 +516,7 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
                 y = agg_inputs[0]
 
             y = forward(stage, y)
-            skips[stage_ind] = y
+            skips[scl] = y
             stage_ind += 1
 
         return skips
@@ -857,6 +863,7 @@ class CascadingEncoder(nn.Module):
             upsampler_factory: Callable[[int, int], nn.Module] = None,
             downsampling_factors: List[int] = None,
             stem_factory: Callable[[int], nn.Module] = None,
+            base_scale: int = 1,
             **kwargs
     ):
         """
@@ -932,6 +939,8 @@ class CascadingEncoder(nn.Module):
                 "'stages' must be a list of 'StageConfig' or 'int'  objects."
             )
 
+        self.scales = _calculate_output_scales(base_scale, downsampling_factors)
+
         channels_in = channels[0]
         modules = []
         module_map = {}
@@ -998,6 +1007,14 @@ class CascadingEncoder(nn.Module):
 
         self.depth = max(list(self.module_map.keys())) + 1
 
+    @property
+    def skip_connections(self) -> Dict[int, int]:
+        """
+        Dictionary specifying the number of channels in the skip tensors
+        produced by this encoder.
+        """
+        return {scl: chans for scl, chans in zip(self.scales, self.channels)}
+
 
     def forward(self, x: torch.Tensor, **kwargs) -> Dict[int, torch.Tensor]:
         """
@@ -1039,7 +1056,7 @@ class CascadingEncoder(nn.Module):
             x_in = y
             results.update(y)
 
-        return results
+        return {self.scales[ind]: tensor for ind, tensor in results.items()}
 
 
 class DenseCascadingEncoder(nn.Module):
@@ -1054,6 +1071,7 @@ class DenseCascadingEncoder(nn.Module):
             upsampler_factory: Callable[[int, int], nn.Module] = None,
             downsampling_factors: List[int] = None,
             stem_factory: Callable[[int], nn.Module] = None,
+            base_scale: int = 1,
             **kwargs
     ):
         """
@@ -1138,6 +1156,7 @@ class DenseCascadingEncoder(nn.Module):
         def upsampler_factory(f_up):
             return nn.Upsample(scale_factor=f_up)
 
+        self.scales = _calculate_output_scales(base_scale, downsampling_factors)
 
         stage_ind = 0
         for stage, channels_out, f_dwn in zip(stages, channels, downsampling_factors):
@@ -1237,6 +1256,15 @@ class DenseCascadingEncoder(nn.Module):
         self.input_channels = channels[0] // stages[0].n_blocks
 
 
+    @property
+    def skip_connections(self) -> Dict[int, int]:
+        """
+        Dictionary specifying the number of channels in the skip tensors
+        produced by this encoder.
+        """
+        return {scl: chans for scl, chans in zip(self.scales, self.channels)}
+
+
     def forward(self, x: torch.Tensor, **kwargs) -> Dict[int, torch.Tensor]:
         """
         Forward input through encoder.
@@ -1281,4 +1309,4 @@ class DenseCascadingEncoder(nn.Module):
             results.update(y)
             x_in = y
 
-        return {key: tensors[-1] for key, tensors in results.items()}
+        return {self.scales[ind]: tensors[-1] for ind, tensors in results.items()}

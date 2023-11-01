@@ -13,6 +13,13 @@ import numpy as np
 
 from quantnn.backends import get_tensor_backend
 from quantnn.common import InvalidDimensionException
+from quantnn.masked_tensor import MaskedTensor
+
+
+def _strip(tensor):
+    if isinstance(tensor, MaskedTensor):
+        return tensor.strip()
+    return tensor
 
 
 def _check_input_dimensions(y_pred, y):
@@ -206,13 +213,13 @@ class Bias(ScalarMetric):
             y = y.squeeze(dist_axis)
         dy = y_mean - y
 
-        # Calculate the error.
-        if self.mask is not None:
-            mask = xp.as_type(y > self.mask, y)
+        if isinstance(y, MaskedTensor):
+            valid = ~y.mask
+            dy = dy.strip()
             e = self.error.get(name, 0.0)
-            self.error[name] = e + (mask * dy).sum()
+            self.error[name] = e + dy[valid].sum()
             n = self.n_samples.get(name, 0.0)
-            self.n_samples[name] = n + mask.sum()
+            self.n_samples[name] = n + valid.sum()
         else:
             e = self.error.get(name, 0.0)
             self.error[name] = e + dy.sum()
@@ -271,12 +278,12 @@ class MeanSquaredError(ScalarMetric):
         dy = y_mean - y
 
         # Calculate the squared error.
-        if self.mask is not None:
-            mask = xp.as_type(y > self.mask, y)
+        if isinstance(y, MaskedTensor):
+            valid = ~y.mask
             se = self.squared_error.get(name, 0.0)
-            self.squared_error[name] = se + ((mask * dy) ** 2).sum()
+            self.squared_error[name] = se + (_strip(dy)[valid] ** 2).sum()
             n = self.n_samples.get(name, 0.0)
-            self.n_samples[name] = n + mask.sum()
+            self.n_samples[name] = n + valid.sum()
         else:
             se = self.squared_error.get(name, 0.0)
             self.squared_error[name] = se + (dy ** 2).sum()
@@ -338,12 +345,12 @@ class Correlation(ScalarMetric):
                 dist_axis = self.model.bin_axis
             y = y.squeeze(dist_axis)
 
-        if self.mask is not None:
-            mask = xp.as_type(y > self.mask, y)
-            y_pred_m = mask * y_mean
-            y_m = mask * y
+        if isinstance(y, MaskedTensor):
+            valid = ~y.mask
+            y_pred_m = _strip(y_mean)[valid]
+            y_m = _strip(y)[valid]
             n = self.n_samples.get(name, 0.0)
-            self.n_samples[name] = n + xp.to_numpy(mask.sum())
+            self.n_samples[name] = n + xp.to_numpy(valid.sum())
         else:
             y_pred_m = y_mean
             y_m = y
@@ -425,7 +432,7 @@ class CRPS(ScalarMetric):
         crps = xp.to_numpy(crps)
         y = xp.to_numpy(y)
 
-        if self.mask is not None:
+        if isinstance(y, MaskedTensor):
             if hasattr(self.model, "quantile_axis"):
                 dist_axis = self.model.quantile_axis
             else:
@@ -433,7 +440,8 @@ class CRPS(ScalarMetric):
             if len(y.shape) > len(crps.shape):
                 y = y.squeeze(dist_axis)
 
-            crps = crps[y > self.mask]
+            valid = y.mask
+            crps = crps[valid]
 
         crps_batches.append(crps.ravel())
 
@@ -512,10 +520,11 @@ class CalibrationPlot(Metric):
 
         del axes[q_axis]
 
-        if self.mask is not None:
-            valid_pixels = xp.as_type(y > self.mask, y)
-            valid_predictions = valid_pixels * xp.as_type(y <= y_pred, y_pred)
-
+        if isinstance(y, MaskedTensor):
+            valid_pixels = ~y.mask
+            valid_predictions = (
+                valid_pixels * _strip(xp.as_type(y <= y_pred, y_pred))
+            )
             c = self.calibration.get(name, xp.zeros(len(quantiles), y))
             self.calibration[name] = c + valid_predictions.sum(axes)
             n = self.n_samples.get(name, xp.zeros(len(quantiles), y))

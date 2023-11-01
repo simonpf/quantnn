@@ -5,6 +5,7 @@ quantnn.models.pytorch.factories
 Factory objects to build neural networks.
 """
 from torch import nn
+from . import masked as nm
 
 class MaxPooling:
     """
@@ -13,7 +14,8 @@ class MaxPooling:
     def __init__(
             self,
             kernel_size=(2, 2),
-            project_first=True
+            project_first=True,
+            masked=False
     ):
         """
         Args:
@@ -25,6 +27,7 @@ class MaxPooling:
         """
         self.kernel_size = kernel_size
         self.project_first = project_first
+        self.masked = masked
 
     def __call__(
             self,
@@ -38,7 +41,12 @@ class MaxPooling:
             channels_out: The number of input channels.
             f_down: The number of output channels.
         """
-        pool = nn.MaxPool2d(
+        if self.masked:
+            mod = nm
+        else:
+            mod = nn
+
+        pool = mod.MaxPool2d(
             kernel_size=self.kernel_size,
             stride=f_down
         )
@@ -46,7 +54,7 @@ class MaxPooling:
         if channels_in == channels_out:
             return pool
 
-        project = nn.Conv2d(channels_in, channels_out, kernel_size=1)
+        project = mod.Conv2d(channels_in, channels_out, kernel_size=1)
 
         if self.project_first:
             return nn.Sequential(

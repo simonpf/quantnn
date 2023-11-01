@@ -35,7 +35,8 @@ def combine_outputs_list(y_preds, ys):
 def combine_outputs_dict(y_preds, ys):
     y_pred_c = {}
     y_c = {}
-    for k_y_pred, k_y in zip(y_preds, ys):
+    for k_y_pred in y_preds:
+        k_y = k_y_pred.split("/")[-1]
         comb = combine_outputs(y_preds[k_y_pred], ys[k_y])
         if comb is None:
             continue
@@ -173,10 +174,7 @@ class QuantnnLightning(pl.LightningModule):
         #x = to_device(x, device=self.device, dtype=self.dtype)
         y_pred = self.model(x)
 
-        try:
-            y_pred, y = combine_outputs(y_pred, y)
-        except TypeError:
-            return None
+        y_pred, y = combine_outputs(y_pred, y)
 
         avg_loss, tot_loss, losses, n_samples = self.model._train_step(
             y_pred, y, self.loss, None,

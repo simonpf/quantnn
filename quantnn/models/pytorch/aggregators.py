@@ -13,6 +13,7 @@ from torch import nn
 from torch.nn.functional import softmax
 
 from quantnn.packed_tensor import PackedTensor, forward
+import quantnn.models.pytorch.masked as nm
 
 
 class SparseAggregator(nn.Module):
@@ -336,15 +337,21 @@ class LinearAggregatorFactory:
     def __init__(
         self,
         norm_factory=None,
+        masked=False
     ):
         """
         Args:
             norm_factory:
         """
+        if masked:
+            mod = nm
+        else:
+            mod = nn
+
         self.norm_factory = norm_factory
 
         def block_factory(channels_in, channels_out):
-            blocks = [nn.Conv2d(channels_in, channels_out, kernel_size=1)]
+            blocks = [nm.Conv2d(channels_in, channels_out, kernel_size=1)]
             if self.norm_factory is not None:
                 blocks.append(norm_factory(channels_out))
             return nn.Sequential(*blocks)

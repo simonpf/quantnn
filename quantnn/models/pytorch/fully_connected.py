@@ -10,6 +10,7 @@ from typing import Optional, Callable, Tuple
 from torch import nn
 import torch
 from quantnn.models.pytorch.common import PytorchModel, activations
+from quantnn.models.pytorch import masked as nm
 
 ###############################################################################
 # Fully-connected neural network model.
@@ -130,6 +131,7 @@ class MLPBlock(nn.Module):
         activation_factory,
         norm_factory,
         residuals=None,
+        masked=False
     ):
         """
         Args:
@@ -142,11 +144,16 @@ class MLPBlock(nn.Module):
             residuals: The type of residuals to apply.
         """
         super().__init__()
+        if masked:
+            mod = nm
+        else:
+            mod = nn
+
         if residuals is not None:
             residuals = residuals.lower()
         self.residuals = residuals
         self.body = nn.Sequential(
-            nn.Linear(features_in, features_out, bias=False),
+            mod.Linear(features_in, features_out, bias=False),
             norm_factory(features_out),
             activation_factory(),
         )
@@ -211,9 +218,10 @@ class MLP(nn.Module):
         n_layers: int,
         residuals: Optional[str] = None,
         activation_factory: Callable[[], nn.Module] = nn.ReLU,
-        norm_factory: Callable[[], nn.Module] = nn.BatchNorm1d,
+        norm_factory: Callable[[], nn.Module] = None,
         internal: bool = False,
         output_shape: Tuple[int] = None,
+        masked=False
     ):
         """
         Create MLP module.
@@ -236,6 +244,13 @@ class MLP(nn.Module):
                  be reshaped to the given shape.
         """
         super().__init__()
+        if masked:
+            mod = nm
+        else:
+            mod = nn
+
+        if norm_factory is None:
+            norm_factory = mod.BatchNorm1d
         self.n_layers = n_layers
         if residuals is not None:
             residuals = residuals.lower()
@@ -250,6 +265,7 @@ class MLP(nn.Module):
                     activation_factory=activation_factory,
                     norm_factory=norm_factory,
                     residuals=self.residuals,
+                    masked=masked
                 )
             )
             features_in = n_features
@@ -262,9 +278,11 @@ class MLP(nn.Module):
                     activation_factory=activation_factory,
                     norm_factory=norm_factory,
                     residuals=self.residuals,
+                    masked=masked
                 )
             else:
-                self.output_layer = nn.Linear(features_in, features_out)
+                self.output_layer = mod.Linear(features_in, features_out)
+        self.features_out = features_out
         self.output_shape = output_shape
 
     def forward(self, x):
@@ -284,7 +302,7 @@ class MLP(nn.Module):
             needs_reshape = True
             x = torch.permute(x, (0, 2, 3, 1))
             old_shape = x.shape
-            x = x.reshape(-1, old_shape[-1])
+            x = x.reshape((-1, old_shape[-1]))
 
         if self.n_layers == 0:
             return x, None
@@ -297,7 +315,7 @@ class MLP(nn.Module):
         y = self.output_layer(y)
 
         if needs_reshape:
-            y = y.view(old_shape[:-1] + (-1,))
+            y = y.view(old_shape[:-1] + (self.features_out,))
             y = torch.permute(y, (0, 3, 1, 2))
 
         # If required, reshape channel dimension

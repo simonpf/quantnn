@@ -13,6 +13,7 @@ from torch import nn
 from quantnn.models.pytorch.base import ParamCount
 from . import normalization
 from . import downsampling
+from . import masked as nm
 
 
 class ConvBlockFactory:
@@ -23,7 +24,13 @@ class ConvBlockFactory:
     normalization layer and activation function.
     """
 
-    def __init__(self, kernel_size=1, norm_factory=None, activation_factory=None):
+    def __init__(
+            self,
+            kernel_size=1,
+            norm_factory=None,
+            activation_factory=None,
+            masked=False
+    ):
         """
         Args:
             kernel_size: The size of the convolution kernel.
@@ -36,6 +43,7 @@ class ConvBlockFactory:
         self.kernel_size = kernel_size
         self.norm_factory = norm_factory
         self.activation_factory = activation_factory
+        self.masked = masked
 
     def __call__(
         self,
@@ -53,6 +61,11 @@ class ConvBlockFactory:
                 the stride of the convolution operation.
             block_index: Not used by this factory.
         """
+        if self.masked:
+            mod = nm
+        else:
+            mod = nn
+
         if channels_out is None:
             channels_out = channels_in
 
@@ -64,7 +77,7 @@ class ConvBlockFactory:
             downsample = 1
 
         blocks = [
-            nn.Conv2d(
+            mod.Conv2d(
                 channels_in,
                 channels_out,
                 kernel_size=self.kernel_size,
@@ -168,6 +181,7 @@ class ResNeXtBlock(nn.Module, ParamCount):
         stride: int = 1,
         norm_layer: Optional[Callable[..., nn.Module]] = None,
         activation: Optional[Callable[..., nn.Module]] = nn.ReLU,
+        masked: bool = False
     ):
         """
         Args:
@@ -182,12 +196,17 @@ class ResNeXtBlock(nn.Module, ParamCount):
             activation: The activation function to use.
         """
         super().__init__()
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
 
-        self.conv_1 = nn.Conv2d(channels_in, channels_out // bottleneck, kernel_size=1)
+        mod = nn
+        if masked:
+            mod = nm
+
+        if norm_layer is None:
+            norm_layer = mod.BatchNorm2d
+
+        self.conv_1 = mod.Conv2d(channels_in, channels_out // bottleneck, kernel_size=1)
         self.norm_1 = norm_layer(channels_out // bottleneck)
-        self.conv_2 = nn.Conv2d(
+        self.conv_2 = mod.Conv2d(
             channels_out // bottleneck,
             channels_out // bottleneck,
             kernel_size=3,
@@ -196,7 +215,7 @@ class ResNeXtBlock(nn.Module, ParamCount):
             padding=1,
         )
         self.norm_2 = norm_layer(channels_out // bottleneck)
-        self.conv_3 = nn.Conv2d(
+        self.conv_3 = mod.Conv2d(
             channels_out // bottleneck,
             channels_out,
             kernel_size=1,
@@ -228,7 +247,10 @@ class ResNeXtBlockFactory:
     """
 
     def __init__(
-        self, cardinality=32, norm_factory: Optional[Callable[[int], nn.Module]] = None
+        self,
+            cardinality=32,
+            norm_factory: Optional[Callable[[int], nn.Module]] = None,
+            masked: bool = False
     ):
         """
         Args:
@@ -239,9 +261,13 @@ class ResNeXtBlockFactory:
                 norm.
         """
         self.cardinality = cardinality
-        if norm_factory is None:
-            norm_factory = nn.BatchNorm2d
         self.norm_factory = norm_factory
+        self.masked = masked
+        if norm_factory is None:
+            if masked:
+                norm_factory = nm.BatchNorm2d
+            else:
+                norm_factory = nn.BatchNorm2d
 
     def __call__(
         self,
@@ -264,8 +290,17 @@ class ResNeXtBlockFactory:
         Return:
             The ResNeXt block.
         """
+        mod = nn
+        if self.masked:
+            mod = nm
+
         stride = (1, 1)
         projection = None
+
+        if self.norm_factory is None:
+            norm_factory = mod.BatchNorm2d
+        else:
+            norm_factory = self.norm_factory
 
         if isinstance(downsample, int):
             downsample = (downsample,) * 2
@@ -275,11 +310,15 @@ class ResNeXtBlockFactory:
         if max(stride) > 1 or channels_in != channels_out:
             if max(stride) > 1:
                 projection = nn.Sequential(
-                    nn.AvgPool2d(kernel_size=stride, stride=stride),
-                    nn.Conv2d(channels_in, channels_out, kernel_size=1),
+                    #mod.AvgPool2d(kernel_size=stride, stride=stride),
+                    mod.Conv2d(channels_in, channels_out, kernel_size=1, stride=stride),
+                    #norm_factory(channels_out)
                 )
             else:
-                projection = nn.Conv2d(channels_in, channels_out, kernel_size=1)
+                projection = nn.Sequential(
+                    mod.Conv2d(channels_in, channels_out, kernel_size=1),
+                    #norm_factory(channels_out)
+                )
 
         return ResNeXtBlock(
             channels_in,
@@ -288,6 +327,7 @@ class ResNeXtBlockFactory:
             projection=projection,
             cardinality=self.cardinality,
             norm_layer=self.norm_factory,
+            masked=self.masked
         )
 
 
@@ -458,6 +498,7 @@ class ConvNextBlockFactory:
         activation_factory: Callable[[], nn.Module] = nn.GELU,
         norm_factory: Callable[[int], nn.Module] = normalization.LayerNormFirst,
         channel_scaling: int = 4,
+        masked: bool = False
     ):
         """
         version: Which version of ConvNext blocks should be created. Should be
@@ -479,6 +520,7 @@ class ConvNextBlockFactory:
         self.activation_factory = activation_factory
         self.norm_factory = norm_factory
         self.channel_scaling = channel_scaling
+        self.masked = masked
 
     def __call__(
         self,

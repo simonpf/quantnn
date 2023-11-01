@@ -10,6 +10,7 @@ import os
 import shutil
 import tarfile
 import tempfile
+from typing import Optional
 
 import torch
 import numpy as np
@@ -22,6 +23,7 @@ import quantnn.data
 from quantnn.backends.pytorch import PyTorch
 from quantnn.generic import to_array
 from quantnn.utils import apply
+from quantnn.masked_tensor import MaskedTensor
 
 activations = {
     "elu": nn.ELU,
@@ -190,6 +192,91 @@ def get_batch_size(x):
     return 1.0
 
 
+def combine_masks(
+        y_pred: torch.Tensor,
+        y_true: torch.Tensor,
+        mask: Optional[float]
+):
+    """
+    Determine mask identifying valid samples.
+
+    Args:
+        y_pred: Tensor containing the predictions.
+        y_true: Tensor containing the true values.
+        mask: Mask threshold to identifying invalid samples.
+
+    Return:
+        A bool tensor of the same shape as y_pred.
+    """
+    if (
+            mask is None and
+            not isinstance(y_true, MaskedTensor) and
+            not isinstance(y_pred, MaskedTensor)
+    ):
+        return None
+
+    if mask is None:
+        mask = torch.zeros(y_true.shape, dtype=bool)
+    else:
+        mask = y_true <= mask
+    if isinstance(y_true, MaskedTensor):
+        mask = mask + y_true.mask
+    if isinstance(y_pred, MaskedTensor):
+        mask = mask + y_pred.mask
+    return mask
+
+
+def get_mask(tensor):
+    """
+    Get mask from tensor
+
+    Args:
+        tensor: A torch.Tensor or MaskedTensor
+
+    Return:
+        The mask of the tensor or None if it doesn't have a mask.
+    """
+    if not isinstance(tensor, MaskedTensor):
+        return None
+    return tensor.mask
+
+
+def combine_masks(y_pred, y_true, mask):
+    if (not isinstance(y_pred, MaskedTensor) and
+        not isinstance(y_true, MaskedTensor) and
+        mask is None):
+        return None
+
+    if mask is not None:
+        mask = y_true <= mask
+    else:
+        mask = torch.ones(y_true.shape, device=y_true.device, dtype=bool)
+
+    if isinstance(y_pred, MaskedTensor):
+        mask = mask + y_pred.mask
+
+    if isinstance(y_true, MaskedTensor):
+        mask = mask + y_true.mask
+
+    return mask
+
+
+
+def strip(tensor):
+    """
+    Strip masked tensor from tensor.
+
+    Args:
+        tensor: A torch.Tensor or MaskedTensor
+
+    Return:
+        A torch.Tensor containing only the data.
+    """
+    if not isinstance(tensor, MaskedTensor):
+        tensor
+    return tensor.strip()
+
+
 ################################################################################
 # Cross-entropy loss
 ################################################################################
@@ -204,7 +291,7 @@ class CrossEntropyLoss(nn.Module):
     the handling of missing values.
     """
 
-    def __init__(self, bins_or_classes, mask=None, sparse=False):
+    def __init__(self, bins_or_classes, sparse=False, mask=None):
         """
         Args:
             bins_or_classes: The bins overwich to calculate the probabilities
@@ -248,10 +335,28 @@ class CrossEntropyLoss(nn.Module):
     def __call__(self, y_pred, y_true, key=None):
         """Evaluate the loss."""
         # Sparse masking
-        if self.mask is not None and self.sparse:
-            valid = y_true > self.mask
-            y_true = y_true[valid]
+        y_true_mask = get_mask(y_true)
+        y_pred_mask = get_mask(y_pred)
+        any_masked = (
+            self.mask is not None or
+            y_pred_mask is not None or
+            y_true_mask is not None
+        )
 
+        if any_masked and self.sparse:
+            mask = None
+            if y_pred_mask is not None:
+                mask = y_pred_mask.any(1)
+            if y_true_mask is not None:
+                mask = mask + y_true_mask
+            if self.mask is not None:
+                if mask is None:
+                    mask = (y_true <= self.mask)
+                else:
+                    mask = mask + (y_true <= self.mask)
+
+            valid = ~mask
+            y_true = y_true[valid]
             if valid.ndim == y_pred.ndim:
                 valid = valid[:, 0]
             y_pred = y_pred.transpose(0, 1)[..., valid].transpose(0, 1)
@@ -275,18 +380,24 @@ class CrossEntropyLoss(nn.Module):
         if self.n_classes == 2:
             y_cat = y_cat.to(dtype=y_pred.dtype)
 
-        if self.mask is None or self.sparse:
+        if self.sparse:
             return self.loss(y_pred, y_cat)
 
         # Dense masking.
         loss = self.loss(y_pred, y_cat)
-        mask = (y_true > self.mask).to(dtype=y_pred.dtype)
-        return (loss * mask).sum() / (mask.sum() + 1e-6)
+        mask = combine_masks(y_pred, y_true, self.mask)
+        if mask is None:
+            return loss.mean()
+        valid = ~mask
+        return loss[valid].sum() / (valid.sum() + 1e-6)
 
 
 ################################################################################
-# Cross-entropy loss
+# Quantile loss
 ################################################################################
+
+
+
 
 
 class QuantileLoss(nn.Module):
@@ -312,7 +423,7 @@ class QuantileLoss(nn.Module):
     computed by taking the mean over all samples in the batch.
     """
 
-    def __init__(self, quantiles, mask=None, quantile_axis=1, sparse=False):
+    def __init__(self, quantiles, quantile_axis=1, sparse=False, mask=None):
         """
         Create an instance of the quantile loss function with the given quantiles.
 
@@ -327,11 +438,12 @@ class QuantileLoss(nn.Module):
         super().__init__()
         self.quantiles = torch.tensor(quantiles).float()
         self.n_quantiles = len(quantiles)
-        self.mask = mask
-        if self.mask:
-            self.mask = np.float32(mask)
         self.quantile_axis = quantile_axis
         self.sparse = sparse
+        if mask is not None:
+            self.mask = np.float32(mask)
+        else:
+            self.mask = None
 
     def to(self, device):
         self.quantiles = self.quantiles.to(device)
@@ -353,9 +465,11 @@ class QuantileLoss(nn.Module):
 
         # Sparse masking
         if self.mask and self.sparse:
-            valid = y_true > self.mask
+            mask = y_true <= self.mask
+            if isinstance(y_true, MaskedTensor):
+                mask = mask + y_true.mask
+            valid = ~mask
             y_true = y_true[valid]
-
             if valid.ndim == y_pred.ndim:
                 valid = valid[:, 0]
             qa = self.quantile_axis
@@ -373,8 +487,14 @@ class QuantileLoss(nn.Module):
 
         # Dense masking
         if self.mask and not self.sparse:
-            mask = (y_true > self.mask).to(y_true.dtype)
-            return (l * mask).sum() / ((mask.sum() + 1e-6) * self.n_quantiles)
+            valid = ~combine_masks(y_pred, y_true, self.mask)
+            if valid.shape != l.shape:
+                valid = torch.broadcast_to(valid, l.shape)
+            loss = l[valid].sum() / (valid.sum() + 1e-5)
+
+            if isinstance(loss, MaskedTensor):
+                loss = loss.strip()
+            return loss
         return l.mean()
 
 
@@ -395,13 +515,8 @@ class MSELoss(nn.Module):
                 considered in the loss.
         """
         super().__init__()
-        self.mask = mask
-        if self.mask:
-            self.mask = np.float32(mask)
-        if self.mask is None:
-            self.loss = nn.MSELoss()
-        else:
-            self.loss = nn.MSELoss(reduction="none")
+        self.loss = nn.MSELoss(reduction="none")
+        self.mask = np.float32(mask)
 
     def to(self, device):
         pass
@@ -418,11 +533,13 @@ class MSELoss(nn.Module):
         Returns:
             The MSE.
         """
-        if self.mask is None:
-            return self.loss(y_pred, y_true)
         dy_2 = self.loss(y_pred, y_true)
-        mask = (y_true > self.mask).to(y_true.dtype)
-        return (dy_2 * mask).sum() / (mask.sum() + 1e-6)
+
+        mask = combine_masks(y_pred, y_true, self.mask)
+        if mask is None:
+            return dy_2.mean()
+        valid = ~mask
+        return (dy_2[valid]).sum() / (valid.sum() + 1e-6)
 
 
 ################################################################################
@@ -650,19 +767,7 @@ class PytorchModel:
             key = name.split("/")[-1]
 
             loss_k = loss[key]
-            y_pred_k = y_pred[key]
-
-            if loss_k.mask is not None:
-                mask = torch.tensor(loss_k.mask).to(
-                    dtype=y_pred_k.dtype, device=y_pred_k.device
-                )
-            else:
-                mask = None
-
-            if isinstance(transformation, dict):
-                transform_k = transformation.get(key, None)
-            else:
-                transform_k = transformation
+            y_pred_k = y_pred[name]
 
             try:
                 y_k = y[key]
@@ -672,12 +777,20 @@ class PytorchModel:
             if y_k.ndim < y_pred_k.ndim:
                 y_k = torch.unsqueeze(y_k, 1)
 
+            mask = combine_masks(y_pred_k, y_k, loss_k.mask).all(1, keepdim=True)
+            if mask is not None:
+                y_k = MaskedTensor(y_k, mask=mask)
+
+            if isinstance(transformation, dict):
+                transform_k = transformation.get(key, None)
+            else:
+                transform_k = transformation
+
+
             if transform_k is None:
                 y_k_t = y_k
             else:
                 y_k_t = transform_k(y_k)
-                if mask is not None:
-                    y_k_t = torch.where(y_k > mask, y_k_t, mask)
 
             if key == "__loss__":
                 l = loss_k(y_pred_k, y_k_t)
@@ -701,12 +814,10 @@ class PytorchModel:
                 tot_loss = 0.0
                 n_samples = 0
             avg_loss += l
-            if mask is not None:
-                n = (y_k > mask).sum().item()
-            else:
-                n = torch.numel(y_k)
-            tot_loss += (l * n).item()
-            n_samples += n
+
+            n_valid = (~y_k.mask).sum()
+            tot_loss += (l * n_valid).item()
+            n_samples += n_valid
 
         return avg_loss, tot_loss, losses, n_samples
 

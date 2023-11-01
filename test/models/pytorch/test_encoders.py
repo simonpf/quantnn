@@ -43,9 +43,9 @@ def test_spatial_encoder():
     # Number of outputs is number of stages + 1.
     assert len(y) == 4
     # First element is just the input.
-    assert y[0].shape == (1, 1, 32, 32)
+    assert y[1].shape == (1, 1, 32, 32)
     # Last element is output from last layer.
-    assert y[3].shape == (1, 4, 4, 4)
+    assert y[8].shape == (1, 4, 4, 4)
 
     # Repeat tests with explicitly specified channel numbers.
     encoder = SpatialEncoder(
@@ -60,10 +60,10 @@ def test_spatial_encoder():
     assert y.shape == (1, 2, 4, 4)
     y = encoder(x, return_skips=True)
     assert len(y) == 4
-    assert y[0].shape == (1, 1, 32, 32)
-    assert y[1].shape == (1, 8, 16, 16)
-    assert y[2].shape == (1, 4, 8, 8)
-    assert y[3].shape == (1, 2, 4, 4)
+    assert y[1].shape == (1, 1, 32, 32)
+    assert y[2].shape == (1, 8, 16, 16)
+    assert y[4].shape == (1, 4, 8, 8)
+    assert y[8].shape == (1, 2, 4, 4)
 
     # Repeat tests with different downscaling factors.
     encoder = SpatialEncoder(
@@ -79,10 +79,10 @@ def test_spatial_encoder():
     assert y.shape == (1, 2, 4, 4)
     y = encoder(x, return_skips=True)
     assert len(y) == 4
-    assert y[0].shape == (1, 1, 96, 96)
-    assert y[1].shape == (1, 8, 48, 48)
-    assert y[2].shape == (1, 4, 16, 16)
-    assert y[3].shape == (1, 2, 4, 4)
+    assert y[1].shape == (1, 1, 96, 96)
+    assert y[2].shape == (1, 8, 48, 48)
+    assert y[6].shape == (1, 4, 16, 16)
+    assert y[24].shape == (1, 2, 4, 4)
 
 
 def test_spatial_encoder_downsampler_factory():
@@ -147,9 +147,9 @@ def test_multi_input_spatial_encoder():
     # Number of outputs is number of stages + 1.
     assert len(y) == 4
     # First element is not downsampled.
-    assert y[0].shape == (1, 1, 32, 32)
+    assert y[1].shape == (1, 1, 32, 32)
     # First element is output from last layer.
-    assert y[3].shape == (1, 8, 4, 4)
+    assert y[8].shape == (1, 8, 4, 4)
 
 
 def test_zero_depth_stage():
@@ -189,9 +189,9 @@ def test_zero_depth_stage():
     # Number of outputs is number of stages + 1.
     assert len(y) == 4
     # First element is not downsampled.
-    assert y[0].shape == (1, 1, 32, 32)
+    assert y[1].shape == (1, 1, 32, 32)
     # First element is output from last layer.
-    assert y[3].shape == (1, 8, 4, 4)
+    assert y[8].shape == (1, 8, 4, 4)
 
 
 def test_multi_input_spatial_encoder_downsampler_factory():
@@ -257,9 +257,9 @@ def test_spatial_encoder_w_stem():
     # Number of outputs is number of stages + 1.
     assert len(y) == 4
     # First element is output from first layer.
-    assert y[0].shape == (1, 1, 32, 32)
+    assert y[1].shape == (1, 1, 32, 32)
     # First element is output from last layer.
-    assert y[3].shape == (1, 8, 4, 4)
+    assert y[8].shape == (1, 8, 4, 4)
 
     # Repeat tests with explicitly specified channel numbers.
     encoder = SpatialEncoder(
@@ -275,10 +275,10 @@ def test_spatial_encoder_w_stem():
     assert y.shape == (1, 2, 4, 4)
     y = encoder(x, return_skips=True)
     assert len(y) == 4
-    assert y[0].shape == (1, 1, 32, 32)
-    assert y[1].shape == (1, 8, 16, 16)
-    assert y[2].shape == (1, 4, 8, 8)
-    assert y[3].shape == (1, 2, 4, 4)
+    assert y[1].shape == (1, 1, 32, 32)
+    assert y[2].shape == (1, 8, 16, 16)
+    assert y[4].shape == (1, 4, 8, 8)
+    assert y[8].shape == (1, 2, 4, 4)
 
     # Repeat tests with different downscaling factors.
     encoder = SpatialEncoder(
@@ -294,10 +294,10 @@ def test_spatial_encoder_w_stem():
     assert y.shape == (1, 2, 4, 4)
     y = encoder(x, return_skips=True)
     assert len(y) == 4
-    assert y[0].shape == (1, 1, 96, 96)
-    assert y[1].shape == (1, 8, 48, 48)
-    assert y[2].shape == (1, 4, 16, 16)
-    assert y[3].shape == (1, 2, 4, 4)
+    assert y[1].shape == (1, 1, 96, 96)
+    assert y[2].shape == (1, 8, 48, 48)
+    assert y[6].shape == (1, 4, 16, 16)
+    assert y[24].shape == (1, 2, 4, 4)
 
 
 def test_parallel_encoder_stage():
@@ -386,11 +386,13 @@ def test_cascading_encoder():
     x = torch.rand(1, 32, 64, 64)
     y = encoder(x)
 
+    scale = 1
     for ind, (chans, size) in enumerate(zip([32, 64, 128], [64, 32, 16])):
-        y_i = y[ind]
+        y_i = y[scale]
         assert y_i.shape[1] == chans
         assert y_i.shape[2] == size
         assert y_i.shape[3] == size
+        scale *= 2
 
 
     encoder = CascadingEncoder(
@@ -401,11 +403,13 @@ def test_cascading_encoder():
     x = torch.rand(1, 64, 256, 256)
     y = encoder(x)
 
+    scale = 1
     for ind, (chans, size) in enumerate(zip([64, 128, 256], [256, 128, 64])):
-        y_i = y[ind]
+        y_i = y[scale]
         assert y_i.shape[1] == chans
         assert y_i.shape[2] == size
         assert y_i.shape[3] == size
+        scale *= 2
 
 
 def test_dense_cascading_encoder():
@@ -421,11 +425,13 @@ def test_dense_cascading_encoder():
     x = torch.rand(1, 8, 64, 64)
     y = encoder(x)
 
+    scale = 1
     for ind, (chans, size) in enumerate(zip([32, 64, 128], [64, 32, 16])):
-        y_i = y[ind]
+        y_i = y[scale]
         assert y_i.shape[1] == chans
         assert y_i.shape[2] == size
         assert y_i.shape[3] == size
+        scale *= 2
 
 
     encoder = DenseCascadingEncoder(
@@ -436,8 +442,10 @@ def test_dense_cascading_encoder():
     x = torch.rand(1, 64, 256, 256)
     y = encoder(x)
 
+    scale = 1
     for ind, (chans, size) in enumerate(zip([128, 128, 256], [256, 128, 64])):
-        y_i = y[ind]
+        y_i = y[scale]
         assert y_i.shape[1] == chans
         assert y_i.shape[2] == size
         assert y_i.shape[3] == size
+        scale *= 2
