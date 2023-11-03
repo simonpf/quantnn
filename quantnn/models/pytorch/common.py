@@ -747,7 +747,7 @@ class PytorchModel:
         # Loop over keys in prediction.
         for name in y_pred:
 
-            key = name.split("/")[-1]
+            key = name.split("::")[-1]
 
             loss_k = loss[key]
             y_pred_k = y_pred[name]

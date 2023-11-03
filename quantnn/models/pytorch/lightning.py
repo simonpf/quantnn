@@ -36,7 +36,7 @@ def combine_outputs_dict(y_preds, ys):
     y_pred_c = {}
     y_c = {}
     for k_y_pred in y_preds:
-        k_y = k_y_pred.split("/")[-1]
+        k_y = k_y_pred.split("::")[-1]
         comb = combine_outputs(y_preds[k_y_pred], ys[k_y])
         if comb is None:
             continue

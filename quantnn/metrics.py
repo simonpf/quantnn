@@ -190,7 +190,7 @@ class Bias(ScalarMetric):
 
     def process_batch(self, name, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
-        key = name.split("/")[-1]
+        key = name.split("::")[-1]
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
@@ -254,7 +254,7 @@ class MeanSquaredError(ScalarMetric):
 
     def process_batch(self, name, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
-        key = name.split("/")[-1]
+        key = name.split("::")[-1]
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
@@ -324,7 +324,7 @@ class Correlation(ScalarMetric):
 
     def process_batch(self, name, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
-        key = name.split("/")[-1]
+        key = name.split("::")[-1]
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
@@ -414,7 +414,7 @@ class CRPS(ScalarMetric):
 
     def process_batch(self, name, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
-        key = name.split("/")[-1]
+        key = name.split("::")[-1]
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
@@ -490,7 +490,7 @@ class CalibrationPlot(Metric):
 
     def process_batch(self, name, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
-        key = name.split('/')[-1]
+        key = name.split('::')[-1]
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
@@ -630,7 +630,7 @@ class ScatterPlot(Metric):
 
     def process_batch(self, name, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
-        key = name.split("/")[-1]
+        key = name.split("::")[-1]
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 
@@ -762,7 +762,7 @@ class QuantileFunction(Metric):
 
     def process_batch(self, name, y_pred, y, cache=None):
         _check_input_dimensions(y_pred, y)
-        key = name.split("/")[-1]
+        key = name.split("::")[-1]
         if hasattr(self.model, "_post_process_prediction"):
             y_pred = self.model._post_process_prediction(y_pred, key=key)
 

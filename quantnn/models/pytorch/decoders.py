@@ -422,10 +422,13 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
         channels_in = channels[0]
 
         if self.projections is not None:
-            if channels_in != multi_scale_output:
+            channels_out = multi_scale_output
+            if channels_out == -1:
+                channels_out = channels_in
+            if channels_in != channels_out:
                 self.projections.append(
                     nn.Sequential(
-                        nn.Conv2d(channels_in, multi_scale_output, kernel_size=1),
+                        nn.Conv2d(channels_in, channels_out, kernel_size=1),
                     )
                 )
             else:

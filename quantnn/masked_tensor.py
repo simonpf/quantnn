@@ -44,7 +44,7 @@ class MaskedTensor(torch.Tensor):
         if isinstance(mask, cls):
             mask = mask.strip()
 
-        tensor.mask = mask.detach()
+        tensor.mask = mask.detach().to(device=args[0].device)
         tensor.compressed = compressed
         tensor.empty = ~mask.any()
         return tensor
@@ -69,11 +69,17 @@ class MaskedTensor(torch.Tensor):
             return result
 
         compressed = None
-        for arg in args:
-            if isinstance(arg, MaskedTensor):
-                compressed = arg.compressed
-                break
-        if compressed is not None:
+        if func in [torch.cat, torch.stack]:
+            c_args = [arg.compressed for arg in args[0] if isinstance(arg, MaskedTensor)]
+            if len(c_args) > 0:
+                compressed = c_args[0]
+
+        if compressed is None:
+            for arg in args:
+                if isinstance(arg, MaskedTensor):
+                    compressed = arg.compressed
+                    break
+        if compressed is None:
             for arg in kwargs.values():
                 if isinstance(arg, MaskedTensor):
                     compressed = arg.compressed
@@ -141,6 +147,7 @@ def extract_mask(arg):
     elif isinstance(arg, float):
         return torch.zeros(1, dtype=bool)
     return arg
+
 
 
 def strip_type(arg):

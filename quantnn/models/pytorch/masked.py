@@ -193,6 +193,13 @@ class BatchNorm2d(nn.BatchNorm1d):
         x_p = x_p.strip()
         y = torch.zeros_like(x_p)
         valid = ~mask.any(-1)
+        if valid.sum() <= 1:
+            y = torch.permute(y, (0, 3, 1, 2))
+            return MaskedTensor(
+                y,
+                mask=torch.ones(y.shape, dtype=bool),
+                compressed=x.compressed
+            )
         y[valid] = super().forward(x_p[valid])
         y = torch.permute(y, (0, 3, 1, 2))
         mask = torch.broadcast_to(x.mask.any(1, keepdims=True), y.shape)
