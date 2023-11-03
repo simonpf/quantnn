@@ -24,8 +24,6 @@ MASK_HANDLERS = {
 }
 
 
-
-
 class MaskedTensor(torch.Tensor):
 
     def __new__(cls, *args, **kwargs):

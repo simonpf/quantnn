@@ -61,8 +61,8 @@ def masked_conv_2d(
         groups=1
     )
 
-    y = y / (1.0 - masked_frac)
     mask_new = masked_frac >= 1.0
+    y = y / torch.where(mask_new, 1.0, (1.0 - masked_frac))
     if bias is not None:
         y = y + bias[None, :, None, None]
 
@@ -378,7 +378,7 @@ class Linear(nn.Linear):
         valid_frac = self.counter(mask.to(dtype=x.dtype))
         mask_new = valid_frac >= 1.0
 
-        y = y / (1.0 - valid_frac)
+        y = y / torch.where(mask_new, 1.0, (1.0 - valid_frac))
         if self.sep_bias is not None:
             y = y + self.sep_bias
 
