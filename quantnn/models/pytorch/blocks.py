@@ -310,14 +310,12 @@ class ResNeXtBlockFactory:
         if max(stride) > 1 or channels_in != channels_out:
             if max(stride) > 1:
                 projection = nn.Sequential(
-                    #mod.AvgPool2d(kernel_size=stride, stride=stride),
-                    mod.Conv2d(channels_in, channels_out, kernel_size=1, stride=stride),
-                    #norm_factory(channels_out)
+                    mod.AvgPool2d(kernel_size=stride, stride=stride),
+                    mod.Conv2d(channels_in, channels_out, kernel_size=1),
                 )
             else:
                 projection = nn.Sequential(
                     mod.Conv2d(channels_in, channels_out, kernel_size=1),
-                    #norm_factory(channels_out)
                 )
 
         return ResNeXtBlock(
