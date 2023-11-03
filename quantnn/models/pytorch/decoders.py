@@ -55,16 +55,16 @@ def _determine_skip_connections(
         if skip_connections:
             scale = base_scale
             for f_u, chans in zip(upsampling_factors, channels):
-                skips[scale] = chans
                 scale /= f_u
+                skips[scale] = chans
         return skips
     elif isinstance(skip_connections, int):
         skips = {}
         if skip_connections:
             scale = base_scale
-            for f_u, chans in zip(upsampling_factors[:skip_connections], channels):
-                skips[scale] = chans
+            for f_u, chans in zip(upsampling_factors[:skip_connections], channels[1:skip_connections]):
                 scale /= f_u
+                skips[scale] = chans
         return skips
 
     raise ValueError("Skip connections should be a bool, int or a dictionary.")
@@ -440,7 +440,7 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
                     factor=upsampling_factors[index],
                 )
             )
-            scale *= upsampling_factors[index]
+            scale //= upsampling_factors[index]
             if scale in self.skip_connections:
                 self.aggregators[str(scale)] = aggregator_factory(
                     (channels_out, self.skip_connections[scale]), channels_out
@@ -500,7 +500,7 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
                 results.append(self.projections[0](y))
 
             for ind, (up, stage) in enumerate(zip(self.upsamplers, stages)):
-                scale *= self.upsampling_factors[ind]
+                scale //= self.upsampling_factors[ind]
                 y_up = forward(up, y)
                 if scale in x:
                     agg = self.aggregators[str(scale)]
