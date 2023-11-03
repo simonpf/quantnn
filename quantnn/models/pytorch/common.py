@@ -219,6 +219,7 @@ def combine_masks(
         mask = torch.zeros(y_true.shape, dtype=bool)
     else:
         mask = y_true <= mask
+
     if isinstance(y_true, MaskedTensor):
         mask = mask + y_true.mask
     if isinstance(y_pred, MaskedTensor):
@@ -240,25 +241,6 @@ def get_mask(tensor):
         return None
     return tensor.mask
 
-
-def combine_masks(y_pred, y_true, mask):
-    if (not isinstance(y_pred, MaskedTensor) and
-        not isinstance(y_true, MaskedTensor) and
-        mask is None):
-        return None
-
-    if mask is not None:
-        mask = y_true <= mask
-    else:
-        mask = torch.ones(y_true.shape, device=y_true.device, dtype=bool)
-
-    if isinstance(y_pred, MaskedTensor):
-        mask = mask + y_pred.mask
-
-    if isinstance(y_true, MaskedTensor):
-        mask = mask + y_true.mask
-
-    return mask
 
 
 
@@ -490,6 +472,7 @@ class QuantileLoss(nn.Module):
             valid = ~combine_masks(y_pred, y_true, self.mask)
             if valid.shape != l.shape:
                 valid = torch.broadcast_to(valid, l.shape)
+
             loss = l[valid].sum() / (valid.sum() + 1e-5)
 
             if isinstance(loss, MaskedTensor):
@@ -777,7 +760,9 @@ class PytorchModel:
             if y_k.ndim < y_pred_k.ndim:
                 y_k = torch.unsqueeze(y_k, 1)
 
-            mask = combine_masks(y_pred_k, y_k, loss_k.mask).all(1, keepdim=True)
+            mask = combine_masks(y_pred_k, y_k, loss_k.mask)
+            if mask.shape[1] != y_k.shape[1]:
+                mask = mask.all(1, keepdims=True)
             if mask is not None:
                 y_k = MaskedTensor(y_k, mask=mask)
 
