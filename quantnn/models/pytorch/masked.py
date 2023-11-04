@@ -186,8 +186,9 @@ class BatchNorm2d(nn.BatchNorm1d):
     def forward(self, x):
         x_p = torch.permute(x, (0, 2, 3, 1))
         if not isinstance(x, MaskedTensor):
-            y = super().forward(x_p)
-            return torch.permute(y, (0, 3, 1, 2))
+            shape = x_p.shape
+            y = super().forward(x_p.reshape((-1, shape[-1])))
+            return torch.permute(y.reshape(shape), (0, 3, 1, 2))
 
         mask = x_p.mask
         x_p = x_p.strip()

@@ -801,7 +801,7 @@ class PytorchModel:
             avg_loss += l
 
             n_valid = (~y_k.mask).sum()
-            tot_loss += (l * n_valid).item()
+            tot_loss += (l * n_valid)
             n_samples += n_valid
 
         return avg_loss, tot_loss, losses, n_samples
