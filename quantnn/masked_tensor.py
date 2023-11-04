@@ -46,7 +46,6 @@ class MaskedTensor(torch.Tensor):
 
         tensor.mask = mask.detach().to(device=args[0].device)
         tensor.compressed = compressed
-        tensor.empty = ~mask.any()
         return tensor
 
 

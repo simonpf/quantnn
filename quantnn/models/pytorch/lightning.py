@@ -225,7 +225,7 @@ class QuantnnLightning(pl.LightningModule):
             batch_size=n_samples,
             sync_dist=True
         )
-        return avg_loss
+        return tot_loss / n_samples
 
 
     def validation_step(self, batch, batch_idx):
