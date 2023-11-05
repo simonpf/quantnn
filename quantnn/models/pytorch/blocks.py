@@ -25,11 +25,7 @@ class ConvBlockFactory:
     """
 
     def __init__(
-            self,
-            kernel_size=1,
-            norm_factory=None,
-            activation_factory=None,
-            masked=False
+        self, kernel_size=1, norm_factory=None, activation_factory=None, masked=False
     ):
         """
         Args:
@@ -181,7 +177,7 @@ class ResNeXtBlock(nn.Module, ParamCount):
         stride: int = 1,
         norm_layer: Optional[Callable[..., nn.Module]] = None,
         activation: Optional[Callable[..., nn.Module]] = nn.ReLU,
-        masked: bool = False
+        masked: bool = False,
     ):
         """
         Args:
@@ -221,7 +217,7 @@ class ResNeXtBlock(nn.Module, ParamCount):
             kernel_size=1,
         )
         self.norm_3 = norm_layer(channels_out)
-        self.act = activation(inplace=True)
+        self.act = activation()
         self.projection = projection
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -248,9 +244,10 @@ class ResNeXtBlockFactory:
 
     def __init__(
         self,
-            cardinality=32,
-            norm_factory: Optional[Callable[[int], nn.Module]] = None,
-            masked: bool = False
+        cardinality=32,
+        norm_factory: Optional[Callable[[int], nn.Module]] = None,
+        activation_factory: Optional[Callable[[int], nn.Module]] = None,
+        masked: bool = False,
     ):
         """
         Args:
@@ -263,11 +260,19 @@ class ResNeXtBlockFactory:
         self.cardinality = cardinality
         self.norm_factory = norm_factory
         self.masked = masked
+
+        if masked:
+            mod = nm
+        else:
+            mod = nn
+
+        if activation_factory is None:
+            activation_factory = mod.BatchNorm2d
+        self.activation_factory = activation_factory
+
         if norm_factory is None:
-            if masked:
-                norm_factory = nm.BatchNorm2d
-            else:
-                norm_factory = nn.BatchNorm2d
+            norm_factory = mod.BatchNorm2d
+        self.norm_factory = norm_factory
 
     def __call__(
         self,
@@ -297,11 +302,6 @@ class ResNeXtBlockFactory:
         stride = (1, 1)
         projection = None
 
-        if self.norm_factory is None:
-            norm_factory = mod.BatchNorm2d
-        else:
-            norm_factory = self.norm_factory
-
         if isinstance(downsample, int):
             downsample = (downsample,) * 2
 
@@ -325,7 +325,8 @@ class ResNeXtBlockFactory:
             projection=projection,
             cardinality=self.cardinality,
             norm_layer=self.norm_factory,
-            masked=self.masked
+            activation=self.activation_factory,
+            masked=self.masked,
         )
 
 
@@ -496,7 +497,7 @@ class ConvNextBlockFactory:
         activation_factory: Callable[[], nn.Module] = nn.GELU,
         norm_factory: Callable[[int], nn.Module] = normalization.LayerNormFirst,
         channel_scaling: int = 4,
-        masked: bool = False
+        masked: bool = False,
     ):
         """
         version: Which version of ConvNext blocks should be created. Should be
