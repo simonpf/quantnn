@@ -54,7 +54,7 @@ def _determine_skip_connections(
         skips = {}
         if skip_connections:
             scale = base_scale
-            for f_u, chans in zip(upsampling_factors, channels):
+            for f_u, chans in zip(upsampling_factors, channels[1:]):
                 scale /= f_u
                 skips[scale] = chans
         return skips
@@ -419,20 +419,21 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
                 "'stages' must be a list of 'StageConfig' or 'int'  objects."
             )
 
-        channels_in = channels[0]
+        channels_in = self.skip_connections.get(self.base_scale, channels[0])
 
         if self.projections is not None:
-            channels_out = multi_scale_output
-            if channels_out == -1:
-                channels_out = channels_in
-            if channels_in != channels_out:
+            proj_out = multi_scale_output
+            if proj_out == -1:
+                proj_out = channels_in
+            if proj_out != channels_in:
                 self.projections.append(
                     nn.Sequential(
-                        nn.Conv2d(channels_in, channels_out, kernel_size=1),
+                        nn.Conv2d(channels_in, proj_out, kernel_size=1),
                     )
                 )
             else:
                 self.projections.append(nn.Identity())
+
 
         scale = base_scale
         for index, (config, channels_out) in enumerate(zip(stages, channels[1:])):
@@ -457,19 +458,19 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
                     block_factory,
                 )
             )
+
             if self.projections is not None:
-                if channels_out != multi_scale_output:
+                proj_out = multi_scale_output
+                if proj_out == -1:
+                    proj_out = channels_out
+                if proj_out != channels_out:
                     self.projections.append(
                         nn.Sequential(
-                            nn.Conv2d(channels_out, multi_scale_output, kernel_size=1),
+                            nn.Conv2d(channels_out, proj_out, kernel_size=1),
                         )
                     )
                 else:
-                    self.projections.append(
-                        nn.Sequential(
-                            nn.Identity(),
-                        )
-                    )
+                    self.projections.append(nn.Identity())
             channels_in = channels_out
 
     def forward(self, x: List[torch.Tensor]) -> torch.Tensor:
@@ -491,7 +492,7 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
             if isinstance(x, dict):
                 x = x[self.base_scale]
 
-        results = []
+        results = {}
 
         scale = self.base_scale
 
@@ -500,7 +501,7 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
             y = x[scale]
             stages = self.stages
             if self.projections is not None:
-                results.append(self.projections[0](y))
+                results[scale] = self.projections[0](y)
 
             for ind, (up, stage) in enumerate(zip(self.upsamplers, stages)):
                 scale //= self.upsampling_factors[ind]
@@ -511,7 +512,7 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
                 else:
                     y = forward(stage, y_up)
                 if self.projections is not None:
-                    results.append(self.projections[ind + 1](y))
+                    results[scale] = self.projections[ind + 1](y)
         else:
             y = x
             stages = self.stages
