@@ -412,14 +412,15 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
             downsampling_factors = [2] * (n_stages - 1)
 
         super().__init__(
-            channels[first_stage:],
-            stages[first_stage:],
+            channels,
+            stages,
             block_factory,
             channel_scaling=channel_scaling,
             max_channels=max_channels,
             stage_factory=stage_factory,
             downsampler_factory=downsampler_factory,
-            downsampling_factors=downsampling_factors[first_stage:],
+            downsampling_factors=downsampling_factors,
+            base_scale=base_scale
         )
         self.stems = nn.ModuleDict()
         self.aggregators = nn.ModuleDict()
