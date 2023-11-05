@@ -192,11 +192,7 @@ def get_batch_size(x):
     return 1.0
 
 
-def combine_masks(
-        y_pred: torch.Tensor,
-        y_true: torch.Tensor,
-        mask: Optional[float]
-):
+def combine_masks(y_pred: torch.Tensor, y_true: torch.Tensor, mask: Optional[float]):
     """
     Determine mask identifying valid samples.
 
@@ -209,9 +205,9 @@ def combine_masks(
         A bool tensor of the same shape as y_pred.
     """
     if (
-            mask is None and
-            not isinstance(y_true, MaskedTensor) and
-            not isinstance(y_pred, MaskedTensor)
+        mask is None
+        and not isinstance(y_true, MaskedTensor)
+        and not isinstance(y_pred, MaskedTensor)
     ):
         return None
 
@@ -240,8 +236,6 @@ def get_mask(tensor):
     if not isinstance(tensor, MaskedTensor):
         return None
     return tensor.mask
-
-
 
 
 def strip(tensor):
@@ -320,9 +314,7 @@ class CrossEntropyLoss(nn.Module):
         y_true_mask = get_mask(y_true)
         y_pred_mask = get_mask(y_pred)
         any_masked = (
-            self.mask is not None or
-            y_pred_mask is not None or
-            y_true_mask is not None
+            self.mask is not None or y_pred_mask is not None or y_true_mask is not None
         )
 
         if any_masked and self.sparse:
@@ -333,7 +325,7 @@ class CrossEntropyLoss(nn.Module):
                 mask = mask + y_true_mask
             if self.mask is not None:
                 if mask is None:
-                    mask = (y_true <= self.mask)
+                    mask = y_true <= self.mask
                 else:
                     mask = mask + (y_true <= self.mask)
 
@@ -377,9 +369,6 @@ class CrossEntropyLoss(nn.Module):
 ################################################################################
 # Quantile loss
 ################################################################################
-
-
-
 
 
 class QuantileLoss(nn.Module):
@@ -728,8 +717,8 @@ class PytorchModel:
                             losses[key] += loss_k
                         else:
                             losses[key] = loss_k
-                    else:
-                        losses = res[2]
+                else:
+                    losses = res[2]
             return avg_loss / n_samples, tot_loss, losses, n_samples
 
         # Make sure both outputs are dicts.
@@ -746,7 +735,6 @@ class PytorchModel:
 
         # Loop over keys in prediction.
         for name in y_pred:
-
             key = name.split("::")[-1]
 
             loss_k = loss[key]
@@ -770,7 +758,6 @@ class PytorchModel:
                 transform_k = transformation.get(key, None)
             else:
                 transform_k = transformation
-
 
             if transform_k is None:
                 y_k_t = y_k
@@ -801,7 +788,7 @@ class PytorchModel:
             avg_loss += l
 
             n_valid = (~y_k.mask).sum()
-            tot_loss += (l * n_valid)
+            tot_loss += l * n_valid
             n_samples += n_valid
 
         return avg_loss, tot_loss, losses, n_samples
