@@ -28,7 +28,7 @@ def _determine_skip_connections(
     skip_connections: Union[bool, int, Dict[int, int]],
     channels: List[int],
     upsampling_factors: List[int],
-    base_scale: int
+    base_scale: int,
 ) -> Dict[int, int]:
     """
     Calculates a dict of skip connections from either a bool, an in
@@ -62,7 +62,9 @@ def _determine_skip_connections(
         skips = {}
         if skip_connections:
             scale = base_scale
-            for f_u, chans in zip(upsampling_factors[:skip_connections], channels[1:skip_connections]):
+            for f_u, chans in zip(
+                upsampling_factors[:skip_connections], channels[1:skip_connections]
+            ):
                 scale /= f_u
                 skips[scale] = chans
         return skips
@@ -149,7 +151,6 @@ class SpatialDecoder(nn.Module, ParamCount):
                 "of stages in the decoder by one."
             )
 
-
         if stage_factory is None:
             stage_factory = SequentialStageFactory()
 
@@ -186,7 +187,6 @@ class SpatialDecoder(nn.Module, ParamCount):
         channels_in = channels[0]
         scale = self.base_scale
         for index, (config, channels_out) in enumerate(zip(stages, channels[1:])):
-
             scale /= upsampling_factors[index]
 
             self.upsamplers.append(
@@ -377,7 +377,6 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
                 "of stages plus 1."
             )
 
-
         if upsampling_factors is None:
             upsampling_factors = [2] * n_stages
         if not len(stages) == len(upsampling_factors):
@@ -433,7 +432,6 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
                 )
             else:
                 self.projections.append(nn.Identity())
-
 
         scale = base_scale
         for index, (config, channels_out) in enumerate(zip(stages, channels[1:])):
@@ -497,7 +495,6 @@ class SparseSpatialDecoder(nn.Module, ParamCount):
         scale = self.base_scale
 
         if isinstance(x, dict):
-
             y = x[scale]
             stages = self.stages
             if self.projections is not None:
