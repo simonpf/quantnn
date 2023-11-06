@@ -267,7 +267,7 @@ class ResNeXtBlockFactory:
             mod = nn
 
         if activation_factory is None:
-            activation_factory = mod.BatchNorm2d
+            activation_factory = nn.ReLU
         self.activation_factory = activation_factory
 
         if norm_factory is None:
