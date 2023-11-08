@@ -462,14 +462,24 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
                     " downsampler factory is provided."
                 )
 
+            if stage_ind > first_stage and downsampler_factory is None:
+                stage_ind = stage_ind + 1
+
             self.stems[input_name] = stage_conf.stem_factory(stage_channels)
             self.stage_inputs[stage_ind].append(input_name)
 
         for ind, names in self.stage_inputs.items():
             if ind > 0:
-                self.aggregators[str(ind)] = aggregator_factory(
-                    (channels[ind],) * (len(names) + 1), channels[ind]
-                )
+                if downsampler_factory is None:
+                    self.aggregators[str(ind)] = aggregator_factory(
+                        (channels[ind - 1],) * (len(names) + 1),
+                        channels[ind - 1]
+                    )
+                else:
+                    self.aggregators[str(ind)] = aggregator_factory(
+                        (channels[ind],) * (len(names) + 1),
+                        channels[ind - 1]
+                    )
             elif len(names) > 1:
                 self.aggregators[str(ind)] = aggregator_factory(
                     (channels[ind],) * len(names), channels[ind]
