@@ -462,9 +462,6 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
                     " downsampler factory is provided."
                 )
 
-            if stage_ind > first_stage and downsampler_factory is None:
-                stage_ind = stage_ind + 1
-
             self.stems[input_name] = stage_conf.stem_factory(stage_channels)
             self.stage_inputs[stage_ind].append(input_name)
 
