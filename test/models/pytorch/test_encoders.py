@@ -7,6 +7,7 @@ from torch import nn
 from quantnn.models.pytorch import factories
 from quantnn.models.pytorch.torchvision import ResNetBlockFactory
 from quantnn.models.pytorch.aggregators import AverageAggregatorFactory
+from quantnn.models.pytorch import factories
 from quantnn.models.pytorch.encoders import (
     SpatialEncoder,
     MultiInputSpatialEncoder,
@@ -23,13 +24,11 @@ def test_spatial_encoder():
     dimensions are changed as expected.
     """
     block_factory = ResNetBlockFactory()
-    stages = [2, 2, 2, 2]
+    stage_depths = [2, 2, 2, 2]
     encoder = SpatialEncoder(
-        channels=1,
-        stages=stages,
+        channels=[1, 2, 4, 4],
+        stage_depths=stage_depths,
         block_factory=block_factory,
-        channel_scaling=2,
-        max_channels=4
     )
     # Test forward without skip connections.
     x = torch.ones((1, 1, 32, 32))
@@ -50,10 +49,8 @@ def test_spatial_encoder():
     # Repeat tests with explicitly specified channel numbers.
     encoder = SpatialEncoder(
         channels=[1, 8, 4, 2],
-        stages=stages,
+        stage_depths=stage_depths,
         block_factory=block_factory,
-        channel_scaling=2,
-        max_channels=8
     )
     x = torch.ones((1, 1, 32, 32))
     y = encoder(x)
@@ -68,10 +65,8 @@ def test_spatial_encoder():
     # Repeat tests with different downscaling factors.
     encoder = SpatialEncoder(
         channels=[1, 8, 4, 2],
-        stages=stages,
+        stage_depths=stage_depths,
         block_factory=block_factory,
-        channel_scaling=2,
-        max_channels=8,
         downsampling_factors=[2, 3, 4]
     )
     x = torch.ones((1, 1, 96, 96))
@@ -92,13 +87,11 @@ def test_spatial_encoder_downsampler_factory():
     """
     block_factory = ResNetBlockFactory()
     downsampler_factory = factories.MaxPooling()
-    stages = [2, 2, 2, 2]
+    stage_depths = [2, 2, 2, 2]
     encoder = SpatialEncoder(
-        channels=1,
-        stages=stages,
+        channels=[1, 2, 4, 8],
+        stage_depths=stage_depths,
         block_factory=block_factory,
-        channel_scaling=2,
-        max_channels=4,
         downsampler_factory=downsampler_factory
     )
     # Test forward without skip connections.
@@ -106,7 +99,7 @@ def test_spatial_encoder_downsampler_factory():
     y = encoder(x)
     # Width and height should be reduced by 8.
     # Number of channels should be maximum.
-    assert y.shape == (1, 4, 4, 4)
+    assert y.shape == (1, 8, 4, 4)
 
 
 def test_multi_input_spatial_encoder():
@@ -116,25 +109,23 @@ def test_multi_input_spatial_encoder():
     """
     block_factory = ResNetBlockFactory()
     aggregator_factory = AverageAggregatorFactory()
-    stages = [2, 2, 2, 2]
+    stage_depths = [2, 2, 2, 2]
     inputs = {
-        "input_0": (0, 12),
-        "input_1": (1, 8),
-        "input_2": (2, 4)
+        "input_0": (1),
+        "input_1": (2),
+        "input_2": (4)
     }
     encoder = MultiInputSpatialEncoder(
         inputs=inputs,
-        channels=1,
-        stages=stages,
+        channels=[1, 2, 4, 8],
+        stage_depths=stage_depths,
         block_factory=block_factory,
         aggregator_factory=aggregator_factory,
-        channel_scaling=2,
-        max_channels=8
     )
     # Test forward without skip connections.
     x = {
-        "input_0": torch.ones((1, 12, 32, 32)),
-        "input_1": torch.ones((1, 8, 16, 16)),
+        "input_0": torch.ones((1, 1, 32, 32)),
+        "input_1": torch.ones((1, 2, 16, 16)),
         "input_2": torch.ones((1, 4, 8, 8)),
     }
     y = encoder(x)
@@ -151,6 +142,57 @@ def test_multi_input_spatial_encoder():
     # First element is output from last layer.
     assert y[8].shape == (1, 8, 4, 4)
 
+    # Test handling of multiple inputs at similar scales.
+    inputs = {
+        "input_0": (1),
+        "input_0_1": (1),
+        "input_1": (2),
+        "input_1_1": (2),
+        "input_2": (4)
+    }
+    encoder = MultiInputSpatialEncoder(
+        inputs=inputs,
+        channels=[1, 2, 4, 8],
+        stage_depths=stage_depths,
+        block_factory=block_factory,
+        aggregator_factory=aggregator_factory,
+    )
+    x = {
+        "input_0": torch.ones((1, 1, 32, 32)),
+        "input_0_1": torch.ones((1, 1, 32, 32)),
+        "input_1": torch.ones((1, 2, 16, 16)),
+        "input_1_1": torch.ones((1, 2, 16, 16)),
+        "input_2": torch.ones((1, 4, 8, 8)),
+    }
+    # Test forward width skips returned.
+    y = encoder(x, return_skips=True)
+    # Number of outputs is number of stages + 1.
+    assert len(y) == 4
+
+    #
+    # Test encoder with external downsampling blocks.
+    #
+
+    encoder = MultiInputSpatialEncoder(
+        inputs=inputs,
+        channels=[1, 2, 4, 8],
+        stage_depths=stage_depths,
+        block_factory=block_factory,
+        aggregator_factory=aggregator_factory,
+        downsampler_factory=factories.MaxPooling()
+    )
+    x = {
+        "input_0": torch.ones((1, 1, 32, 32)),
+        "input_0_1": torch.ones((1, 1, 32, 32)),
+        "input_1": torch.ones((1, 2, 16, 16)),
+        "input_1_1": torch.ones((1, 2, 16, 16)),
+        "input_2": torch.ones((1, 4, 8, 8)),
+    }
+    # Test forward width skips returned.
+    y = encoder(x, return_skips=True)
+    # Number of outputs is number of stages + 1.
+    assert len(y) == 4
+
 
 def test_zero_depth_stage():
     """
@@ -158,7 +200,7 @@ def test_zero_depth_stage():
     """
     block_factory = ResNetBlockFactory()
     aggregator_factory = AverageAggregatorFactory()
-    stages = [0, 2, 2, 2]
+    stage_depths = [0, 2, 2, 2]
     inputs = {
         "input_0": (0, 12),
         "input_1": (1, 8),
@@ -167,7 +209,7 @@ def test_zero_depth_stage():
     encoder = MultiInputSpatialEncoder(
         inputs=inputs,
         channels=1,
-        stages=stages,
+        stage_depths=stage_depths,
         block_factory=block_factory,
         aggregator_factory=aggregator_factory,
         channel_scaling=2,
