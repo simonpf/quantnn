@@ -47,6 +47,7 @@ class ConvBlockFactory:
         channels_out: Optional[int] = None,
         downsample: Optional[int] = None,
         block_index: int = 0,
+        **kwargs
     ):
         """
         Args:

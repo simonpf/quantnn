@@ -44,6 +44,7 @@ class ResNetBlockFactory:
         channels_out: int,
         downsample: Optional[Union[int, Tuple[int]]] = None,
         block_index: int = 0,
+        **kwargs
     ) -> nn.Module:
         """
         Create ResNet block.

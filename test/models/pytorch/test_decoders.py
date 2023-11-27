@@ -15,6 +15,7 @@ from quantnn.models.pytorch.decoders import (
     DLADecoderStage,
     DLADecoder
 )
+from quantnn.models.pytorch.blocks import ConvBlockFactory
 from quantnn.models.pytorch.torchvision import ResNetBlockFactory
 from quantnn.models.pytorch.aggregators import (
     LinearAggregatorFactory,
@@ -31,17 +32,13 @@ def test_spatial_decoder():
     """
     block_factory = ResNetBlockFactory()
     encoder = SpatialEncoder(
-        channels=1,
-        stages=[4] * 4,
-        channel_scaling=2,
-        max_channels=8,
+        channels=[1, 2, 4, 8],
+        stage_depths=[4] * 4,
         block_factory=block_factory,
     )
     decoder = SpatialDecoder(
-        channels=1,
-        stages=[4] * 3,
-        channel_scaling=2,
-        max_channels=8,
+        channels=[8, 4, 2, 1],
+        stage_depths=[4] * 3,
         block_factory=block_factory,
         skip_connections=False
     )
@@ -56,10 +53,8 @@ def test_spatial_decoder():
     # Test asymmetric decoder
     #
     decoder = SpatialDecoder(
-        channels=[8, 1, 1],
-        stages=[4] * 2,
-        channel_scaling=2,
-        max_channels=8,
+        channels=[8, 4, 1],
+        stage_depths=[4] * 2,
         block_factory=block_factory,
         skip_connections=encoder.skip_connections,
     )
@@ -69,18 +64,14 @@ def test_spatial_decoder():
     assert y.shape == (1, 1, 16, 16)
 
     encoder = SpatialEncoder(
-        channels=1,
-        stages=[4] * 4,
-        channel_scaling=2,
-        max_channels=32,
+        channels=[1, 2, 16, 32],
+        stage_depths=[4] * 4,
         block_factory=block_factory,
         downsampling_factors=[2, 2, 4]
     )
     decoder = SpatialDecoder(
-        channels=1,
-        stages=[4] * 3,
-        channel_scaling=2,
-        max_channels=32,
+        channels=[32, 16, 2, 1],
+        stage_depths=[4] * 3,
         block_factory=block_factory,
         skip_connections=encoder.skip_connections,
         upsampling_factors=[4, 2, 2],
@@ -94,10 +85,8 @@ def test_spatial_decoder():
 
     # Test decoder with different channel config.
     decoder = SpatialDecoder(
-        channels=[8, 2, 2, 2],
-        stages=[4] * 3,
-        channel_scaling=2,
-        max_channels=8,
+        channels=[32, 2, 2, 2],
+        stage_depths=[4] * 3,
         block_factory=block_factory,
         skip_connections=encoder.skip_connections,
         upsampling_factors=[4, 2, 2],
@@ -115,29 +104,25 @@ def test_encoder_decoder_multi_scale_output():
     Tests the chaining of a multi-input encoder and a decoder with
     potentially missing input.
     """
-    block_factory = ResNetBlockFactory()
+    block_factory = ConvBlockFactory()
     aggregator_factory = SparseAggregatorFactory(
         LinearAggregatorFactory()
     )
     inputs = {
-        "input_1": (1, 16),
-        "input_2": (2, 32)
+        "input_1": 2,
+        "input_2": 4
     }
     encoder = MultiInputSpatialEncoder(
         inputs=inputs,
-        channels=4,
-        stages=[4] * 4,
+        channels=[4, 8, 16, 16],
+        stage_depths=[4] * 4,
         block_factory=block_factory,
-        channel_scaling=2,
-        max_channels=16,
         aggregator_factory=aggregator_factory
     )
 
     decoder = SparseSpatialDecoder(
-        channels=4,
-        stages=[4] * 3,
-        channel_scaling=2,
-        max_channels=16,
+        channels=[16, 16, 8, 4],
+        stage_depths=[4] * 3,
         block_factory=block_factory,
         skip_connections=encoder.skip_connections,
         multi_scale_output=16
@@ -145,12 +130,12 @@ def test_encoder_decoder_multi_scale_output():
     # Test forward without skip connections.
     x = {
         "input_1": PackedTensor(
-            torch.ones((0, 16, 16, 16)),
+            torch.ones((0, 8, 16, 16)),
             batch_size=4,
             batch_indices=[]
         ),
         "input_2": PackedTensor(
-            torch.ones((1, 32, 8, 8)),
+            torch.ones((1, 16, 8, 8)),
             batch_size=4,
             batch_indices=[0]
         )
@@ -158,9 +143,9 @@ def test_encoder_decoder_multi_scale_output():
     y = encoder(x, return_skips=True)
     y = decoder(y)
     assert len(y) == 4
-    for y_i in y:
-        assert y_i.shape[1] == 16
-    assert y[-1].shape[2] == 32
+    for scale, tensor in y.items():
+        assert tensor.shape[1] == 16
+    assert y[1].shape[2] == 32
 
     #
     # Ensure using different channels than encoder works.
@@ -168,29 +153,27 @@ def test_encoder_decoder_multi_scale_output():
 
     decoder = SparseSpatialDecoder(
         channels=[16, 8, 8, 8],
-        stages=[4] * 3,
-        channel_scaling=2,
-        max_channels=16,
+        stage_depths=[4] * 3,
         block_factory=block_factory,
         skip_connections=encoder.skip_connections,
         multi_scale_output=16
     )
     x = {
         "input_1": PackedTensor(
-            torch.ones((0, 16, 16, 16)),
+            torch.ones((0, 8, 16, 16)),
             batch_size=4,
             batch_indices=[]
         ),
         "input_2": PackedTensor(
-            torch.ones((1, 32, 8, 8)),
+            torch.ones((1, 16, 8, 8)),
             batch_size=4,
             batch_indices=[0]
         )
     }
     y = encoder(x, return_skips=True)
     y = decoder(y)
-    assert y[0].shape[1] == 16
-    assert y[-1].shape[1] == 16
+    assert y[1].shape[1] == 16
+    assert y[8].shape[1] == 16
 
     #
     # Test decoer with more stages than encoder.
@@ -198,20 +181,18 @@ def test_encoder_decoder_multi_scale_output():
 
     decoder = SparseSpatialDecoder(
         channels=[16, 8, 8, 8, 2],
-        stages=[4] * 4,
-        channel_scaling=2,
-        max_channels=16,
+        stage_depths=[4] * 4,
         block_factory=block_factory,
         skip_connections=encoder.skip_connections,
     )
     x = {
         "input_1": PackedTensor(
-            torch.ones((0, 16, 16, 16)),
+            torch.ones((0, 8, 16, 16)),
             batch_size=4,
             batch_indices=[]
         ),
         "input_2": PackedTensor(
-            torch.ones((1, 32, 8, 8)),
+            torch.ones((1, 16, 8, 8)),
             batch_size=4,
             batch_indices=[0]
         )
@@ -220,6 +201,7 @@ def test_encoder_decoder_multi_scale_output():
     y = decoder(y)
     assert y.shape[1] == 2
     assert y.shape[2] == 64
+
 
 @pytest.mark.xfail
 def test_dla_decoder():
