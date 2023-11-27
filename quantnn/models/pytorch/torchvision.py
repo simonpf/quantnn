@@ -27,7 +27,11 @@ class ResNetBlockFactory:
     Factory wrapper for ``torchvision`` ResNet blocks.
     """
 
-    def __init__(self, norm_factory: Optional[Callable[[int], nn.Module]] = None):
+    def __init__(
+            self,
+            norm_factory: Optional[Callable[[int], nn.Module]] = None,
+            **kwargs
+    ):
         """
         Args:
             norm_factory: A factory object to produce the normalization

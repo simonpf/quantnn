@@ -386,10 +386,10 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
                     (channels[ind],) * (len(names) + 1),
                     channels[ind]
                 )
-            # Multiple inputs a base scale.
+            # Multiple inputs at base scale.
             elif len(names) > 1:
                 self.aggregators[str(scale)] = aggregator_factory(
-                    (channels[scale],) * len(names), channels[ind]
+                    (channels[ind],) * len(names), channels[ind]
                 )
 
 
@@ -420,8 +420,10 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
                 agg_inputs.append(x_in)
 
             # Aggregate and propagate through stage
-            if y is not None and self.aggregate_after:
-                y = stage(y)
+            if y is not None:
+                if self.aggregate_after:
+                    y = stage(y)
+                agg_inputs.append(y)
 
             if len(agg_inputs) > 1:
                 y = self.aggregators[str(scale)](*agg_inputs)
@@ -479,6 +481,7 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
             # Aggregate and propagate through stage
             if y is not None and self.aggregate_after:
                 y = stage(y)
+                agg_inputs.append(y)
 
             if len(agg_inputs) > 1:
                 y = self.aggregators[str(scale)](*agg_inputs)
@@ -488,6 +491,7 @@ class MultiInputSpatialEncoder(SpatialEncoder, ParamCount):
                 y = stage(y)
 
         return y
+
 
 class DenseEncoder(nn.Module, ParamCount):
     """
@@ -814,21 +818,21 @@ class CascadingEncoder(nn.Module):
         self.downsamplers = nn.ModuleList()
         self.upsamplers = nn.ModuleList()
 
-        n_stages = len(stages)
+        n_stages = len(stage_depths)
         if isinstance(channels, int):
             channels = [channels * channel_scaling**i for i in range(n_stages)]
             if max_channels is not None:
                 channels = [min(ch, max_channels) for ch in channels]
         self.channels = channels
 
-        if not len(channels) == len(stages):
+        if not len(channels) == n_stages:
             raise ValueError(
                 "The list of given channel numbers must match the number " "of stages."
             )
 
         if downsampling_factors is None:
             downsampling_factors = [2] * (n_stages - 1)
-        if len(stages) != len(downsampling_factors) + 1:
+        if n_stages != len(downsampling_factors) + 1:
             raise ValueError(
                 "The list of downsampling factors numbers must have one "
                 "element less than the number of stages."
@@ -841,16 +845,6 @@ class CascadingEncoder(nn.Module):
         for f_d in downsampling_factors:
             self.scales.append(scale)
             scale *= f_d
-
-        try:
-            stages = [
-                stage if isinstance(stage, StageConfig) else StageConfig(stage)
-                for stage in stages
-            ]
-        except ValueError:
-            raise ValueError(
-                "'stages' must be a list of 'StageConfig' or 'int'  objects."
-            )
 
         self.scales = _calculate_output_scales(base_scale, downsampling_factors)
 
@@ -867,10 +861,9 @@ class CascadingEncoder(nn.Module):
 
 
         stage_ind = 0
-        for stage, channels_out, f_dwn in zip(stages, channels, downsampling_factors):
+        for n_blocks, channels_out, f_dwn in zip(stage_depths, channels, downsampling_factors):
+
             # Downsampling layer is included in stage.
-
-
             down = f_dwn if isinstance(f_dwn, int) else max(f_dwn)
             if down > 1:
                 self.downsamplers.append(
@@ -884,7 +877,7 @@ class CascadingEncoder(nn.Module):
                 self.upsamplers.append(None)
 
 
-            for block_ind in range(stage.n_blocks):
+            for block_ind in range(n_blocks):
 
                 chans_combined = channels_in
                 if (block_ind > 1) and (stage_ind < n_stages - 1):
@@ -892,7 +885,7 @@ class CascadingEncoder(nn.Module):
                 if (
                         (stage_ind > 0) and
                         (block_ind > 0) and
-                        (stages[stage_ind - 1].n_blocks > block_ind)
+                        (stage_depths[stage_ind - 1] > block_ind)
                 ):
                     chans_combined += channels[stage_ind - 1]
 
@@ -900,8 +893,6 @@ class CascadingEncoder(nn.Module):
                     chans_combined,
                     channels_out,
                     downsample=None,
-                    *stage.block_args,
-                    **stage.block_kwargs
                 )
                 modules.append(mod)
                 depth_map = module_map.setdefault(block_ind + stage_ind, [])
@@ -976,7 +967,7 @@ class DenseCascadingEncoder(nn.Module):
     def __init__(
             self,
             channels: Union[int, List[int]],
-            stages: List[int],
+            stage_depths: List[int],
             block_factory: Optional[Callable[[int, int], nn.Module]] = None,
             channel_scaling: int = 2,
             max_channels: int = None,
@@ -1021,21 +1012,21 @@ class DenseCascadingEncoder(nn.Module):
         self.upsamplers = nn.ModuleList()
         self.projections = nn.ModuleList()
 
-        n_stages = len(stages)
+        n_stages = len(stage_depths)
         if isinstance(channels, int):
             channels = [channels * channel_scaling**i for i in range(n_stages)]
             if max_channels is not None:
                 channels = [min(ch, max_channels) for ch in channels]
         self.channels = channels
 
-        if not len(channels) == len(stages):
+        if not len(channels) == n_stages:
             raise ValueError(
                 "The list of given channel numbers must match the number " "of stages."
             )
 
         if downsampling_factors is None:
             downsampling_factors = [2] * (n_stages - 1)
-        if len(stages) != len(downsampling_factors) + 1:
+        if n_stages != len(downsampling_factors) + 1:
             raise ValueError(
                 "The list of downsampling factors numbers must have one "
                 "element less than the number of stages."
@@ -1049,15 +1040,6 @@ class DenseCascadingEncoder(nn.Module):
             self.scales.append(scale)
             scale *= f_d
 
-        try:
-            stages = [
-                stage if isinstance(stage, StageConfig) else StageConfig(stage)
-                for stage in stages
-            ]
-        except ValueError:
-            raise ValueError(
-                "'stages' must be a list of 'StageConfig' or 'int'  objects."
-            )
 
         modules = []
         module_map = {}
@@ -1072,20 +1054,20 @@ class DenseCascadingEncoder(nn.Module):
         self.scales = _calculate_output_scales(base_scale, downsampling_factors)
 
         stage_ind = 0
-        for stage, channels_out, f_dwn in zip(stages, channels, downsampling_factors):
+        for n_blocks, channels_out, f_dwn in zip(stage_depths, channels, downsampling_factors):
             # Downsampling layer is included in stage.
 
-            if channels_out % stage.n_blocks > 0:
+            if channels_out % n_blocks > 0:
                 raise ValueError(
                     "The number of each stage's channels must be divisible by "
                     " the number of blocks."
                 )
-            growth_rate = channels_out // stage.n_blocks
+            growth_rate = channels_out // n_blocks
 
             if stage_ind == 0:
                 channels_in = growth_rate
             else:
-                n_blocks = stages[stage_ind - 1].n_blocks
+                n_blocks = stage_depths[stage_ind - 1]
                 if n_blocks == 1:
                     channels_in = channels[stage_ind - 1]
                 else:
@@ -1105,16 +1087,16 @@ class DenseCascadingEncoder(nn.Module):
                 self.upsamplers.append(None)
 
 
-            for block_ind in range(stage.n_blocks):
+            for block_ind in range(stage_depths[stage_ind]):
 
                 chans_combined = channels_in + block_ind * growth_rate
 
                 if (
                         (stage_ind < n_stages - 1) and
                         (block_ind > 1) and
-                        (block_ind < stages[stage_ind + 1].n_blocks + 1)
+                        (block_ind < stage_depths[stage_ind + 1] + 1)
                 ):
-                    n_blocks = stages[stage_ind + 1].n_blocks
+                    n_blocks = stage_depths[stage_ind + 1]
                     if block_ind > n_blocks:
                         chans_combined += channels[stage_ind + 1]
                     else:
@@ -1123,29 +1105,25 @@ class DenseCascadingEncoder(nn.Module):
                 if (
                         (stage_ind > 0) and
                         (block_ind > 0) and
-                        (stages[stage_ind - 1].n_blocks > block_ind)
+                        (stage_depths[stage_ind - 1] > block_ind)
                 ):
-                    n_blocks = stages[stage_ind - 1].n_blocks
+                    n_blocks = stage_depths[stage_ind - 1]
                     if block_ind > n_blocks - 2:
                         chans_combined += channels[stage_ind - 1]
                     else:
                         chans_combined += channels[stage_ind - 1] // n_blocks
 
-                if block_ind < stage.n_blocks - 1:
+                if block_ind < stage_depths[stage_ind] - 1:
                     mod = block_factory(
                         chans_combined,
                         growth_rate,
                         downsample=None,
-                        *stage.block_args,
-                        **stage.block_kwargs
                     )
                 else:
                     mod = block_factory(
                         chans_combined,
                         channels_out,
                         downsample=None,
-                        *stage.block_args,
-                        **stage.block_kwargs
                     )
 
                 modules.append(mod)
@@ -1159,14 +1137,14 @@ class DenseCascadingEncoder(nn.Module):
 
 
         if stem_factory is not None:
-            self.stem = stem_factory(channels[0] // stages[0].n_blocks)
+            self.stem = stem_factory(channels[0] // stage_depths[0])
             self.input_channels = channels[0]
         else:
             self.stem = None
-            self.input_channels = channels[0] // stages[0].n_blocks
+            self.input_channels = channels[0] // stage_depths[0]
 
         self.depth = max(list(self.module_map.keys())) + 1
-        self.input_channels = channels[0] // stages[0].n_blocks
+        self.input_channels = channels[0] // stage_depths[0]
 
 
     @property

@@ -144,11 +144,11 @@ def test_multi_input_spatial_encoder():
 
     # Test handling of multiple inputs at similar scales.
     inputs = {
-        "input_0": (1),
-        "input_0_1": (1),
-        "input_1": (2),
-        "input_1_1": (2),
-        "input_2": (4)
+        "input_0": 4,
+        "input_0_1": 4,
+        "input_1": 8,
+        "input_1_1": 8,
+        "input_2": 16
     }
     encoder = MultiInputSpatialEncoder(
         inputs=inputs,
@@ -156,6 +156,7 @@ def test_multi_input_spatial_encoder():
         stage_depths=stage_depths,
         block_factory=block_factory,
         aggregator_factory=aggregator_factory,
+        base_scale=4
     )
     x = {
         "input_0": torch.ones((1, 1, 32, 32)),
@@ -170,7 +171,7 @@ def test_multi_input_spatial_encoder():
     assert len(y) == 4
 
     #
-    # Test encoder with external downsampling blocks.
+    # Test encoder with separate downsampling blocks.
     #
 
     encoder = MultiInputSpatialEncoder(
@@ -179,7 +180,8 @@ def test_multi_input_spatial_encoder():
         stage_depths=stage_depths,
         block_factory=block_factory,
         aggregator_factory=aggregator_factory,
-        downsampler_factory=factories.MaxPooling()
+        downsampler_factory=factories.MaxPooling(),
+        base_scale=4
     )
     x = {
         "input_0": torch.ones((1, 1, 32, 32)),

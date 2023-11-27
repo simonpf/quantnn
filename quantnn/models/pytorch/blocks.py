@@ -281,6 +281,7 @@ class ResNeXtBlockFactory:
         channels_out: int,
         downsample: Optional[int] = None,
         block_index: int = 0,
+        **kwargs
     ) -> nn.Module:
         """
         Create ResNeXt block.
@@ -528,6 +529,7 @@ class ConvNextBlockFactory:
         channels_out: Optional[int] = None,
         downsample: Optional[int] = None,
         block_index: int = 0,
+        **kwargs
     ):
         """
         Create ConvNext block.
