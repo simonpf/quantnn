@@ -102,6 +102,13 @@ class MaskedTensor(torch.Tensor):
         if len(args) == 1 and len(kwargs) == 0:
             return func(args[0].base)
 
+        if len(args) > 0 and isinstance(args[0], MaskedTensor):
+            masked_args = [arg for arg in args[1:] if isinstance(arg, MaskedTensor)]
+            masked_args += [arg for arg in kwargs.values() if isinstance(arg, MaskedTensor)]
+            if len(masked_args) == 0:
+                return func(args[0].base, *args[1:], **kwargs)
+
+        raise Exception()
         return NotImplemented
 
     def compress(self):
@@ -144,7 +151,7 @@ def extract_mask(arg):
     elif isinstance(arg, MaskedTensor):
         return arg.mask
     elif isinstance(arg, torch.Tensor):
-        return torch.zeros_like(arg, dtype=bool)
+        return torch.zeros_like(arg, dtype=bool, device=arg.device)
     elif isinstance(arg, float):
         return torch.zeros(1, dtype=bool)
     return arg
@@ -193,7 +200,7 @@ def get_mask(tensor):
         return tensor.mask
     elif isinstance(tensor, torch.Tensor):
         return torch.zeros(tensor.shape, device=tensor.device, dtype=bool)
-    return torch.zeros(1, dtype=bool)
+    torch.zeros(1, dtype=bool)
 
 
 def get_compressed(tensor):
@@ -288,7 +295,7 @@ def iadd(inpt, other, alpha=1):
     """
     get_base(inpt).add_(get_base(other), alpha=alpha)
     if isinstance(inpt, MaskedTensor):
-        inpt.mask = torch.logical_or(get_mask(inpt), get_mask(other))
+        inpt.mask = combine_masks(inpt, other)
     return inpt
 
 
@@ -304,10 +311,7 @@ def sub(inpt, other, alpha=1, out=None):
             get_base(other),
             alpha=alpha,
         )
-        mask = torch.logical_or(
-            get_mask(inpt),
-            get_mask(other),
-        )
+        mask = combine_masks(inpt, other, torch.logical_or)
         return MaskedTensor(res, mask=mask, compressed=compressed[0])
     else:
         res = torch.sub(get_base(inpt), get_base(other), alpha=alpha, out=get_base(out))
@@ -339,6 +343,44 @@ def isub(inpt, other, alpha=1):
 ###############################################################################
 
 
+def combine_masks(
+        tensor_1,
+        tensor_2,
+        op=torch.logical_or,
+        out=None,
+        shape=None
+):
+    """
+    Combine masks of arguments, one of which must be a masked tensor.
+
+    Args:
+        tensor_1: The first tensor argument.
+        tensor_2: The second tensor argument.
+        op: The operation to use to combine the masks.
+        out: Optional tensor to write the output to.
+        shape: Tuple specifying the expected shape of the result.
+
+    Return:
+        A mask tensor obtained by combining the masks from 'tensor_1' and
+        'tensor_2'.
+    """
+    if isinstance(tensor_1, MaskedTensor):
+        if isinstance(tensor_2, MaskedTensor):
+            if out is not None:
+                return op(tensor_1.mask, tensor_2.mask)
+            else:
+                return op(tensor_1.mask, tensor_2.mask, out=out)
+        if shape is not None and tensor_1.mask != shape:
+            return torch.broadcast_to(tensor_1.mask, shape)
+        return tensor_1.mask
+    if shape is not None and tensor_2.mask != shape:
+        return torch.broadcast_to(tensor_2.mask, shape)
+    return tensor_2.mask
+
+
+
+
+
 @implements(torch.mul)
 def mul(inpt, other, out=None):
     """
@@ -350,14 +392,11 @@ def mul(inpt, other, out=None):
             get_base(inpt),
             get_base(other),
         )
-        mask = torch.logical_or(
-            get_mask(inpt),
-            get_mask(other),
-        )
+        mask = combine_masks(inpt, other, shape=res.shape)
         return MaskedTensor(res, mask=mask, compressed=compressed[0])
     else:
         res = torch.mul(get_base(inpt), get_base(other), out=get_base(out))
-        mask = torch.logical_or(get_mask(inpt), get_mask(other), out=out.mask)
+        mask = combine_masks(inpt, other, out=out.mask, shape=res.shape)
         return res
 
 
@@ -557,7 +596,7 @@ def to(inpt, *args, **kwargs):
     """
     other = inpt.base.to(*args, **kwargs)
     kwargs.pop("dtype", None)
-    if isinstance(args[0], torch.dtype):
+    if len(args) > 0 and isinstance(args[0], torch.dtype):
         args = list(args)
         args[0] = bool
 
@@ -601,10 +640,7 @@ def ge(inpt, other, out=None):
             get_base(inpt),
             get_base(other),
         )
-        mask = torch.logical_or(
-            get_mask(inpt),
-            get_mask(other),
-        )
+        mask = combine_masks(inpt, other, torch.logical_or, shape=res.shape)
         return MaskedTensor(res, mask=mask, compressed=compressed[0])
     else:
         res = torch.ge(get_base(inpt), get_base(other), out=get_base(out))
@@ -623,14 +659,11 @@ def tge(inpt, other, out=None):
             get_base(inpt),
             get_base(other),
         )
-        mask = torch.logical_or(
-            get_mask(inpt),
-            get_mask(other),
-        )
+        mask = combine_masks(inpt, other, torch.logical_or, shape=res.shape)
         return MaskedTensor(res, mask=mask, compressed=compressed[0])
     else:
         res = torch.ge(get_base(inpt), get_base(other), out=get_base(out))
-        mask = torch.logical_or(get_mask(inpt), get_mask(other), out=out.mask)
+        mask = combine_masks(inpt, other, torch.logical_or, out=out.mask, shape=res.shape)
         return res
 
 
@@ -645,10 +678,7 @@ def gt(inpt, other, out=None):
             get_base(inpt),
             get_base(other),
         )
-        mask = torch.logical_or(
-            get_mask(inpt),
-            get_mask(other),
-        )
+        mask = combine_masks(inpt, other, torch.logical_or, shape=res.shape)
         return MaskedTensor(res, mask=mask, compressed=compressed[0])
     else:
         res = torch.gt(get_base(inpt), get_base(other), out=get_base(out))
@@ -667,10 +697,7 @@ def tgt(inpt, other, out=None):
             get_base(inpt),
             get_base(other),
         )
-        mask = torch.logical_or(
-            get_mask(inpt),
-            get_mask(other),
-        )
+        mask = combine_masks(inpt, other, torch.logical_or, shape=res.shape)
         return MaskedTensor(res, mask=mask, compressed=compressed[0])
     else:
         res = torch.gt(get_base(inpt), get_base(other), out=get_base(out))
@@ -689,14 +716,11 @@ def le(inpt, other, out=None):
             get_base(inpt),
             get_base(other),
         )
-        mask = torch.logical_or(
-            get_mask(inpt),
-            get_mask(other),
-        )
+        mask = combine_masks(inpt, other, shape=res.shape)
         return MaskedTensor(res, mask=mask, compressed=compressed[0])
     else:
         res = torch.le(get_base(inpt), get_base(other), out=get_base(out))
-        mask = torch.logical_or(get_mask(inpt), get_mask(other), out=out.mask)
+        mask = combine_masks(inpt, other, out=out.mask, shape=res.shape)
         return res
 
 
@@ -711,14 +735,11 @@ def tle(inpt, other, out=None):
             get_base(inpt),
             get_base(other),
         )
-        mask = torch.logical_or(
-            get_mask(inpt),
-            get_mask(other),
-        )
+        mask = combine_masks(inpt, other, shape=res.shape)
         return MaskedTensor(res, mask=mask, compressed=compressed[0])
     else:
         res = torch.le(get_base(inpt), get_base(other), out=get_base(out))
-        mask = torch.logical_or(get_mask(inpt), get_mask(other), out=out.mask)
+        mask = combine_masks(inpt, other, out=out.mask, shape=res.shape)
         return res
 
 
@@ -733,14 +754,11 @@ def lt(inpt, other, out=None):
             get_base(inpt),
             get_base(other),
         )
-        mask = torch.logical_or(
-            get_mask(inpt),
-            get_mask(other),
-        )
+        mask = combine_masks(inpt, other, shape=res.shape)
         return MaskedTensor(res, mask=mask, compressed=compressed[0])
     else:
         res = torch.lt(get_base(inpt), get_base(other), out=get_base(out))
-        mask = torch.logical_or(get_mask(inpt), get_mask(other), out=out.mask)
+        mask = combine_masks(inpt, other, out=out.mask, shape=res.shape)
         return res
 
 
@@ -755,15 +773,19 @@ def tlt(inpt, other, out=None):
             get_base(inpt),
             get_base(other),
         )
-        mask = torch.logical_or(
-            get_mask(inpt),
-            get_mask(other),
-        )
+        mask = combine_masks(inpt, other, shape=res.shape)
         return MaskedTensor(res, mask=mask, compressed=compressed[0])
     else:
         res = torch.lt(get_base(inpt), get_base(other), out=get_base(out))
-        mask = torch.logical_or(get_mask(inpt), get_mask(other), out=out.mask)
+        mask = combine_masks(inpt, other, out=out.mask, shape=res.shape)
         return res
+
+@implements(torch.Tensor.type_as)
+def type_as(inpt, other):
+    """
+    Element-wise comparison of tensor
+    """
+    return inpt.to(dtype=other.dtype)
 
 
 @implements(torch.Tensor.__setitem__)
@@ -779,6 +801,21 @@ def relu(inpt, **kwargs):
         compressed=inpt.compressed,
     )
 
+@implements(torch.pow)
+def pow(inpt, exp, *args, out=None):
+    return MaskedTensor(torch.pow(inpt.base, exp, *args, out=out), mask=inpt.mask)
+
+@implements(torch.Tensor.pow)
+def tpow(inpt, exp, *args, out=None):
+    return pow(inpt, exp, *args, out=out)
+
+@implements(torch._C._TensorBase.pow)
+def tpow(inpt, exp, *args, out=None):
+    return pow(inpt, exp, *args, out=out)
+
+@implements(torch.Tensor.pow_)
+def ipow(inpt, exp, *args):
+    return pow(inpt, exp, *args, out=inpt.base)
 
 #    torch.sum: torch.any,
 #    torch.Tensor.sum: torch.any,

@@ -73,6 +73,21 @@ def test_add():
     assert torch.isclose(masked_tensor_2, 2.0 * tensor).all()
 
 
+def test_sub():
+    """
+    Test difference of masked tensors.
+    """
+    tensor = torch.rand(10, 10, 10)
+    mask_1 = torch.rand(10, 10, 10) - 0.5 > 0
+    mask_2 = torch.rand(10, 10, 10) - 0.5 > 0
+    masked_tensor_1 = MaskedTensor(tensor, mask=mask_1)
+    masked_tensor_2 = MaskedTensor(tensor, mask=mask_2)
+
+    masked_tensor_2 = torch.sub(masked_tensor_1, masked_tensor_2)
+    assert (masked_tensor_2.mask == (torch.logical_or(mask_1, mask_2))).all()
+    assert torch.isclose(masked_tensor_2, torch.zeros_like(masked_tensor_2)).all()
+
+
 def test_mul():
     """
     Test multiplication of masked tensors.
@@ -85,7 +100,30 @@ def test_mul():
 
     masked_tensor_2 = masked_tensor_1 * masked_tensor_2
     assert (masked_tensor_2.mask == (torch.logical_or(mask_1, mask_2))).all()
+    assert masked_tensor_2.mask.shape == masked_tensor_1.shape
     assert torch.isclose(masked_tensor_2, tensor**2).all()
+
+    masked_tensor_2 = tensor * masked_tensor_2
+    assert masked_tensor_2.mask.shape == masked_tensor_1.shape
+
+
+def test_pow():
+    """
+    Test exponentiation of masked tensors.
+    """
+    tensor = torch.rand(10, 10, 10)
+    mask_1 = torch.rand(10, 10, 10) - 0.5 > 0
+    mask_2 = torch.rand(10, 10, 10) - 0.5 > 0
+    masked_tensor_1 = MaskedTensor(tensor, mask=mask_1)
+
+    masked_tensor_2 = torch.pow(masked_tensor_1, 2)
+    assert torch.isclose(masked_tensor_2, tensor ** 2).all()
+
+
+    #masked_tensor_2 = torch._C._TensorBase.pow(masked_tensor_2, 2)
+    masked_tensor_2 = masked_tensor_2 ** 2
+    assert torch.isclose(masked_tensor_2, tensor ** 4).all()
+
 
 
 def test_permute():
@@ -185,6 +223,16 @@ def test_mean():
     mean_ref = torch.mean(tensor[~mask_1])
     assert torch.isclose(mean_ref, masked_mean)
 
+def test_gt():
+    """
+    Test calculating the mean of a masked tensor.
+    """
+    tensor = torch.rand(1, 2, 3)
+    mask_1 = torch.rand(1, 2, 3) - 0.5 > 0
+    masked_tensor_1 = MaskedTensor(tensor, mask=mask_1)
+
+    masked_tensor_1 > 1
+
 
 def test_tensor_ops():
     """
@@ -223,7 +271,9 @@ def test_tensor_ops():
     assert masked_tensor_7.shape == (50, 5)
     assert masked_tensor_7.mask.shape == (50, 5)
 
-    masked_tensor_7 += 1.0
+
+
+    masked_tensor_7.add_(1.0)
 
     masked_tensor_8 = torch.stack([masked_tensor_7, masked_tensor_7])
     assert masked_tensor_8.shape == (2, 50, 5)
